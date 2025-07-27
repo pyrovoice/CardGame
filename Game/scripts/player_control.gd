@@ -1,0 +1,113 @@
+extends Node3D
+class_name PlayerControl
+@onready var CardPopupDisplay: TextureRect = $"../Control/CardPopupDisplay"
+@onready var card_popup: SubViewport = $"../cardPopup"
+@onready var card_in_popup: Card = $"../cardPopup/Card"
+var previoustween: Tween = null
+
+@onready var player_hand: Node3D = $"../Camera3D/PlayerHand"
+@onready var mouse_intercept_plane: StaticBody3D = $"../Camera3D/mouseInterceptPlane"
+@onready var camera: Camera3D = $"../Camera3D"
+
+signal tryPlayCard(card: Card, target: Node3D)
+signal displayCardPopup(card: Card)
+
+const HAND_ZONE_CUTTOFF = 500
+
+var cardUnderMouse: Card = null
+func _process(delta):
+	cardUnderMouse = null
+	if dragged_card:
+		dragged_card.dragged(getMousePositionHand())
+		return
+	else:
+		dragged_card = null
+	if !isMousePointerInHandZone():
+		return
+	var hover_range = 130
+	var lift_amount = 1
+	var closest_card = null
+	var closest_dist = hover_range + 1  # start bigger than range
+	var cards = player_hand.get_children()
+	var mouse_pos = get_viewport().get_mouse_position()
+	for card: Card in cards:
+		var card_screen_pos = camera.unproject_position(card.global_transform.origin)
+		var dist = mouse_pos.distance_to(card_screen_pos)
+		if dist < hover_range && dist < closest_dist:
+			closest_dist = dist
+			closest_card = card
+	if closest_card:
+		closest_card.popUp()
+		cardUnderMouse = closest_card
+
+var dragged_card: Card = null
+func _input(event):
+	if event is InputEventMouseButton && event.pressed:
+		CardPopupDisplay.hide()
+	if event is InputEventMouseButton && event.button_index == MOUSE_BUTTON_LEFT:
+		if event.pressed && cardUnderMouse:
+			dragged_card = cardUnderMouse
+		else:
+			if !event.pressed && dragged_card && !isMousePointerInHandZone():
+				tryPlayCard.emit(dragged_card, getObjectUnderMouse())
+			dragged_card = null
+	
+	if event is InputEventMouseButton && event.button_index == MOUSE_BUTTON_RIGHT:
+		if event.pressed && cardUnderMouse:
+			displayCardPopup.emit(cardUnderMouse)
+			showCardPopup(cardUnderMouse)
+
+func showCardPopup(card: Card):
+	if card == null:
+		return
+	CardPopupDisplay.show()
+	card_in_popup.setData(card.cardData)
+	CardPopupDisplay.texture = card_popup.get_texture()
+	var texture = CardPopupDisplay.texture
+	CardPopupDisplay.visible = true
+	if(previoustween):
+		previoustween.kill()
+	previoustween = create_tween()
+	CardPopupDisplay.scale = Vector2.ZERO
+	previoustween.tween_property(CardPopupDisplay, "scale", Vector2.ONE, 0.2).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+
+func getMousePositionHand() -> Vector3:
+	var mouse_position = get_viewport().get_mouse_position()
+	var ray_origin = camera.project_ray_origin(mouse_position)
+	var ray_direction = camera.project_ray_normal(mouse_position)
+	var ray_end = ray_origin + ray_direction * 10000.0  # long ray
+
+	var space_state = camera.get_world_3d().direct_space_state
+	var query = PhysicsRayQueryParameters3D.create(ray_origin, ray_end)
+	query.collide_with_areas = false
+	query.collide_with_bodies = true
+	query.collision_mask = 1 << 7  
+
+	var result = space_state.intersect_ray(query)
+
+	if result and result.collider.name == "mouseInterceptPlane":
+		return result.position
+	else:
+		return Vector3.ZERO  # or null, or handle as needed
+
+func getObjectUnderMouse() -> Node3D:
+	var mouse_position = get_viewport().get_mouse_position()
+	var ray_origin = camera.project_ray_origin(mouse_position)
+	var ray_direction = camera.project_ray_normal(mouse_position)
+	var ray_end = ray_origin + ray_direction * 10000.0
+
+	var space_state = camera.get_world_3d().direct_space_state
+	var query = PhysicsRayQueryParameters3D.create(ray_origin, ray_end)
+	query.collide_with_areas = false
+	query.collide_with_bodies = true
+	query.collision_mask = 1
+
+	var result = space_state.intersect_ray(query)
+
+	if result and result.collider is Node3D:
+		return result.collider as Node3D
+	else:
+		return null  # Nothing under mouse or not a Node3D
+		
+func isMousePointerInHandZone() -> bool:
+	return get_viewport().get_mouse_position().y > HAND_ZONE_CUTTOFF

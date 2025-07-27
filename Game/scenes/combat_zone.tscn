@@ -1,0 +1,37 @@
+[gd_scene load_steps=6 format=3 uid="uid://daynfobgnbdrp"]
+
+[ext_resource type="Script" uid="uid://fqb7xp4n6x0r" path="res://Game/scripts/combat_zone.gd" id="1_wucjk"]
+[ext_resource type="PackedScene" uid="uid://cj3soc5hs2x1t" path="res://Game/scenes/grid_container.tscn" id="2_220xv"]
+
+[sub_resource type="ConvexPolygonShape3D" id="ConvexPolygonShape3D_wucjk"]
+points = PackedVector3Array(-1, 0, -1, -1, 0, 1, 1, 0, -1, 1, 0, 1)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_vc2ns"]
+
+[sub_resource type="QuadMesh" id="QuadMesh_w3xpy"]
+material = SubResource("StandardMaterial3D_vc2ns")
+size = Vector2(2, 2)
+orientation = 1
+
+[node name="StaticBody3D" type="StaticBody3D"]
+script = ExtResource("1_wucjk")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+shape = SubResource("ConvexPolygonShape3D_wucjk")
+
+[node name="combatZone" type="MeshInstance3D" parent="."]
+mesh = SubResource("QuadMesh_w3xpy")
+
+[node name="opponentContainer" parent="." instance=ExtResource("2_220xv")]
+transform = Transform3D(-1, 0, -8.74228e-08, 0, 1, 0, 8.74228e-08, 0, -1, -0.905972, 0, -0.123488)
+
+[node name="allyContainer" parent="." instance=ExtResource("2_220xv")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.905972, 0, 0.0985689)
+
+[node name="OpponentTotalStrength" type="Label3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, -4.37114e-08, -1, 0, 1, -4.37114e-08, 0.901028, 0.01, -0.828396)
+text = "0"
+
+[node name="AllyTotalStrength" type="Label3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, -4.37114e-08, 1, 0, -1, -4.37114e-08, 0.871713, 0.01, 0.809041)
+text = "0"

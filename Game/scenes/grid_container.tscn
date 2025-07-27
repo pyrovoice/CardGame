@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://cj3soc5hs2x1t"]
+
+[ext_resource type="Script" uid="uid://0tdoymy2ysy4" path="res://Game/scripts/GridContainer3D.gd" id="1_fsnri"]
+
+[node name="GridContainer3D" type="Node3D"]
+script = ExtResource("1_fsnri")

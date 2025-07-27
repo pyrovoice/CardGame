@@ -1,0 +1,12 @@
+[gd_scene load_steps=3 format=3 uid="uid://dnt4p0i1i5qk1"]
+
+[ext_resource type="Script" uid="uid://bwcgfhkw242lc" path="res://Game/scripts/deck.gd" id="1_f2aqt"]
+
+[sub_resource type="BoxMesh" id="BoxMesh_f2aqt"]
+size = Vector3(0.66, 0.2, 0.8)
+
+[node name="Deck" type="Node3D"]
+script = ExtResource("1_f2aqt")
+
+[node name="deckMesh" type="MeshInstance3D" parent="."]
+mesh = SubResource("BoxMesh_f2aqt")
