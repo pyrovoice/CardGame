@@ -7,6 +7,7 @@ Archetypes:
 - Rabbits: generate tokens, boost all tokens
 - Fishes: Effects to sacrifice your small fishes to summon random bigger fishes
 - Faction with Negative effects on their monsters and a bunch of silence/Effect cancel
+- Circus act: alternate between balls, diabolo and something else. have a number of item set or flying, with cards setting or using flying items for effects depending on the type of Act, and cards to switch between acts. act difficulty?
 
 Game principles:
 
