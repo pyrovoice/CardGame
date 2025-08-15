@@ -5,20 +5,32 @@ class_name CombatZone
 @onready var opponent_container: GridContainer3D = $opponentContainer
 @onready var opponent_total_strength: Label3D = $OpponentTotalStrength
 @onready var ally_total_strength: Label3D = $AllyTotalStrength
+var ennemySpots = []
+var allySpots = []
 
 func _ready() -> void:
-	getZone(true).child_entered_tree.connect(_on_child_change)
-	getZone(false).child_exiting_tree.connect(_on_child_change)
+	for i in range(1, 4):
+		for y in ["AllySpot", "EnnemySpot"]:
+			var arr = allySpots if y == "AllySpot" else ennemySpots
+			var c: CombatantFightingSpot = find_child(y+str(i))
+			c.onCardEnteredOrLeft.connect(_on_child_change)
+			arr.push_back(c)
 	
-func getZone(playerZone: bool) -> GridContainer3D:
-	return ally_container if playerZone else opponent_container
-
 func _on_child_change(child: Node):
 	ally_total_strength.text = str(getTotalStrengthForSide(true))
 	opponent_total_strength.text = str(getTotalStrengthForSide(false))
+
+func getFirstEmptyLocation(playerSide: bool) -> CombatantFightingSpot:
+	var sideArray = allySpots if playerSide else ennemySpots
+	var filtered =  sideArray.filter(func(c:CombatantFightingSpot): return c.getCard() == null)
+	if filtered && filtered.size() > 0:
+		return filtered[0]
+	return null
 	
 func getTotalStrengthForSide(playerSide: bool):
-	var totalAllies = 0
-	for c: Card in getZone(true if playerSide else false).get_children():
-		totalAllies += c.getPower()
-	return totalAllies
+	var total = 0
+	var sideArray = allySpots if playerSide else ennemySpots
+	for c: CombatantFightingSpot in sideArray:
+		var card = c.getCard()
+		total += 0 if card == null else card.cardData.power
+	return total

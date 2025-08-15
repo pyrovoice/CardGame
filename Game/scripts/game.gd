@@ -26,8 +26,7 @@ func onTurnStart():
 	createOpposingToken()
 	
 func tryPlayCard(card: Card, _location: Node3D) -> bool:
-	if !_location || !(_location is CombatZone):
-		print(_location.name)
+	if !_location || !(_location is CombatantFightingSpot) || (_location as CombatantFightingSpot).getCard() != null:
 		return false
 		
 	if isCardPlayable(card):
@@ -42,8 +41,8 @@ func isCardPlayable(card: Card):
 func payCard(card: Card):
 	return true
 	
-func playCard(card: Card, zone: CombatZone):
-	card.reparent(zone.getZone(true))
+func playCard(card: Card, zone: CombatantFightingSpot):
+	zone.setCard(card)
 	card.animatePlayedTo(zone.global_position + Vector3(0, 0.1, 0))
 	return true
 
@@ -82,7 +81,6 @@ func arrange_cards_fan():
 		
 		# Calculate rotation for fan effect:
 		# Angle from -max_angle/2 to +max_angle/2 degrees across cards
-		print(lerp(max_angle_deg, -max_angle_deg, i / float(max(1.0, count - 1))))
 		var angle_deg = lerp(max_angle_deg, -max_angle_deg, i / float(max(1.0, count - 1)))
 		card.setRotation(Vector3(90, 0, 0), angle_deg)
 
@@ -99,7 +97,9 @@ func resolveCombatInZone(combatZone: CombatZone):
 	
 func createOpposingToken():
 	var card = CARD.instantiate()
-	combat_zone.getZone(false).add_child(card)
+	add_child(card)
 	card.setData(CardData.new("Ennemy", 0, CardData.CardType.CREATURE, 3, ""))
+	combat_zone.getFirstEmptyLocation(false).setCard(card, false)
+	card.makeSmall()
 
 	

@@ -1,12 +1,15 @@
 Card idea:
 	
-High power, but silence everything else you own at that location
+- High power, but silence everything else you own at that location
+- Stone giant: harmless, high defense, raise limit to conquer OR block additional creatures if it can survive
 
 Archetypes:
 - master of the wild Hunt: Boss monster followed by Wolves. Generates wolves, send them to attack creatures, stay alive while it has wolves
 - Rabbits: generate tokens, boost all tokens
 - Fishes: Effects to sacrifice your small fishes to summon random bigger fishes
 - Faction with Negative effects on their monsters and a bunch of silence/Effect cancel
+- Dwarf faction mining for gold and getting stronger the more gold they have
+- Geomancer that vastly modify battlefields
 
 Game principles:
 

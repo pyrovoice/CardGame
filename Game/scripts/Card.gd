@@ -80,7 +80,6 @@ func animatePlayedTo(targetPos: Vector3):
 	while card_representation.position.distance_to(Vector3.ZERO) > 0.1:
 		await move_to_position(Vector3.ZERO, 10)
 	card_representation.rotation_degrees.x = 90
-	angleInHand = card_representation.rotation_degrees
 		
 	
 func move_to_position(target: Vector3, speed: float) -> void:

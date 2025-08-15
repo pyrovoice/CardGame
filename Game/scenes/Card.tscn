@@ -1,7 +1,10 @@
-[gd_scene load_steps=7 format=3 uid="uid://dr51qu20aa77"]
+[gd_scene load_steps=8 format=3 uid="uid://dr51qu20aa77"]
 
 [ext_resource type="Script" uid="uid://m81mshlqb0l7" path="res://Game/scripts/Card.gd" id="1_p5v87"]
 [ext_resource type="Texture2D" uid="uid://bvhgqh6fy2vbd" path="res://icon.svg" id="2_mwea7"]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_mwea7"]
+size = Vector3(0.66, 0.05, 0.55)
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_mwea7"]
 albedo_color = Color(0.47788, 0.47788, 0.47788, 1)
@@ -22,7 +25,10 @@ orientation = 1
 [node name="Card" type="Node3D"]
 script = ExtResource("1_p5v87")
 
-[node name="CardRepresentation" type="Node3D" parent="."]
+[node name="CardRepresentation" type="StaticBody3D" parent="."]
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="CardRepresentation"]
+shape = SubResource("BoxShape3D_mwea7")
 
 [node name="background" type="MeshInstance3D" parent="CardRepresentation"]
 mesh = SubResource("BoxMesh_6dqto")
