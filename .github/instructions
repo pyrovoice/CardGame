@@ -1,0 +1,5 @@
+# Workspace Context Instructions
+
+Always include the `Game` folder and the `.godot` folder as context for any questions or analysis related to this project.
+
+This ensures that all relevant scripts, scenes, and project settings are available for accurate assistance and automation.

@@ -10,6 +10,7 @@ Archetypes:
 - Faction with Negative effects on their monsters and a bunch of silence/Effect cancel
 - Dwarf faction mining for gold and getting stronger the more gold they have
 - Geomancer that vastly modify battlefields
+- Circus act: alternate between balls, diabolo and something else. have a number of item set or flying, with cards setting or using flying items for effects depending on the type of Act, and cards to switch between acts. act difficulty?
 
 Game principles:
 
