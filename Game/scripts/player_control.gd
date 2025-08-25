@@ -103,13 +103,10 @@ func getObjectUnderMouse(target_class = Node3D) -> Node3D:
 	query.collide_with_areas = true
 	query.collide_with_bodies = true
 	query.collision_mask = 0xFFFFFFFF 
-	print("mouse_position ",mouse_position )
-	print("Origin ",ray_origin )
 	DebugDraw3D.draw_line(ray_origin, ray_end, Color.RED, 1000)
 	var result = space_state.intersect_ray(query)
 	var excludes = []
 	while result && !is_instance_of(result.collider, target_class):
-		print("Found ", result.collider)
 		excludes.push_back(result.collider)
 		query.exclude = excludes
 		result = space_state.intersect_ray(query)

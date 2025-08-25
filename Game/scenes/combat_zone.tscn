@@ -23,12 +23,13 @@ shape = SubResource("BoxShape3D_ulpi2")
 mesh = SubResource("QuadMesh_w3xpy")
 
 [node name="OpponentTotalStrength" type="Label3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, -4.37114e-08, -1, 0, 1, -4.37114e-08, 1.39897, 0.01, -0.828396)
+transform = Transform3D(1, 0, 0, 0, -4.37114e-08, 1, 0, -1, -4.37114e-08, 1.39897, 0.01, -0.828396)
 text = "0"
 
 [node name="AllyTotalStrength" type="Label3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, -4.37114e-08, 1, 0, -1, -4.37114e-08, 1.34905, 0.01, 0.809041)
-text = "0"
+text = "0
+"
 
 [node name="EnnemySpot1" parent="." instance=ExtResource("2_ulpi2")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.977626, 0, -0.484517)

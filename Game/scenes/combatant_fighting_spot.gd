@@ -5,7 +5,9 @@ var card = null
 signal onCardEnteredOrLeft
 
 func getCard() -> Card:
-	return card
+	if card:
+		return card
+	return null
 	
 func setCard(c: Card, keepPos = true):
 	if card:

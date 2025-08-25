@@ -78,3 +78,12 @@ horizontal_alignment = 0
 vertical_alignment = 0
 autowrap_mode = 2
 width = 600.0
+
+[node name="damageLabel" type="Label3D" parent="CardRepresentation"]
+transform = Transform3D(1, 0, 0, 0, -4.37114e-08, 1, 0, -1, -4.37114e-08, 0.17, 0.005, 0.271962)
+visible = false
+pixel_size = 0.001
+modulate = Color(1, 0, 0, 1)
+text = "0"
+font_size = 50
+outline_size = 5

@@ -1,0 +1,39 @@
+[gd_scene load_steps=7 format=3 uid="uid://dueg4t10qe41s"]
+
+[ext_resource type="Script" uid="uid://cvd8awe5jeyje" path="res://Game/scenes/graveyard.gd" id="1_n41ww"]
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_s4hj0"]
+top_radius = 0.3
+bottom_radius = 0.4
+height = 0.1
+
+[sub_resource type="CylinderShape3D" id="CylinderShape3D_n41ww"]
+height = 0.5
+
+[sub_resource type="ParticleProcessMaterial" id="ParticleProcessMaterial_12n0t"]
+initial_velocity_min = 1.55
+initial_velocity_max = 1.55
+angular_velocity_min = -21.82
+angular_velocity_max = 16.36
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_rc6v6"]
+billboard_mode = 1
+
+[sub_resource type="PointMesh" id="PointMesh_vydug"]
+material = SubResource("StandardMaterial3D_rc6v6")
+custom_aabb = AABB(0.1, 0.1, 0.1, 0, 0, 0)
+
+[node name="Node3D" type="StaticBody3D"]
+script = ExtResource("1_n41ww")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.1, 0)
+mesh = SubResource("CylinderMesh_s4hj0")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+shape = SubResource("CylinderShape3D_n41ww")
+
+[node name="GPUParticles3D" type="GPUParticles3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.418858, 0)
+process_material = SubResource("ParticleProcessMaterial_12n0t")
+draw_pass_1 = SubResource("PointMesh_vydug")

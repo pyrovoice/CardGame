@@ -3,14 +3,14 @@ extends Node3D
 @onready var player_control: PlayerControl = $playerControl
 @onready var player_hand: Node3D = $Camera3D/PlayerHand
 @onready var deck: Deck = $"Deck"
-@onready var combat_zone: CombatZone = $combatZone
-@onready var combat_zone_2: CombatZone = $combatZone2
-@onready var combat_zone_3: CombatZone = $combatZone3
+@onready var combatZones: Array = [$combatZone, $combatZone2, $combatZone3]
 @onready var draw: Button = $UI/draw
 @onready var player_point: Label = $UI/PlayerPoint
 const CARD = preload("res://Game/scenes/Card.tscn")
 @onready var card_popup: SubViewport = $cardPopup
 @onready var card_in_popup: Card = $cardPopup/Card
+var playerControlLock:PlayerControlLock = PlayerControlLock.new()
+@onready var graveyard: Graveyard = $graveyard
 
 func _ready() -> void:
 	player_control.tryPlayCard.connect(tryPlayCard)
@@ -85,21 +85,48 @@ func arrange_cards_fan():
 		card.setRotation(Vector3(90, 0, 0), angle_deg)
 
 func resolveCombats():
-	resolveCombatInZone(combat_zone)
-	resolveCombatInZone(combat_zone_2)
-	resolveCombatInZone(combat_zone_3)
+	var lock = playerControlLock.addLock()
+	for cv in combatZones:
+		resolveCombatInZone(cv)
+	playerControlLock.removeLock(lock)
 	
 func resolveCombatInZone(combatZone: CombatZone):
-	var totalAllies = combat_zone.getTotalStrengthForSide(true)
-	var totalOpponenents = combat_zone.getTotalStrengthForSide(false)
-	if (totalAllies >= totalOpponenents):
-		player_point.text = str(int(player_point.text) +1)
-	
+	var damageCounter = 0
+	for i in range(1, 4):
+		var allyCard = combatZone.getCardSlot(i, true).getCard()
+		var oppCard = combatZone.getCardSlot(i, false).getCard()
+		if allyCard && oppCard:
+			allyCard.receiveDamage(oppCard.getPower())
+			oppCard.receiveDamage(allyCard.getPower())
+		elif allyCard && !oppCard:
+			damageCounter += allyCard.getPower()
+		elif !allyCard && oppCard:
+			damageCounter -= oppCard.getPower()
+	resolveStateBasedAction()
+	if combatZone.getTotalStrengthForSide(true) > combatZone.getTotalStrengthForSide(false):
+		player_point.text = str(player_point.text.to_int()+1)
+
+func resolveStateBasedAction():
+	for c:Card in getAllCardsInPlay():
+		if c.getDamage() >= c.getPower():
+			putInOwnerGraveyard(c)
+			
 func createOpposingToken():
 	var card = CARD.instantiate()
 	add_child(card)
 	card.setData(CardData.new("Ennemy", 0, CardData.CardType.CREATURE, 3, ""))
-	combat_zone.getFirstEmptyLocation(false).setCard(card, false)
+	var location = combatZones[0].getFirstEmptyLocation(false)
+	if location:
+		location.setCard(card, false)
 	card.makeSmall()
 
-	
+func getAllCardsInPlay() -> Array:
+	var cards = []
+	for cz:CombatZone in combatZones:
+		cz.allySpots.filter(func(c:CombatantFightingSpot): return c.getCard() != null).map(func(c:CombatantFightingSpot): cards.push_back(c.getCard()))
+	return cards 
+
+func putInOwnerGraveyard(card: Card):
+	await card.animatePlayedTo(graveyard.global_position)
+	graveyard.cards.push_back(card.cardData)
+	card.queue_free()

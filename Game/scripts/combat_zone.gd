@@ -34,3 +34,8 @@ func getTotalStrengthForSide(playerSide: bool):
 		var card = c.getCard()
 		total += 0 if card == null else card.cardData.power
 	return total
+
+func getCardSlot(i: int , allyTeam: bool) -> CombatantFightingSpot:
+	var side = "AllySpot" if allyTeam else "EnnemySpot"
+	var spot = find_child(side + str(i))
+	return spot

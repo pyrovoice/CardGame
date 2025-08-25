@@ -10,6 +10,7 @@ class_name Card
 @onready var type_label: Label3D = $CardRepresentation/TypeLabel
 @onready var power_label: Label3D = $CardRepresentation/PowerLabel
 @onready var text_label: Label3D = $CardRepresentation/TextLabel
+@onready var damage_label: Label3D = $CardRepresentation/damageLabel
 
 const namePositionBig = Vector3(-0.3, 0.005, -0.4)
 const namePositionSmall = Vector3(-0.3, 0.005, -0.24)
@@ -17,6 +18,8 @@ const powerpositionBig = Vector3(0.1, 0.005, 0.35)
 const powerpositionSmall = Vector3(0.1, 0.005, 0.228)
 const cardArtPositionBig = Vector3(0, 0.005, -0.163)
 const cardArtPositionSmall = Vector3(0, 0.005, -0.019)
+const damageLabelPositionSmall = Vector3(0.2, 0.005, 0.228)
+const damageLabelPositionBig = Vector3(0.17, 0.005, 0.272)
 
 enum CardControlState{
 	FREE,
@@ -27,6 +30,7 @@ var cardData:CardData
 var objectID
 var cardControlState:CardControlState = CardControlState.FREE
 var angleInHand: Vector3 = Vector3.ZERO
+var damage = 0
 const popUpVal = 1.0
 
 static var objectUUID = -1
@@ -48,12 +52,18 @@ func setData(_cardData):
 		return
 	cardData = _cardData
 	objectID = getNextID()
+	updateDisplay()
+	
+func updateDisplay():
 	name_label.text = cardData.cardName
 	name = cardData.cardName + str(objectID)
 	cost_label.text = str(cardData.cost)
 	type_label.text = cardData.getTypeAsString()
 	power_label.text = str(cardData.power)
 	text_label.text = cardData.text_box
+	if getDamage() > 0:
+		damage_label.show()
+		damage_label.text = str(getDamage())
 
 func popUp():
 	if cardControlState == CardControlState.MOVED_BY_GAME:
@@ -80,7 +90,7 @@ func animatePlayedTo(targetPos: Vector3):
 	while card_representation.position.distance_to(Vector3.ZERO) > 0.1:
 		await move_to_position(Vector3.ZERO, 10)
 	card_representation.rotation_degrees.x = 90
-		
+	return true
 	
 func move_to_position(target: Vector3, speed: float) -> void:
 	var posBefore = card_representation.global_position
@@ -96,9 +106,6 @@ func setRotation(angle_deg: Vector3, rotationValue):
 		card_representation.rotate_z(rotationValue)
 		angleInHand = card_representation.rotation_degrees
 
-func getPower():
-	return cardData.power
-
 func makeSmall():
 	cost_label.hide()
 	type_label.hide()
@@ -107,6 +114,7 @@ func makeSmall():
 	card_art.position = cardArtPositionSmall
 	power_label.position = powerpositionSmall
 	name_label.position = namePositionSmall
+	damage_label.position = damageLabelPositionSmall
 
 
 func makeBig():
@@ -117,3 +125,14 @@ func makeBig():
 	card_art.position = cardArtPositionBig
 	power_label.position = powerpositionBig
 	name_label.position = namePositionBig
+	damage_label.position = damageLabelPositionBig
+
+func getPower():
+	return cardData.power
+
+func getDamage():
+	return damage
+	
+func receiveDamage(v: int):
+	damage += v
+	updateDisplay()
