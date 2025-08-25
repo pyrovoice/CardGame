@@ -4,20 +4,7 @@ class_name Deck
 
 @onready var deck_mesh: MeshInstance3D = $deckMesh
 var cards: Array = [] #CardData; 0 is topmost card
-@export var deck_size := 10
 const CARD = preload("res://Game/scenes/Card.tscn")
-
-func _ready():
-	populate_deck()
-
-func populate_deck():
-	cards.clear()
-	for i in range(deck_size):
-		var card = CardData.new()
-		card.cardName = "CardName %d" % i
-		card.power = 2
-		# other properties use defaults from _init
-		add_card(card)
 
 # Add cards to the deck
 func add_card(card_data):

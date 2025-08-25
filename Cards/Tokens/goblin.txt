@@ -1,0 +1,4 @@
+Name:Goblin pair
+ManaCost:1
+Types:Creature Goblin
+Power:1

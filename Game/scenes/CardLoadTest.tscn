@@ -1,0 +1,27 @@
+[gd_scene load_steps=2 format=3 uid="uid://br2g8n5uqkqpf"]
+
+[ext_resource type="Script" path="res://Game/scripts/CardLoadTest.gd" id="1_5h8xg"]
+
+[node name="CardLoadTest" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+script = ExtResource("1_5h8xg")
+
+[node name="VBoxContainer" type="VBoxContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 20.0
+offset_top = 20.0
+offset_right = -20.0
+offset_bottom = -20.0
+
+[node name="InfoLabel" type="Label" parent="VBoxContainer"]
+layout_mode = 2
+text = "Testing card loading..."
+
+[node name="CardContainer" type="VBoxContainer" parent="VBoxContainer"]
+layout_mode = 2

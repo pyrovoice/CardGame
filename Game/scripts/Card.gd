@@ -58,7 +58,7 @@ func updateDisplay():
 	name_label.text = cardData.cardName
 	name = cardData.cardName + str(objectID)
 	cost_label.text = str(cardData.cost)
-	type_label.text = cardData.getTypeAsString()
+	type_label.text = cardData.getFullTypeString()  # Now includes subtypes
 	power_label.text = str(cardData.power)
 	text_label.text = cardData.text_box
 	if getDamage() > 0:

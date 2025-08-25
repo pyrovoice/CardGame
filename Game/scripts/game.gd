@@ -12,13 +12,23 @@ const CARD = preload("res://Game/scenes/Card.tscn")
 var playerControlLock:PlayerControlLock = PlayerControlLock.new()
 @onready var graveyard: Graveyard = $graveyard
 
+# Card library loaded from files
+var loaded_card_data: Array[CardData] = []
+
 func _ready() -> void:
 	player_control.tryPlayCard.connect(tryPlayCard)
 	draw.pressed.connect(onTurnStart)
+	CardLoader.load_all_cards()
+	populate_deck()
 	createOpposingToken()
 	drawCard()
 	drawCard()
 	drawCard()
+
+func populate_deck():
+	deck.cards.clear()
+	for i in range(10):
+		deck.add_card(CardLoader.getRandomCard())
 
 func onTurnStart():
 	resolveCombats()

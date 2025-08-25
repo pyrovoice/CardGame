@@ -6,28 +6,38 @@ enum CardType { CREATURE, SPELL, PERMANENT }
 	
 var cardName: String
 var cost: int
+#Creature, spell, permanent
 var type: CardType
+#Goblin, Fire, Elemental... Can have up to 3
+var subtypes: Array = []
 var power: int
 var text_box: String
 
 func _init(
-	cardName: String = "",
-	cost: int = 0,
-	type: CardType = CardType.CREATURE,
-	power: int = 0,
-	text_box: String = ""
+	_cardName: String = "",
+	_cost: int = 0,
+	_type: CardType = CardType.CREATURE,
+	_power: int = 0,
+	_text_box: String = "",
+	_subtypes: Array = []
 ) -> void:
-	self.cardName = cardName
-	self.cost = cost
-	self.type = type
-	self.power = power
-	self.text_box = text_box
+	self.cardName = _cardName
+	self.cost = _cost
+	self.type = _type
+	self.power = _power
+	self.text_box = _text_box
+	self.subtypes = _subtypes.duplicate()
 	
 func describe() -> String:
-	return "Card(name: %s, cost: %d, type: %s, power: %d, text: %s)" % [
+	var subtypes_str = ""
+	if subtypes.size() > 0:
+		subtypes_str = ", subtypes: [" + ", ".join(subtypes) + "]"
+	
+	return "Card(name: %s, cost: %d, type: %s%s, power: %d, text: %s)" % [
 		cardName,
 		cost,
 		CardType.keys()[type],
+		subtypes_str,
 		power,
 		text_box
 	]
@@ -38,3 +48,17 @@ func getTypeAsString() -> String:
 		CardType.SPELL: return "Spell"
 		CardType.PERMANENT: return "Permanent"
 	return "TYPE"
+
+func getSubtypesAsString() -> String:
+	"""Get subtypes as a space-separated string"""
+	if subtypes.is_empty():
+		return ""
+	return " ".join(subtypes)
+
+func getFullTypeString() -> String:
+	"""Get the full type string including subtypes (e.g., 'Creature Goblin')"""
+	var type_str = getTypeAsString()
+	var subtype_str = getSubtypesAsString()
+	if subtype_str != "":
+		return type_str + " " + subtype_str
+	return type_str
