@@ -1,0 +1,7 @@
+Name:Goblin Matron
+ManaCost:2
+Types:Creature Goblin
+Power:1
+T:Mode$ CardPlayed | ValidCard$ Goblin | ValidActivatingPlayer$ You | TriggerZones$ Battlefield | Execute$ TrigCreateGoblin | TriggerDescription$ Whenever you cast a Goblin spell, create a Goblin token
+SVar:TrigToken:DB$ Token | TokenScript$ goblin
+Oracle:Whenever you cast a Goblin spell, create a Goblin token.
