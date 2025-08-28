@@ -12,6 +12,8 @@ var type: CardType
 var subtypes: Array = []
 var power: int
 var text_box: String
+#Contain all abilities from the card textBox to be useable by the game
+var abilities: Array = []
 
 func _init(
 	_cardName: String = "",
@@ -33,12 +35,17 @@ func describe() -> String:
 	if subtypes.size() > 0:
 		subtypes_str = ", subtypes: [" + ", ".join(subtypes) + "]"
 	
-	return "Card(name: %s, cost: %d, type: %s%s, power: %d, text: %s)" % [
+	var abilities_str = ""
+	if abilities.size() > 0:
+		abilities_str = ", abilities: " + str(abilities.size())
+	
+	return "Card(name: %s, cost: %d, type: %s%s, power: %d%s, text: %s)" % [
 		cardName,
 		cost,
 		CardType.keys()[type],
 		subtypes_str,
 		power,
+		abilities_str,
 		text_box
 	]
 	
