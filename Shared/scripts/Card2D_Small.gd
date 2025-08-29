@@ -2,8 +2,9 @@ extends Control
 class_name Card2D_Small
 
 @onready var background: NinePatchRect = $Background
+@onready var card_name: Label = $Background/CardName
 @onready var card_art: TextureRect = $Background/CardArt
-@onready var power_label: Label = $Background/PowerLabel
+@onready var power_label: Label = $Background/powerBackground/PowerLabel
 
 var card_data: CardData
 
@@ -21,6 +22,7 @@ func update_display():
 	if not card_data:
 		return
 		
+	card_name.text = card_data.cardName
 	power_label.text = str(card_data.power)
 
 func _on_gui_input(event: InputEvent):

@@ -1,12 +1,13 @@
-[gd_scene load_steps=4 format=3 uid="uid://i36vftw0aqxr"]
+[gd_scene load_steps=5 format=3 uid="uid://i36vftw0aqxr"]
 
 [ext_resource type="Script" uid="uid://cv3r68msk8vnu" path="res://Shared/scripts/Card2D_Small.gd" id="1_card2d_small"]
 [ext_resource type="Texture2D" uid="uid://bvhgqh6fy2vbd" path="res://icon.svg" id="2_icon"]
+[ext_resource type="Texture2D" uid="uid://b2m0g63l5xvbg" path="res://Shared/resources/rounded_card_background.svg" id="3_pl6ll"]
 
 [sub_resource type="MeshTexture" id="MeshTexture_small"]
 
 [node name="Card2D_Small" type="Control"]
-custom_minimum_size = Vector2(75, 100)
+custom_minimum_size = Vector2(120, 100)
 layout_mode = 3
 anchors_preset = 0
 script = ExtResource("1_card2d_small")
@@ -27,17 +28,26 @@ anchor_left = 0.5
 anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
-offset_left = -36.5
-offset_top = -42.0
-offset_right = 37.5
-offset_bottom = 42.0
+offset_left = -57.0
+offset_top = -39.0
+offset_right = 56.0
+offset_bottom = 46.0
 grow_horizontal = 2
 grow_vertical = 2
 texture = ExtResource("2_icon")
-expand_mode = 1
-stretch_mode = 5
+expand_mode = 2
 
-[node name="PowerLabel" type="Label" parent="Background"]
+[node name="CardName" type="Label" parent="Background"]
+layout_mode = 0
+offset_left = 1.0
+offset_right = 149.0
+offset_bottom = 24.0
+scale = Vector2(0.5, 0.5)
+theme_override_colors/font_color = Color(0, 0, 0, 1)
+theme_override_font_sizes/font_size = 18
+text = "Card Name"
+
+[node name="powerBackground" type="NinePatchRect" parent="Background"]
 layout_mode = 1
 anchors_preset = 3
 anchor_left = 1.0
@@ -45,15 +55,29 @@ anchor_top = 1.0
 anchor_right = 1.0
 anchor_bottom = 1.0
 offset_left = -17.0
-offset_top = -20.0
-offset_right = -2.0
+offset_top = -19.0
 grow_horizontal = 0
 grow_vertical = 0
+texture = ExtResource("3_pl6ll")
+
+[node name="PowerLabel" type="Label" parent="Background/powerBackground"]
+layout_mode = 1
+anchors_preset = -1
+anchor_top = 0.157895
+anchor_right = 1.23529
+anchor_bottom = 1.05263
+offset_top = -3.0
+offset_right = 13.0
+offset_bottom = 19.0
+grow_horizontal = 2
+grow_vertical = 2
+scale = Vector2(0.5, 0.5)
 theme_override_colors/font_color = Color(0, 0, 0, 1)
-theme_override_font_sizes/font_size = 16
+theme_override_font_sizes/font_size = 32
 text = "3"
 horizontal_alignment = 1
 vertical_alignment = 1
+metadata/_edit_use_anchors_ = true
 
 [connection signal="mouse_entered" from="." to="." method="_on_mouse_entered"]
 [connection signal="mouse_exited" from="." to="." method="_on_mouse_exited"]

@@ -133,14 +133,14 @@ func makeSmall():
 	card_2d_small.show()
 	
 	# Adjust SubViewport size to match small card size
-	sub_viewport.size = Vector2i(75, 100)
+	sub_viewport.size = Vector2i(120, 100)
 	
 	# Force SubViewport to update
 	sub_viewport.render_target_update_mode = SubViewport.UPDATE_ONCE
 	
 	# Scale the 3D display accordingly
 	if card_2d_display:
-		card_2d_display.scale = Vector3(0.5, 0.56, 1.0)  # Roughly half the length
+		card_2d_display.scale = Vector3(1, 0.60, 1.0)  # Roughly half the length
 
 func makeBig():
 	if not is_small:
