@@ -1,25 +1,13 @@
-[gd_scene load_steps=8 format=3 uid="uid://dr51qu20aa77"]
+[gd_scene load_steps=5 format=3 uid="uid://dr51qu20aa77"]
 
 [ext_resource type="Script" uid="uid://m81mshlqb0l7" path="res://Game/scripts/Card.gd" id="1_p5v87"]
-[ext_resource type="Texture2D" uid="uid://bvhgqh6fy2vbd" path="res://icon.svg" id="2_mwea7"]
+[ext_resource type="PackedScene" uid="uid://d3lfyqqnp8p75" path="res://Shared/scenes/Card2D.tscn" id="2_card2d"]
 
-[sub_resource type="BoxShape3D" id="BoxShape3D_mwea7"]
-size = Vector3(0.66, 0.05, 0.55)
+[sub_resource type="BoxShape3D" id="BoxShape3D_card"]
+size = Vector3(0.66, 0.05, 0.89)
 
-[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_mwea7"]
-albedo_color = Color(0.47788, 0.47788, 0.47788, 1)
-
-[sub_resource type="BoxMesh" id="BoxMesh_6dqto"]
-resource_local_to_scene = true
-material = SubResource("StandardMaterial3D_mwea7")
-size = Vector3(0.66, 0.001, 0.89)
-
-[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_020dk"]
-albedo_texture = ExtResource("2_mwea7")
-
-[sub_resource type="QuadMesh" id="QuadMesh_g4dbd"]
-material = SubResource("StandardMaterial3D_020dk")
-size = Vector2(0.5, 0.35)
+[sub_resource type="QuadMesh" id="QuadMesh_card2d"]
+size = Vector2(0.66, 0.89)
 orientation = 1
 
 [node name="Card" type="Node3D"]
@@ -28,62 +16,14 @@ script = ExtResource("1_p5v87")
 [node name="CardRepresentation" type="StaticBody3D" parent="."]
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="CardRepresentation"]
-shape = SubResource("BoxShape3D_mwea7")
+shape = SubResource("BoxShape3D_card")
 
-[node name="background" type="MeshInstance3D" parent="CardRepresentation"]
-mesh = SubResource("BoxMesh_6dqto")
-skeleton = NodePath("../..")
+[node name="Card2DDisplay" type="MeshInstance3D" parent="CardRepresentation"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.003, 0)
+mesh = SubResource("QuadMesh_card2d")
 
-[node name="CardArt" type="MeshInstance3D" parent="CardRepresentation"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.005, -0.162629)
-mesh = SubResource("QuadMesh_g4dbd")
-skeleton = NodePath("../..")
+[node name="SubViewport" type="SubViewport" parent="CardRepresentation/Card2DDisplay"]
+size = Vector2i(150, 200)
+render_target_update_mode = 1
 
-[node name="NameLabel" type="Label3D" parent="CardRepresentation"]
-transform = Transform3D(1, 0, 0, 0, -4.37114e-08, 1, 0, -1, -4.37114e-08, -0.290397, 0.005, -0.394233)
-pixel_size = 0.001
-text = "Name"
-font_size = 50
-outline_size = 5
-horizontal_alignment = 0
-
-[node name="CostLabel" type="Label3D" parent="CardRepresentation"]
-transform = Transform3D(1, 0, 0, 0, -4.37114e-08, 1, 0, -1, -4.37114e-08, 0.244098, 0.005, -0.38006)
-pixel_size = 0.001
-text = "5"
-font_size = 50
-outline_size = 5
-
-[node name="TypeLabel" type="Label3D" parent="CardRepresentation"]
-transform = Transform3D(1, 0, 0, 0, -4.37114e-08, 1, 0, -1, -4.37114e-08, -0.164437, 0.005, 0.0502658)
-pixel_size = 0.001
-text = "Creature"
-font_size = 50
-outline_size = 5
-
-[node name="PowerLabel" type="Label3D" parent="CardRepresentation"]
-transform = Transform3D(1, 0, 0, 0, -4.37114e-08, 1, 0, -1, -4.37114e-08, 0.17, 0.005, 0.35)
-pixel_size = 0.001
-text = "3"
-font_size = 50
-outline_size = 5
-
-[node name="TextLabel" type="Label3D" parent="CardRepresentation"]
-transform = Transform3D(1, 0, 0, 0, -4.37114e-08, 1, 0, -1, -4.37114e-08, -0.277531, 0.005, 0.0910768)
-pixel_size = 0.001
-text = "This is the card rules text. Let's keep going and find the limit"
-font_size = 40
-outline_size = 5
-horizontal_alignment = 0
-vertical_alignment = 0
-autowrap_mode = 2
-width = 600.0
-
-[node name="damageLabel" type="Label3D" parent="CardRepresentation"]
-transform = Transform3D(1, 0, 0, 0, -4.37114e-08, 1, 0, -1, -4.37114e-08, 0.17, 0.005, 0.271962)
-visible = false
-pixel_size = 0.001
-modulate = Color(1, 0, 0, 1)
-text = "0"
-font_size = 50
-outline_size = 5
+[node name="Card2D" parent="CardRepresentation/Card2DDisplay/SubViewport" instance=ExtResource("2_card2d")]

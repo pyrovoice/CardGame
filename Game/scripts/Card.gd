@@ -2,33 +2,22 @@ extends Node3D
 class_name Card
 
 @onready var card_representation: Node3D = $CardRepresentation
-@onready var background: MeshInstance3D = $CardRepresentation/background
-@onready var card_art: MeshInstance3D = $CardRepresentation/CardArt
+@onready var card_2d_display: MeshInstance3D = $CardRepresentation/Card2DDisplay
+@onready var sub_viewport: SubViewport = $CardRepresentation/Card2DDisplay/SubViewport
+@onready var card_2d_full: Control = $CardRepresentation/Card2DDisplay/SubViewport/Card2D
+@onready var card_2d_small: Control
 
-@onready var name_label: Label3D = $CardRepresentation/NameLabel
-@onready var cost_label: Label3D = $CardRepresentation/CostLabel
-@onready var type_label: Label3D = $CardRepresentation/TypeLabel
-@onready var power_label: Label3D = $CardRepresentation/PowerLabel
-@onready var text_label: Label3D = $CardRepresentation/TextLabel
-@onready var damage_label: Label3D = $CardRepresentation/damageLabel
-
-const namePositionBig = Vector3(-0.3, 0.005, -0.4)
-const namePositionSmall = Vector3(-0.3, 0.005, -0.24)
-const powerpositionBig = Vector3(0.1, 0.005, 0.35)
-const powerpositionSmall = Vector3(0.1, 0.005, 0.228)
-const cardArtPositionBig = Vector3(0, 0.005, -0.163)
-const cardArtPositionSmall = Vector3(0, 0.005, -0.019)
-const damageLabelPositionSmall = Vector3(0.2, 0.005, 0.228)
-const damageLabelPositionBig = Vector3(0.17, 0.005, 0.272)
+# Card size state
+var is_small: bool = false
 
 enum CardControlState{
 	FREE,
 	MOVED_BY_PLAYER,
 	MOVED_BY_GAME
 }
-var cardData:CardData
+var cardData: CardData
 var objectID
-var cardControlState:CardControlState = CardControlState.FREE
+var cardControlState: CardControlState = CardControlState.FREE
 var angleInHand: Vector3 = Vector3.ZERO
 var damage = 0
 const popUpVal = 1.0
@@ -37,6 +26,29 @@ static var objectUUID = -1
 static func getNextID():
 	objectUUID += 1
 	return objectUUID
+
+func _ready():
+	# Create the small card instance once
+	var small_card_scene = preload("res://Shared/scenes/Card2D_Small.tscn")
+	card_2d_small = small_card_scene.instantiate()
+	sub_viewport.add_child(card_2d_small)
+	
+	# Initially hide the small card, show the full card
+	card_2d_small.hide()
+	card_2d_full.show()
+	
+	# Create a unique material for this card instance
+	if sub_viewport and card_2d_display:
+		# Create a new material instance (not shared)
+		var material = StandardMaterial3D.new()
+		material.flags_unshaded = true
+		material.flags_do_not_receive_shadows = true
+		material.flags_transparent = true
+		material.albedo_color = Color.WHITE
+		material.albedo_texture = sub_viewport.get_texture()
+		
+		# Apply the unique material to this card
+		card_2d_display.set_surface_override_material(0, material)
 
 func _process(delta):
 	if cardControlState == CardControlState.FREE:
@@ -48,22 +60,26 @@ func _process(delta):
 	
 func setData(_cardData):
 	if !_cardData:
-		push_error("Wtf")
+		push_error("Card data is null")
 		return
 	cardData = _cardData
 	objectID = getNextID()
 	updateDisplay()
 	
 func updateDisplay():
-	name_label.text = cardData.cardName
+	# Update both cards with the same data
+	if card_2d_full and card_2d_full.has_method("set_card_data"):
+		card_2d_full.set_card_data(cardData)
+	
+	if card_2d_small and card_2d_small.has_method("set_card_data"):
+		card_2d_small.set_card_data(cardData)
+	
 	name = cardData.cardName + str(objectID)
-	cost_label.text = str(cardData.cost)
-	type_label.text = cardData.getFullTypeString()  # Now includes subtypes
-	power_label.text = str(cardData.power)
-	text_label.text = cardData.text_box
+	
+	# Handle damage display if needed
 	if getDamage() > 0:
-		damage_label.show()
-		damage_label.text = str(getDamage())
+		# You can add damage display logic here if needed
+		pass
 
 func popUp():
 	if cardControlState == CardControlState.MOVED_BY_GAME:
@@ -107,25 +123,44 @@ func setRotation(angle_deg: Vector3, rotationValue):
 		angleInHand = card_representation.rotation_degrees
 
 func makeSmall():
-	cost_label.hide()
-	type_label.hide()
-	text_label.hide()
-	(background.mesh as BoxMesh).size.z = 0.55
-	card_art.position = cardArtPositionSmall
-	power_label.position = powerpositionSmall
-	name_label.position = namePositionSmall
-	damage_label.position = damageLabelPositionSmall
-
+	if is_small:
+		return
+		
+	is_small = true
+	
+	# Simply hide full card and show small card
+	card_2d_full.hide()
+	card_2d_small.show()
+	
+	# Adjust SubViewport size to match small card size
+	sub_viewport.size = Vector2i(75, 100)
+	
+	# Force SubViewport to update
+	sub_viewport.render_target_update_mode = SubViewport.UPDATE_ONCE
+	
+	# Scale the 3D display accordingly
+	if card_2d_display:
+		card_2d_display.scale = Vector3(0.5, 0.56, 1.0)  # Roughly half the length
 
 func makeBig():
-	cost_label.show()
-	type_label.show()
-	text_label.show()
-	(background.mesh as BoxMesh).size.z = 0.89
-	card_art.position = cardArtPositionBig
-	power_label.position = powerpositionBig
-	name_label.position = namePositionBig
-	damage_label.position = damageLabelPositionBig
+	if not is_small:
+		return
+		
+	is_small = false
+	
+	# Simply hide small card and show full card
+	card_2d_small.hide()
+	card_2d_full.show()
+	
+	# Reset SubViewport size for full card
+	sub_viewport.size = Vector2i(150, 200)
+	
+	# Force SubViewport to update
+	sub_viewport.render_target_update_mode = SubViewport.UPDATE_ONCE
+	
+	# Reset the 3D display scale
+	if card_2d_display:
+		card_2d_display.scale = Vector3(1.0, 1.0, 1.0)
 
 func getPower():
 	return cardData.power
