@@ -1,6 +1,6 @@
-[gd_scene load_steps=3 format=3 uid="uid://e4b7j4mx650"]
+[gd_scene load_steps=3 format=3 uid="uid://c71tsvyv52wr"]
 
-[ext_resource type="Script" uid="uid://igj0346qx52v" path="res://Shared/scripts/KeywordReminderPanel.gd" id="1_keyword_reminder"]
+[ext_resource type="Script" path="res://Shared/scripts/KeywordReminderPanel.gd" id="1_keyword_reminder"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_1"]
 bg_color = Color(0.9, 0.9, 0.9, 0.95)
