@@ -29,7 +29,24 @@ func update_display():
 	cost_label.text = str(card_data.cost)
 	type_label.text = card_data.getFullTypeString()
 	power_label.text = str(card_data.power)
-	text_label.text = card_data.text_box
+	
+	# Process text with keyword formatting
+	text_label.text = format_text_with_keywords(card_data.text_box)
+
+func format_text_with_keywords(text: String) -> String:
+	# Enable BBCode processing
+	if text_label:
+		text_label.bbcode_enabled = true
+	
+	var formatted_text = text
+	
+	# Get all known keywords from KeywordManager
+	for keyword in KeywordManager.keywords.keys():
+		# Simply replace the keyword with bold version
+		# This will find the keyword anywhere it appears as a whole word
+		formatted_text = formatted_text.replace(keyword, "[b]" + keyword + "[/b]")
+	
+	return formatted_text
 
 func _on_gui_input(event: InputEvent):
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:

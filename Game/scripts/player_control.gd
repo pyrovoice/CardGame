@@ -3,6 +3,7 @@ class_name PlayerControl
 @onready var CardPopupDisplay: TextureRect = $"../Control/CardPopupDisplay"
 @onready var card_popup: SubViewport = $"../cardPopup"
 @onready var card_in_popup: Card = $"../cardPopup/Card"
+@onready var keyword_reminder_panel: Control = $"../Control/KeywordReminderPanel"
 var previoustween: Tween = null
 
 @onready var player_hand: Node3D = $"../Camera3D/PlayerHand"
@@ -44,6 +45,8 @@ var dragged_card: Card = null
 func _input(event):
 	if event is InputEventMouseButton && event.pressed:
 		CardPopupDisplay.hide()
+		if keyword_reminder_panel and keyword_reminder_panel.has_method("hide_panel"):
+			keyword_reminder_panel.hide_panel()
 	if event is InputEventMouseButton && event.button_index == MOUSE_BUTTON_LEFT:
 		if event.pressed && cardUnderMouse:
 			dragged_card = cardUnderMouse
@@ -65,8 +68,13 @@ func showCardPopup(card: Card):
 	CardPopupDisplay.show()
 	card_in_popup.setData(card.cardData)
 	CardPopupDisplay.texture = card_popup.get_texture()
-	var texture = CardPopupDisplay.texture
 	CardPopupDisplay.visible = true
+	
+	# Show keyword reminder panel
+	if keyword_reminder_panel and keyword_reminder_panel.has_method("show_keywords_for_card"):
+		keyword_reminder_panel.show_keywords_for_card(card.cardData)
+		keyword_reminder_panel.position_next_to_card(CardPopupDisplay)
+	
 	if(previoustween):
 		previoustween.kill()
 	previoustween = create_tween()
