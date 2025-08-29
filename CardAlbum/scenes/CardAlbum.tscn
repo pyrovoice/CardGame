@@ -37,11 +37,11 @@ layout_mode = 2
 text = "Card Album"
 horizontal_alignment = 1
 
-[node name="ScrollContainer" type="ScrollContainer" parent="VBoxContainer"]
+[node name="CardContainer" type="Control" parent="VBoxContainer"]
 layout_mode = 2
 size_flags_vertical = 3
 
-[node name="CardGrid" type="GridContainer" parent="VBoxContainer/ScrollContainer"]
+[node name="CardGrid" type="GridContainer" parent="VBoxContainer/CardContainer"]
 layout_mode = 2
 size_flags_horizontal = 3
 columns = 5

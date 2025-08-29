@@ -1,9 +1,7 @@
 extends Node3D
 class_name PlayerControl
-@onready var CardPopupDisplay: TextureRect = $"../Control/CardPopupDisplay"
-@onready var card_popup: SubViewport = $"../cardPopup"
-@onready var card_in_popup: Card = $"../cardPopup/Card"
-@onready var keyword_reminder_panel: Control = $"../Control/KeywordReminderPanel"
+# Remove the old popup references - they'll be handled by CardPopupManager
+var card_popup_manager: Control
 var previoustween: Tween = null
 
 @onready var player_hand: Node3D = $"../Camera3D/PlayerHand"
@@ -14,6 +12,12 @@ signal tryPlayCard(card: Card, target: Node3D)
 signal displayCardPopup(card: Card)
 
 const HAND_ZONE_CUTTOFF = 500
+
+func _ready():
+	# Load the shared popup manager
+	var popup_scene = preload("res://Shared/scenes/CardPopupManager.tscn")
+	card_popup_manager = popup_scene.instantiate()
+	get_parent().add_child(card_popup_manager)
 
 var cardUnderMouse: Card = null
 func _process(delta):
@@ -43,10 +47,7 @@ func _process(delta):
 
 var dragged_card: Card = null
 func _input(event):
-	if event is InputEventMouseButton && event.pressed:
-		CardPopupDisplay.hide()
-		if keyword_reminder_panel and keyword_reminder_panel.has_method("hide_panel"):
-			keyword_reminder_panel.hide_panel()
+	# The CardPopupManager will handle hiding itself
 	if event is InputEventMouseButton && event.button_index == MOUSE_BUTTON_LEFT:
 		if event.pressed && cardUnderMouse:
 			dragged_card = cardUnderMouse
@@ -65,21 +66,10 @@ func _input(event):
 func showCardPopup(card: Card):
 	if card == null:
 		return
-	CardPopupDisplay.show()
-	card_in_popup.setData(card.cardData)
-	CardPopupDisplay.texture = card_popup.get_texture()
-	CardPopupDisplay.visible = true
 	
-	# Show keyword reminder panel
-	if keyword_reminder_panel and keyword_reminder_panel.has_method("show_keywords_for_card"):
-		keyword_reminder_panel.show_keywords_for_card(card.cardData)
-		keyword_reminder_panel.position_next_to_card(CardPopupDisplay)
-	
-	if(previoustween):
-		previoustween.kill()
-	previoustween = create_tween()
-	CardPopupDisplay.scale = Vector2.ZERO
-	previoustween.tween_property(CardPopupDisplay, "scale", Vector2.ONE, 0.2).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	# Use the shared popup system
+	if card_popup_manager and card_popup_manager.has_method("show_card_popup"):
+		card_popup_manager.show_card_popup(card.cardData)
 
 func getMousePositionHand() -> Vector3:
 	var mouse_position = get_viewport().get_mouse_position()

@@ -9,6 +9,7 @@
 custom_minimum_size = Vector2(150, 200)
 layout_mode = 3
 anchors_preset = 0
+mouse_default_cursor_shape = 2
 script = ExtResource("1_card2d")
 
 [node name="Background" type="NinePatchRect" parent="."]
@@ -33,6 +34,7 @@ offset_right = 62.0
 offset_bottom = 17.0
 grow_horizontal = 2
 grow_vertical = 2
+mouse_filter = 2
 texture = ExtResource("2_icon")
 expand_mode = 2
 stretch_mode = 1

@@ -12,6 +12,7 @@ class_name Card2D
 var card_data: CardData
 
 signal card_clicked(card: Card2D)
+signal card_right_clicked(card_data: CardData)
 
 func _ready():
 	gui_input.connect(_on_gui_input)
@@ -49,8 +50,11 @@ func format_text_with_keywords(text: String) -> String:
 	return formatted_text
 
 func _on_gui_input(event: InputEvent):
-	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
-		card_clicked.emit(self)
+	if event is InputEventMouseButton and event.pressed:
+		if event.button_index == MOUSE_BUTTON_LEFT:
+			card_clicked.emit(self)
+		elif event.button_index == MOUSE_BUTTON_RIGHT:
+			card_right_clicked.emit(card_data)
 
 func _on_mouse_entered():
 	modulate = Color(1.1, 1.1, 1.1)

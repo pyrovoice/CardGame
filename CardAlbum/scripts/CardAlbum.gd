@@ -1,11 +1,14 @@
 extends Control
 class_name CardAlbum
 
-@onready var card_grid: GridContainer = $VBoxContainer/ScrollContainer/CardGrid
+@onready var card_grid: GridContainer = $VBoxContainer/CardContainer/CardGrid
 @onready var back_button: Button = $VBoxContainer/BackButton
 @onready var page_label: Label = $"page_label"
 @onready var prev_button: Button = $"prev_button"
 @onready var next_button: Button = $"next_button"
+
+# Card popup manager - will be added to the scene
+var card_popup_manager: Control
 
 # Grid configuration
 const CARDS_PER_PAGE = 10
@@ -19,6 +22,11 @@ var card_instances: Array[Card2D] = []
 signal page_changed(page: int)
 
 func _ready():
+	# Load the shared popup manager
+	var popup_scene = preload("res://Shared/scenes/CardPopupManager.tscn")
+	card_popup_manager = popup_scene.instantiate()
+	add_child(card_popup_manager)
+	
 	load_all_cards()
 	setup_ui()
 	display_current_page()
@@ -31,7 +39,9 @@ func load_all_cards():
 	if all_cards.size() == 0:
 		push_error("No cards found!")
 		return
-		
+	
+	while all_cards.size() < 30:
+		all_cards.append_array(all_cards.duplicate())
 	# Calculate total pages
 	total_pages = ceili(float(all_cards.size()) / float(CARDS_PER_PAGE))
 	print("Loaded ", all_cards.size(), " cards across ", total_pages, " pages")
@@ -67,12 +77,14 @@ func create_card_ui(card_data: CardData):
 	card_grid.add_child(card_instance)
 	card_instance.set_card_data(card_data)
 	card_instance.card_clicked.connect(_on_card_clicked)
+	card_instance.card_right_clicked.connect(_on_card_right_clicked)
 	
 	card_instances.append(card_instance)
 
 func clear_current_cards():
 	for card in card_instances:
 		if is_instance_valid(card):
+			card.get_parent().remove_child(card)
 			card.queue_free()
 	card_instances.clear()
 
@@ -95,6 +107,10 @@ func _on_back_button_pressed():
 
 func _on_card_clicked(card: Card2D):
 	print("Card clicked: ", card.card_data.cardName)
+
+func _on_card_right_clicked(card_data: CardData):
+	if card_popup_manager and card_popup_manager.has_method("show_card_popup"):
+		card_popup_manager.show_card_popup(card_data)
 
 func update_ui():
 	if page_label:

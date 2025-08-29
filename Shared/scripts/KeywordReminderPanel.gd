@@ -31,28 +31,19 @@ func show_keywords_for_card(card_data: CardData):
 	visible = true
 
 func create_keyword_entry(keyword: String):
-	var keyword_container = HBoxContainer.new()
-	keyword_container.add_theme_constant_override("separation", 5)
-	
-	# Keyword name label (bold)
+	# Single label for both keyword and reminder text
 	var keyword_label = RichTextLabel.new()
 	keyword_label.bbcode_enabled = true
-	keyword_label.text = "[b]" + keyword + ":[/b]"
-	keyword_label.fit_content = true
-	keyword_label.custom_minimum_size = Vector2(60, 20)
 	
-	# Reminder text label
-	var reminder_label = Label.new()
 	var reminder_text = KeywordManager.get_keyword_text(keyword)
-	reminder_label.text = reminder_text
-	reminder_label.custom_minimum_size = Vector2(200, 20)
-	reminder_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	keyword_label.text = "[color=black][b]" + keyword + ":[/b] " + reminder_text + "[/color]"
 	
-	keyword_container.add_child(keyword_label)
-	keyword_container.add_child(reminder_label)
+	keyword_label.fit_content = true
+	keyword_label.custom_minimum_size = Vector2(260, 20)
+	keyword_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	
-	v_box_container.add_child(keyword_container)
-	keyword_labels.append(keyword_container)
+	v_box_container.add_child(keyword_label)
+	keyword_labels.append(keyword_label)
 
 func clear_keywords():
 	for label in keyword_labels:
