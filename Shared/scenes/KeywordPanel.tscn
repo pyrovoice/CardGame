@@ -1,6 +1,6 @@
-[gd_scene load_steps=3 format=3 uid="uid://ctcf3sebtl3cv"]
+[gd_scene load_steps=3 format=3 uid="uid://t4ge6jwt4755"]
 
-[ext_resource type="Script" path="res://Shared/scripts/KeywordReminderPanel.gd" id="1_keyword_reminder"]
+[ext_resource type="Script" uid="uid://dlqhj3fkm4mtk" path="res://Shared/scripts/KeywordPanel.gd" id="1_5x8kv"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_1"]
 bg_color = Color(0.9, 0.9, 0.9, 0.95)
@@ -14,29 +14,30 @@ corner_radius_top_right = 5
 corner_radius_bottom_right = 5
 corner_radius_bottom_left = 5
 
-[node name="KeywordReminderPanel" type="Control"]
-custom_minimum_size = Vector2(250, 50)
-layout_mode = 3
-anchors_preset = 0
-script = ExtResource("1_keyword_reminder")
-
-[node name="Background" type="Panel" parent="."]
-layout_mode = 1
+[node name="KeywordPanel" type="Panel"]
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
+size_flags_vertical = 4
 theme_override_styles/panel = SubResource("StyleBoxFlat_1")
+script = ExtResource("1_5x8kv")
 
-[node name="VBoxContainer" type="VBoxContainer" parent="Background"]
+[node name="RichTextLabel" type="RichTextLabel" parent="."]
+clip_contents = false
 layout_mode = 1
-anchors_preset = 15
+anchors_preset = -1
+anchor_left = 0.005
+anchor_top = 0.006
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_left = 5.0
-offset_top = 5.0
-offset_right = -5.0
-offset_bottom = -5.0
+offset_left = 0.24
+offset_top = 0.112
 grow_horizontal = 2
 grow_vertical = 2
+theme_override_colors/default_color = Color(0, 0, 0, 1)
+bbcode_enabled = true
+text = "Test keyword"
+fit_content = true
+scroll_active = false

@@ -87,28 +87,14 @@ func create_keyword_panels(card_data: CardData):
 		create_single_keyword_panel(keyword)
 
 func create_single_keyword_panel(keyword: String):
-	# Create a simple panel with text
-	var panel = Panel.new()
-	var label = RichTextLabel.new()
-	
-	# Set up the label
-	label.bbcode_enabled = true
-	var reminder_text = KeywordManager.get_keyword_text(keyword)
-	label.text = "[color=black][b]" + keyword + ":[/b] " + reminder_text + "[/color]"
-	label.fit_content = true
-	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	
-	# Set up the panel
-	panel.custom_minimum_size = Vector2(260, 30)
-	panel.add_child(label)
-	label.anchors_preset = Control.PRESET_FULL_RECT
-	label.offset_left = 5
-	label.offset_top = 5
-	label.offset_right = -5
-	label.offset_bottom = -5
-	
-	# Add to container (this automatically handles positioning)
+	# Load and instantiate the keyword panel scene
+	var keyword_panel_scene = preload("res://Shared/scenes/KeywordPanel.tscn")
+	var panel = keyword_panel_scene.instantiate()
 	keyword_container.add_child(panel)
+	# Set up the keyword content
+	await panel.setup_keyword(keyword)
+	
+	# Add to container
 	keyword_panels.append(panel)
 
 func clear_keyword_panels():

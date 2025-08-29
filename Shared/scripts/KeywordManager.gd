@@ -27,7 +27,7 @@ static func parse_keywords_from_text(card_text: String) -> Array[String]:
 	var found_keywords: Array[String] = []
 	
 	# Split card text into lines
-	var lines = card_text.split("\n")
+	var lines = card_text.split("\\n")
 	if lines.size() == 0:
 		return found_keywords
 	

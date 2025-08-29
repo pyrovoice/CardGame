@@ -1,6 +1,6 @@
 [gd_scene load_steps=3 format=3 uid="uid://cqj7vnp5xo8dy"]
 
-[ext_resource type="Script" path="res://Shared/scripts/CardPopupManager.gd" id="1_popup_manager"]
+[ext_resource type="Script" uid="uid://dyj4d6vnqd0ru" path="res://Shared/scripts/CardPopupManager.gd" id="1_popup_manager"]
 
 [sub_resource type="World3D" id="World3D_1"]
 
