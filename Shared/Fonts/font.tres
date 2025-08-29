@@ -1,0 +1,8 @@
+[gd_resource type="FontVariation" load_steps=2 format=3 uid="uid://cjtrikaejtvs3"]
+
+[ext_resource type="FontFile" uid="uid://dbejdey67y3ig" path="res://Shared/Fonts/Lato-Black.ttf" id="1_i84tv"]
+
+[resource]
+base_font = ExtResource("1_i84tv")
+spacing_top = -1
+spacing_bottom = -5

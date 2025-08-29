@@ -1,0 +1,117 @@
+[gd_scene load_steps=3 format=3 uid="uid://tcd4s5cqk3to"]
+
+[ext_resource type="Script" path="res://CardAlbum/scripts/Card2D.gd" id="1_card2d"]
+[ext_resource type="Texture2D" uid="uid://bvhgqh6fy2vbd" path="res://icon.svg" id="2_icon"]
+
+[node name="Card2D" type="Control"]
+custom_minimum_size = Vector2(150, 200)
+layout_mode = 3
+anchors_preset = 0
+script = ExtResource("1_card2d")
+
+[node name="Background" type="NinePatchRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="CardArt" type="TextureRect" parent="Background"]
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -40.0
+offset_top = -60.0
+offset_right = 40.0
+offset_bottom = -20.0
+grow_horizontal = 2
+grow_vertical = 2
+texture = ExtResource("2_icon")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="NameLabel" type="Label" parent="Background"]
+layout_mode = 1
+anchors_preset = 2
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = 5.0
+offset_top = -25.0
+offset_right = 90.0
+offset_bottom = -5.0
+grow_vertical = 0
+text = "Card Name"
+vertical_alignment = 1
+autowrap_mode = 2
+
+[node name="CostLabel" type="Label" parent="Background"]
+layout_mode = 1
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -25.0
+offset_top = 5.0
+offset_right = -5.0
+offset_bottom = 25.0
+grow_horizontal = 0
+text = "5"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="TypeLabel" type="Label" parent="Background"]
+layout_mode = 1
+anchors_preset = 6
+anchor_left = 1.0
+anchor_top = 0.5
+anchor_right = 1.0
+anchor_bottom = 0.5
+offset_left = -145.0
+offset_top = 5.0
+offset_right = -5.0
+offset_bottom = 25.0
+grow_horizontal = 0
+grow_vertical = 2
+text = "Creature"
+autowrap_mode = 2
+
+[node name="PowerLabel" type="Label" parent="Background"]
+layout_mode = 1
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -25.0
+offset_top = -25.0
+offset_right = -5.0
+offset_bottom = -5.0
+grow_horizontal = 0
+grow_vertical = 0
+text = "3"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="TextLabel" type="Label" parent="Background"]
+layout_mode = 1
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -70.0
+offset_top = -70.0
+offset_right = 70.0
+offset_bottom = -30.0
+grow_horizontal = 2
+grow_vertical = 0
+text = "When CARDNAME enters, create a 1 power Goblin creature token at the same location."
+horizontal_alignment = 1
+vertical_alignment = 1
+autowrap_mode = 2
+
+[connection signal="mouse_entered" from="." to="." method="_on_mouse_entered"]
+[connection signal="mouse_exited" from="." to="." method="_on_mouse_exited"]

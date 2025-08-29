@@ -89,8 +89,12 @@ static func load_all_cards():
 
 # Load a specific card by name
 static func load_card_by_name(card_name: String):
+	if !cardData || cardData.size() == 0:
+		load_all_cards()
 	var file_path = "res://Cards/" + card_name.to_lower().replace(" ", " ") + ".txt"
 	return cardData.find(func(c:CardData): return c.cardName == card_name)
 
 static func getRandomCard() -> CardData:
+	if !cardData || cardData.size() == 0:
+		load_all_cards()
 	return cardData[randi_range(0, cardData.size() - 1)]
