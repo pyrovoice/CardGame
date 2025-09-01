@@ -1,4 +1,4 @@
-Name:Goblin pair
-ManaCost:1
+Name:Goblin
 Types:Creature Goblin
 Power:1
+CardText:Token creature created by Goblin Pair.

@@ -7,7 +7,7 @@ var highlight_material: StandardMaterial3D
 var is_highlighted: bool = false
 
 # Spacing between cards
-const CARD_SPACING_X: float = 0.7  # Horizontal spacing between cards
+const CARD_SPACING_X: float = 0.8  # Horizontal spacing between cards
 
 func _ready():
 	# Store the original material and create highlight material
@@ -24,12 +24,26 @@ func _ready():
 
 func getNextEmptyLocation() -> Vector3:
 	"""Returns the next empty location in local coordinates, or Vector3.INF if no space"""
+	# Count actual Card nodes (not by name, but by type)
+	var card_count = 0
+	for child in get_children():
+		if child is Card:
+			card_count += 1
+	
 	# First location is at 0,0,0, then cards go left to right
-	var x_offset = find_children("Card").size() * CARD_SPACING_X
+	var x_offset = card_count * CARD_SPACING_X
 	
 	# You can add a maximum limit here if needed
 	# For now, we'll assume unlimited space
 	return Vector3(x_offset, 0, 0)
+
+func getCards() -> Array:
+	"""Returns all Card nodes that are children of this PlayerBase"""
+	var cards = []
+	for child in get_children():
+		if child is Card:
+			cards.append(child)
+	return cards
 
 func highlight(enabled: bool):
 	"""Enable or disable the highlight effect"""

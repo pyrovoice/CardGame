@@ -68,13 +68,19 @@ static func parse_abilities(properties: Dictionary) -> Array:
 	
 	# First pass: collect all SVar definitions
 	for key in properties.keys():
-		if key.begins_with("SVar:"):
-			var effect_name = key.substr(5)  # Remove "SVar:" prefix
-			svar_effects[effect_name] = properties[key]
+		if key == "SVar":
+			# Parse the SVar line which has format "TrigToken:DB$ Token | TokenScript$ goblin"
+			var svar_line = properties[key]
+			# Split on the first colon to get effect name and parameters
+			var svar_parts = svar_line.split(":", false, 1)
+			if svar_parts.size() >= 2:
+				var effect_name = svar_parts[0].strip_edges()
+				var effect_value = svar_parts[1].strip_edges()
+				svar_effects[effect_name] = effect_value
 	
 	# Second pass: parse trigger abilities
 	for key in properties.keys():
-		if key.begins_with("T:"):
+		if key == "T":
 			var trigger_ability = parse_triggered_ability(properties[key], svar_effects)
 			if trigger_ability:
 				abilities.append(trigger_ability)
@@ -159,19 +165,20 @@ static func load_card_from_file(file_path: String) -> CardData:
 	
 	return parse_card_data(file_content)
 
-# Load all cards from the Cards directory
+# Load all cards from the Cards/Cards directory
 static func load_all_cards():
-	var dir = DirAccess.open("res://Cards/")
+	var dir = DirAccess.open("res://Cards/Cards/")
 	
 	if not dir:
-		push_error("Could not open Cards directory")
+		push_error("Could not open Cards/Cards directory")
 	
 	dir.list_dir_begin()
 	var file_name = dir.get_next()
 	
 	while file_name != "":
+		# Load card files, but skip directories
 		if file_name.ends_with(".txt") and not dir.current_is_dir():
-			var card_data = load_card_from_file("res://Cards/" + file_name)
+			var card_data = load_card_from_file("res://Cards/Cards/" + file_name)
 			if card_data:
 				cardData.append(card_data)
 		file_name = dir.get_next()
@@ -180,7 +187,6 @@ static func load_all_cards():
 static func load_card_by_name(card_name: String):
 	if !cardData || cardData.size() == 0:
 		load_all_cards()
-	var file_path = "res://Cards/" + card_name.to_lower().replace(" ", " ") + ".txt"
 	return cardData.find(func(c:CardData): return c.cardName == card_name)
 
 static func getRandomCard() -> CardData:

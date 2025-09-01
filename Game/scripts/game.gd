@@ -63,6 +63,10 @@ func payCard(card: Card):
 func playCardToCombatZone(card: Card, zone: CombatantFightingSpot):
 	zone.setCard(card)
 	card.animatePlayedTo(zone.global_position + Vector3(0, 0.1, 0))
+	
+	# Trigger abilities when card enters battlefield
+	trigger_enter_battlefield_abilities(card)
+	
 	return true
 
 func playCardToPlayerBase(card: Card, base: PlayerBase) -> bool:
@@ -74,7 +78,20 @@ func playCardToPlayerBase(card: Card, base: PlayerBase) -> bool:
 	var global_target = base.global_position + target_position
 	card.animatePlayedTo(global_target + Vector3(0, 0.1, 0))
 	card.reparent(base)
+	
+	# Trigger abilities when card enters battlefield
+	trigger_enter_battlefield_abilities(card)
+	
 	return true
+
+func trigger_enter_battlefield_abilities(entering_card: Card):
+	"""Trigger all abilities that respond to a card entering the battlefield"""
+	print("\n=== Card entered battlefield: ", entering_card.cardData.cardName, " ===")
+	
+	# Use the AbilityManager to detect and trigger abilities
+	AbilityManager.detect_and_trigger_abilities(self, "CARD_ENTERS_BATTLEFIELD", entering_card)
+	
+	print("=== End of trigger detection ===\n")
 
 func drawCard():
 	var card = deck.draw_card_from_top()
@@ -106,7 +123,7 @@ func arrange_cards_fan():
 		
 		# Position cards spread horizontally
 		card.position.x = start_x + spacing * i
-		card.position.z = (i - count/2)*0.02  # optional: slight z offset for layering if needed
+		card.position.z = i *0.02  # optional: slight z offset for layering if needed
 		card.position.y = -0.005 * pow(i - ((count - 1) / 2.0), 2)
 		
 		var angle_deg = lerp(max_angle_deg, -max_angle_deg, i / float(max(1.0, count - 1)))

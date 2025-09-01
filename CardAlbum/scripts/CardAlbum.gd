@@ -38,9 +38,6 @@ func load_all_cards():
 	if all_cards.size() == 0:
 		push_error("No cards found!")
 		return
-	
-	while all_cards.size() < 30:
-		all_cards.append_array(all_cards.duplicate())
 	# Calculate total pages
 	total_pages = ceili(float(all_cards.size()) / float(CARDS_PER_PAGE))
 	print("Loaded ", all_cards.size(), " cards across ", total_pages, " pages")
