@@ -1,6 +1,7 @@
-[gd_scene load_steps=2 format=3 uid="uid://b7e8h5qm7y0ca"]
+[gd_scene load_steps=3 format=3 uid="uid://b7e8h5qm7y0ca"]
 
 [ext_resource type="Script" uid="uid://dhiqdur5jrr2o" path="res://CardAlbum/scripts/CardAlbum.gd" id="1_album"]
+[ext_resource type="PackedScene" uid="uid://cqj7vnp5xo8dy" path="res://Shared/scenes/CardPopupManager.tscn" id="2_popup"]
 
 [node name="CardAlbum" type="Control"]
 layout_mode = 3
@@ -75,3 +76,5 @@ offset_top = 258.0
 offset_right = 1147.0
 offset_bottom = 326.0
 text = "Next"
+
+[node name="CardPopupManager" parent="." instance=ExtResource("2_popup")]

@@ -7,8 +7,8 @@ class_name CardAlbum
 @onready var prev_button: Button = $"prev_button"
 @onready var next_button: Button = $"next_button"
 
-# Card popup manager - will be added to the scene
-var card_popup_manager: CardPopupManager
+# Card popup manager - reference to the scene node
+@onready var card_popup_manager: CardPopupManager = $CardPopupManager
 
 # Grid configuration
 const CARDS_PER_PAGE = 10
@@ -26,11 +26,6 @@ var card_instances: Array[Card2D] = []
 signal page_changed(page: int)
 
 func _ready():
-	# Load the shared popup manager
-	var popup_scene = preload("res://Shared/scenes/CardPopupManager.tscn")
-	card_popup_manager = popup_scene.instantiate()
-	add_child(card_popup_manager)
-	
 	load_all_cards()
 	setup_ui()
 	display_current_page()

@@ -16,14 +16,27 @@ signal card_right_clicked(card_data: CardData)
 
 func _ready():
 	gui_input.connect(_on_gui_input)
-	set_card_data(CardLoader.getRandomCard())
+	# Only set random card data if no data was already provided
+	if not card_data:
+		set_card_data(CardLoader.getRandomCard())
+	else:
+		# If card_data was set before _ready, update display now
+		update_display()
 
 func set_card_data(data: CardData):
 	card_data = data
-	update_display()
+	# If we're already ready, update immediately; otherwise wait for _ready
+	if name_label: # If onready vars are available, we can update now
+		update_display()
 
 func update_display():
 	if not card_data:
+		return
+	
+	# At this point, if we're being called, the UI elements should be ready
+	# If they're not, there's a structural problem with the scene
+	if not name_label or not cost_label or not type_label or not power_label or not text_label:
+		push_error("Card2D: UI elements are null. Check that the scene structure matches the @onready variable paths.")
 		return
 		
 	name_label.text = card_data.cardName
@@ -34,12 +47,12 @@ func update_display():
 	# Process text with keyword formatting
 	text_label.text = format_text_with_keywords(card_data)
 
-func format_text_with_keywords(card_data: CardData) -> String:
-	var formatted_text = card_data.text_box
+func format_text_with_keywords(data: CardData) -> String:
+	var formatted_text = data.text_box
 	# First, replace newlines with BBCode line breaks
 	# Try both common BBCode line break formats
 	formatted_text = formatted_text.replace("\n", "[p]")
-	formatted_text = formatted_text.replace("CARDNAME", card_data.cardName)
+	formatted_text = formatted_text.replace("CARDNAME", data.cardName)
 	
 	# Get all known keywords from KeywordManager
 	for keyword in KeywordManager.keywords.keys():

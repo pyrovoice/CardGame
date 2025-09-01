@@ -50,7 +50,7 @@ func show_card_popup(card_data: CardData, popup_position: Vector2 = Vector2.ZERO
 	card_in_popup = card_scene.instantiate() as Card2D
 	add_child(card_in_popup)
 	
-	# Set the card data
+	# Set the card data - the Card2D will handle timing correctly
 	card_in_popup.set_card_data(card_data)
 	
 	# Scale the card for display mode
@@ -68,10 +68,10 @@ func show_card_popup(card_data: CardData, popup_position: Vector2 = Vector2.ZERO
 		var card_size = card_in_popup.size * card_scale
 		card_in_popup.global_position = (screen_size - card_size) / 2
 	
-	# Create keyword panels first
-	create_keyword_panels(card_data)
+	# Store card data for delayed keyword creation
+	var keyword_card_data = card_data
 	
-	# Position keyword container based on card position
+	# Position keyword container based on card position (but don't create panels yet)
 	if popup_position != Vector2.ZERO:
 		# Position keywords to the right of the card when specific position is given
 		var card_width = card_in_popup.size.x * card_scale.x
@@ -85,8 +85,11 @@ func show_card_popup(card_data: CardData, popup_position: Vector2 = Vector2.ZERO
 		var keyword_y_pos = (screen_size.y - card_size.y) / 2
 		keyword_container.global_position = Vector2(keyword_x_pos, keyword_y_pos)
 	
-	# Animate the popup (no scaling, just fade/size animation)
+	# Animate the popup first
 	animate_popup_show()
+	
+	# Delay keyword panels creation by 0.5 seconds
+	get_tree().create_timer(0.3).timeout.connect(func(): create_keyword_panels(keyword_card_data))
 
 func clear_popup_card():
 	# Remove any existing card from the viewport
@@ -142,5 +145,11 @@ func animate_popup_show():
 	
 	if card_in_popup and is_instance_valid(card_in_popup):
 		current_tween = create_tween()
-		card_in_popup.modulate.a = 0.0
-		current_tween.tween_property(card_in_popup, "modulate:a", 1.0, 0.2).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		
+		# Get the target scale (already set based on display mode)
+		var target_scale = card_in_popup.scale
+		
+		# Start at 0% scale
+		card_in_popup.scale = Vector2.ZERO
+		current_tween.tween_property(card_in_popup, "scale", target_scale, 0.15).set_trans(Tween.TRANS_BACK)
+		current_tween.tween_property(card_in_popup, "scale", target_scale, 0.07).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
