@@ -1,16 +1,14 @@
-[gd_scene load_steps=9 format=3 uid="uid://bkqg746td2asx"]
+[gd_scene load_steps=8 format=3 uid="uid://bkqg746td2asx"]
 
 [ext_resource type="Script" uid="uid://dsb1ch8a7q1og" path="res://Game/scripts/game.gd" id="1_7475e"]
 [ext_resource type="PackedScene" uid="uid://dnt4p0i1i5qk1" path="res://Game/scenes/Deck.tscn" id="1_ds5t7"]
 [ext_resource type="PackedScene" uid="uid://daynfobgnbdrp" path="res://Game/scenes/combat_zone.tscn" id="2_w3xpy"]
 [ext_resource type="Script" uid="uid://bj67ghukul3cy" path="res://Game/scripts/player_control.gd" id="4_w3xpy"]
-[ext_resource type="PackedScene" uid="uid://dr51qu20aa77" path="res://Game/scenes/Card.tscn" id="5_jik8v"]
 [ext_resource type="PackedScene" uid="uid://dueg4t10qe41s" path="res://Game/scenes/graveyard.tscn" id="6_2jiha"]
+[ext_resource type="PackedScene" uid="uid://cqj7vnp5xo8dy" path="res://Shared/scenes/CardPopupManager.tscn" id="7_popup"]
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_vc2ns"]
 size = Vector3(20, 20, 0.01)
-
-[sub_resource type="World3D" id="World3D_bqf56"]
 
 [node name="Game" type="Node3D"]
 script = ExtResource("1_7475e")
@@ -70,41 +68,8 @@ offset_right = 148.0
 offset_bottom = 28.0
 text = "0"
 
-[node name="cardPopup" type="SubViewport" parent="."]
-own_world_3d = true
-world_3d = SubResource("World3D_bqf56")
-transparent_bg = true
-gui_embed_subwindows = true
-size = Vector2i(214, 269)
-render_target_update_mode = 4
-
-[node name="Camera3D" type="Camera3D" parent="cardPopup"]
-transform = Transform3D(1, 0, 0, 0, -4.37114e-08, 1, 0, -1, -4.37114e-08, 0, 0.58, 0)
-current = true
-
-[node name="Card" parent="cardPopup" instance=ExtResource("5_jik8v")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.05, 0, 0)
-
-[node name="OmniLight3D" type="OmniLight3D" parent="cardPopup"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.177323, 0)
-omni_attenuation = 0.0
-
-[node name="Control" type="Control" parent="."]
-layout_mode = 3
-anchors_preset = 0
-offset_right = 40.0
-offset_bottom = 40.0
-mouse_filter = 2
-metadata/_edit_use_anchors_ = true
-
-[node name="CardPopupDisplay" type="TextureRect" parent="Control"]
-layout_mode = 0
-offset_left = 2.0
-offset_top = 103.0
-offset_right = 208.0
-offset_bottom = 463.0
-expand_mode = 1
-stretch_mode = 2
+[node name="CardPopupManager" parent="UI" instance=ExtResource("7_popup")]
+layout_mode = 1
 
 [node name="graveyard" parent="." instance=ExtResource("6_2jiha")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.74551, 0, 2.00743)
