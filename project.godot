@@ -24,13 +24,13 @@ settings/addon_root_folder="res://addons/debug_draw_3d"
 import/reimport_missing_imported_files=true
 import/use_multiple_threads=true
 
-[memory]
-
-limits/message_queue/max_size_mb=4096
-
 [gui]
 
 theme/custom_font="uid://dbejdey67y3ig"
+
+[memory]
+
+limits/message_queue/max_size_mb=4096
 
 [rendering]
 

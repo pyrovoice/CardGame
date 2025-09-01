@@ -6,6 +6,7 @@ extends Node3D
 @onready var combatZones: Array = [$combatZone, $combatZone2, $combatZone3]
 @onready var draw: Button = $UI/draw
 @onready var player_point: Label = $UI/PlayerPoint
+@onready var player_base: PlayerBase = $playerBase
 const CARD = preload("res://Game/scenes/Card.tscn")
 @onready var card_popup: SubViewport = $cardPopup
 @onready var card_in_popup: Card = $cardPopup/Card
@@ -16,7 +17,7 @@ var playerControlLock:PlayerControlLock = PlayerControlLock.new()
 var loaded_card_data: Array[CardData] = []
 
 func _ready() -> void:
-	player_control.tryPlayCard.connect(tryPlayCard)
+	player_control.tryMoveCard.connect(tryPlayCard)
 	draw.pressed.connect(onTurnStart)
 	CardLoader.load_all_cards()
 	populate_deck()
@@ -36,42 +37,42 @@ func onTurnStart():
 	createOpposingToken()
 	
 func tryPlayCard(card: Card, _location: Node3D) -> bool:
-	if !_location || !(_location is CombatantFightingSpot) || (_location as CombatantFightingSpot).getCard() != null:
+	if !_location:
 		return false
-		
-	if isCardPlayable(card):
-		if payCard(card):
-			return playCard(card, _location)
+	var needsPay = card.get_parent() == player_hand
+	if needsPay:
+		if isCardPlayable(card):
+			if !payCard(card):
+				return false
+	if _location is CombatantFightingSpot:
+		if (_location as CombatantFightingSpot).getCard() != null:
+			return false
+		return playCardToCombatZone(card, _location)
+	elif _location is PlayerBase:
+		return playCardToPlayerBase(card, _location as PlayerBase)
 	return false
 	
 	
 func isCardPlayable(card: Card):
 	return player_hand.get_children().find(card) != -1
 	
-func payCard(_card: Card):
+func payCard(card: Card):
 	return true
 	
-func playCard(card: Card, zone: CombatantFightingSpot):
+func playCardToCombatZone(card: Card, zone: CombatantFightingSpot):
 	zone.setCard(card)
 	card.animatePlayedTo(zone.global_position + Vector3(0, 0.1, 0))
+	return true
+
+func playCardToPlayerBase(card: Card, base: PlayerBase) -> bool:
+	var target_position = base.getNextEmptyLocation()
+	if target_position == Vector3.INF:  # No empty location available
+		return false
 	
-	# Trigger card played abilities (like Goblin Matron)
-	var cards_on_battlefield = getAllCardsInPlay()
-	AbilityManager.trigger_card_played_abilities(
-		cards_on_battlefield,
-		card,
-		["is_owner_player:true"],
-		self
-	)
-	
-	# Trigger zone change abilities for the card being played (Hand -> Battlefield)
-	AbilityManager.trigger_zone_change_abilities(
-		cards_on_battlefield,
-		card,
-		["origin:Hand", "destination:Battlefield"],
-		self
-	)
-	
+	# Convert local position to global position
+	var global_target = base.global_position + target_position
+	card.animatePlayedTo(global_target + Vector3(0, 0.1, 0))
+	card.reparent(base)
 	return true
 
 func drawCard():
@@ -90,44 +91,54 @@ func arrange_cards_fan():
 	var max_angle_deg = 0.02 * count   # Total fan spread angle (degrees)
 	var spacing = 0.3        # Horizontal space between cards
 	
-	# If only 1 card, center it
-	if count == 1:
-		var card = cards[0]
-		card.position = Vector3(0, 0, 0)
-		card.rotation = Vector3(0, 0, 0)
-		return
-		
-	# Calculate positions for multiple cards
-	var start_x = -(count - 1) * spacing / 2
-	var start_angle_deg = -max_angle_deg / 2
+	# Clamp count to max 10 if needed
+	count = min(count, 10)
+	
+	# Calculate starting offset to center the cards
+	var total_width = spacing * (count - 1)
+	var start_x = -total_width / 2
 	
 	for i in range(count):
-		var card = cards[i]
-		var t = float(i) / float(count - 1) if count > 1 else 0.0  # Normalize to 0-1
+		var card: Card = cards[i]
+		if not card is Card:
+			continue
 		
-		# Position
-		var x = start_x + i * spacing
-		card.position = Vector3(x, 0, 0)
+		# Position cards spread horizontally
+		card.position.x = start_x + spacing * i
+		card.position.z = (i - count/2)*0.02  # optional: slight z offset for layering if needed
+		card.position.y = -0.005 * pow(i - ((count - 1) / 2.0), 2)
 		
-		# Rotation (convert degrees to radians)
-		var angle_deg = start_angle_deg + t * max_angle_deg
-		var angle_rad = deg_to_rad(angle_deg)
-		card.rotation = Vector3(0, 0, angle_rad)
+		var angle_deg = lerp(max_angle_deg, -max_angle_deg, i / float(max(1.0, count - 1)))
+		card.setRotation(Vector3(90, 0, 0), angle_deg)
+
 
 func resolveCombats():
-	for combatZone:CombatZone in combatZones:
-		var allyCard:Card = combatZone.getAllyCard()
-		var enemyCard:Card = combatZone.getEnemyCard()
-		var damageCounter = 0
-		if allyCard && enemyCard:
-			damageCounter = allyCard.cardData.power
-			enemyCard.takeDamage(damageCounter)
-			allyCard.takeDamage(enemyCard.cardData.power)
-			if allyCard.cardData.power <= 0:
-				putInOwnerGraveyard(allyCard)
-			if enemyCard.cardData.power <= 0:
-				putInOwnerGraveyard(enemyCard)
+	var lock = playerControlLock.addLock()
+	for cv in combatZones:
+		resolveCombatInZone(cv)
+	playerControlLock.removeLock(lock)
+	
+func resolveCombatInZone(combatZone: CombatZone):
+	var damageCounter = 0
+	for i in range(1, 4):
+		var allyCard = combatZone.getCardSlot(i, true).getCard()
+		var oppCard = combatZone.getCardSlot(i, false).getCard()
+		if allyCard && oppCard:
+			allyCard.receiveDamage(oppCard.getPower())
+			oppCard.receiveDamage(allyCard.getPower())
+		elif allyCard && !oppCard:
+			damageCounter += allyCard.getPower()
+		elif !allyCard && oppCard:
+			damageCounter -= oppCard.getPower()
+	resolveStateBasedAction()
+	if combatZone.getTotalStrengthForSide(true) > combatZone.getTotalStrengthForSide(false):
+		player_point.text = str(player_point.text.to_int()+1)
 
+func resolveStateBasedAction():
+	for c:Card in getAllCardsInPlay():
+		if c.getDamage() >= c.getPower():
+			putInOwnerGraveyard(c)
+			
 func createOpposingToken():
 	var card = CARD.instantiate()
 	add_child(card)
@@ -144,15 +155,6 @@ func getAllCardsInPlay() -> Array:
 	return cards 
 
 func putInOwnerGraveyard(card: Card):
-	# Trigger zone change abilities for cards going to graveyard
-	var cards_on_battlefield = getAllCardsInPlay()
-	AbilityManager.trigger_zone_change_abilities(
-		cards_on_battlefield,
-		card,
-		["origin:Battlefield", "destination:Graveyard"],
-		self
-	)
-	
 	await card.animatePlayedTo(graveyard.global_position)
 	graveyard.cards.push_back(card.cardData)
 	card.queue_free()
