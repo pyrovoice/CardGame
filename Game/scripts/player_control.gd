@@ -14,6 +14,9 @@ signal displayCardPopup(card: Card)
 
 const HAND_ZONE_CUTTOFF = 500
 
+# Dragging offset constant
+const DRAG_OFFSET_X = 150  # Pixels to offset dragged card to the right
+
 # Popup positioning constants (same as CardAlbum)
 const POPUP_LEFT_MARGIN = 5
 const ENLARGED_CARD_HEIGHT = 600
@@ -22,13 +25,21 @@ func _ready():
 	pass  # CardPopupManager is now referenced via @onready
 
 var cardInHandUnderMouse: Card = null
+var currently_highlighted_card: Card = null
+var currently_highlighted_target: Node3D = null
+
 func _process(_delta):
 	cardInHandUnderMouse = null
 	if dragged_card:
 		dragged_card.dragged(getMousePositionHand())
+		# When dragging, highlight the specific target under mouse (if any)
+		updateTargetHighlight()
 		return
 	else:
 		dragged_card = null
+		# Clear target highlight when not dragging
+		clearTargetHighlight()
+	
 	# First check for cards in hand zone (existing logic)
 	if isMousePointerInHandZone():
 		var hover_range = 130
@@ -46,6 +57,61 @@ func _process(_delta):
 		if closest_card:
 			closest_card.popUp()
 			cardInHandUnderMouse = closest_card
+	
+	# Update highlights based on current mouse position
+	updateHighlights()
+
+func updateHighlights():
+	"""Update which objects should be highlighted based on current state"""
+	var target_card: Card = null
+	
+	# Determine which card should be highlighted
+	if isMousePointerInHandZone():
+		# In hand zone - highlight card that would be popped up
+		target_card = cardInHandUnderMouse
+	else:
+		# Outside hand zone - highlight card under mouse
+		target_card = getCardUnderMouse()
+	
+	# Update highlight state
+	if currently_highlighted_card != target_card:
+		# Remove highlight from previously highlighted card
+		if currently_highlighted_card:
+			currently_highlighted_card.highlight(false)
+		
+		# Add highlight to new target card
+		if target_card:
+			target_card.highlight(true)
+		
+		currently_highlighted_card = target_card
+
+func updateTargetHighlight():
+	"""Highlight the specific target under mouse when dragging a card"""
+	if not dragged_card:
+		return
+	
+	# Find target under mouse (CombatantFightingSpot or PlayerBase)
+	var target_under_mouse = getObjectUnderMouse(CombatantFightingSpot)
+	if not target_under_mouse:
+		target_under_mouse = getObjectUnderMouse(PlayerBase)
+	
+	# Update highlight state
+	if currently_highlighted_target != target_under_mouse:
+		# Clear previous target highlight
+		if currently_highlighted_target and currently_highlighted_target.has_method("highlight"):
+			currently_highlighted_target.highlight(false)
+		
+		# Add highlight to new target
+		if target_under_mouse and target_under_mouse.has_method("highlight"):
+			target_under_mouse.highlight(true)
+		
+		currently_highlighted_target = target_under_mouse
+
+func clearTargetHighlight():
+	"""Clear the current target highlight"""
+	if currently_highlighted_target and currently_highlighted_target.has_method("highlight"):
+		currently_highlighted_target.highlight(false)
+	currently_highlighted_target = null
 	
 
 var dragged_card: Card = null
@@ -109,6 +175,11 @@ func _calculate_game_popup_position() -> Vector2:
 
 func getMousePositionHand() -> Vector3:
 	var mouse_position = get_viewport().get_mouse_position()
+	
+	# Add offset to the right when dragging a card so the card doesn't obscure the target
+	if dragged_card:
+		mouse_position.x += DRAG_OFFSET_X  # Offset to the right
+	
 	var ray_origin = camera.project_ray_origin(mouse_position)
 	var ray_direction = camera.project_ray_normal(mouse_position)
 	var ray_end = ray_origin + ray_direction * 10000.0  # long ray
@@ -138,7 +209,6 @@ func getObjectUnderMouse(target_class = Node3D) -> Node3D:
 	query.collide_with_areas = true
 	query.collide_with_bodies = true
 	query.collision_mask = 0xFFFFFFFF 
-	DebugDraw3D.draw_line(ray_origin, ray_end, Color.RED, 1000)
 	var result = space_state.intersect_ray(query)
 	var excludes = []
 	var searchCounter = 0

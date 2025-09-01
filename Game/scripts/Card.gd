@@ -3,12 +3,14 @@ class_name Card
 
 @onready var card_representation: Node3D = $CardRepresentation
 @onready var card_2d_display: MeshInstance3D = $CardRepresentation/Card2DDisplay
+@onready var highlight_mesh: MeshInstance3D = $CardRepresentation/HighlightMesh
 @onready var sub_viewport: SubViewport = $CardRepresentation/Card2DDisplay/SubViewport
 @onready var card_2d_full: Control = $CardRepresentation/Card2DDisplay/SubViewport/Card2D
 @onready var card_2d_small: Control
 
 # Card size state
 var is_small: bool = false
+var is_highlighted: bool = false
 
 enum CardControlState{
 	FREE,
@@ -171,3 +173,9 @@ func getDamage():
 func receiveDamage(v: int):
 	damage += v
 	updateDisplay()
+
+func highlight(enabled: bool):
+	"""Enable or disable the highlight effect"""
+	if highlight_mesh:
+		is_highlighted = enabled
+		highlight_mesh.visible = enabled

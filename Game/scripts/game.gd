@@ -50,6 +50,7 @@ func tryPlayCard(card: Card, _location: Node3D) -> bool:
 		return playCardToCombatZone(card, _location)
 	elif _location is PlayerBase:
 		return playCardToPlayerBase(card, _location as PlayerBase)
+		return playCardToPlayerBase(card, _location as PlayerBase)
 	return false
 	
 	

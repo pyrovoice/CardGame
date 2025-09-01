@@ -3,6 +3,9 @@ class_name CombatantFightingSpot
 
 signal onCardEnteredOrLeft
 
+@onready var highlight_mesh: MeshInstance3D = $HighlightMesh
+var is_highlighted: bool = false
+
 func getCard() -> Card:
 	return find_child("Card")
 	
@@ -19,3 +22,9 @@ func setCard(c: Card, keepPos = true):
 		add_child(c)
 	c.position = c.position + Vector3(0, 0.1, 0)
 	onCardEnteredOrLeft.emit(c)
+
+func highlight(enabled: bool):
+	"""Enable or disable the highlight effect"""
+	if highlight_mesh:
+		is_highlighted = enabled
+		highlight_mesh.visible = enabled
