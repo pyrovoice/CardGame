@@ -8,7 +8,7 @@ static func _static_init():
 	initialize_keywords()
 
 static func initialize_keywords():
-	keywords["Flying"] = "Flying is a key word with an effect"
+	keywords["Flying"] = "Flying is a key word with an effect. I'm going to make it very long, just to check that it's well integrate with the rest. Is this long enough? Let's see."
 	keywords["Ganking"] = "Ganking is a key word with an effect"
 	keywords["Trample"] = "Trample is a key word with an effect"
 	keywords["First Strike"] = "First Strike is a key word with an effect"
@@ -25,21 +25,9 @@ static func get_keyword_text(keyword: String) -> String:
 
 static func parse_keywords_from_text(card_text: String) -> Array[String]:
 	var found_keywords: Array[String] = []
-	
-	# Split card text into lines
-	var lines = card_text.split("\\n")
-	if lines.size() == 0:
-		return found_keywords
-	
-	# Check first line for keywords (assuming keywords are on the first line)
-	var first_line = lines[0]
-	
-	# Split by commas and check each part
-	var parts = first_line.split(",")
-	for part in parts:
-		var trimmed = part.strip_edges()
-		if keywords.has(trimmed):
-			found_keywords.append(trimmed)
+	for keyword in keywords:
+		if card_text.contains(keyword):
+			found_keywords.append(keyword)
 	
 	return found_keywords
 

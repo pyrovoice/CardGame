@@ -15,29 +15,41 @@ corner_radius_bottom_right = 5
 corner_radius_bottom_left = 5
 
 [node name="KeywordPanel" type="Panel"]
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
+custom_minimum_size = Vector2(400, 100)
+anchors_preset = -1
+offset_top = -0.5
+offset_right = 400.0
+offset_bottom = 99.5
 grow_horizontal = 2
 grow_vertical = 2
 size_flags_vertical = 4
 theme_override_styles/panel = SubResource("StyleBoxFlat_1")
 script = ExtResource("1_5x8kv")
 
-[node name="RichTextLabel" type="RichTextLabel" parent="."]
-clip_contents = false
+[node name="VBoxContainer" type="VBoxContainer" parent="."]
+custom_minimum_size = Vector2(750, 80)
 layout_mode = 1
 anchors_preset = -1
-anchor_left = 0.005
-anchor_top = 0.006
-anchor_right = 1.0
-anchor_bottom = 1.0
-offset_left = 0.24
-offset_top = 0.112
+offset_left = 5.0
+offset_top = 6.0
+offset_right = 755.0
+offset_bottom = 130.0
 grow_horizontal = 2
 grow_vertical = 2
+scale = Vector2(0.5, 0.5)
+
+[node name="KeywordTitle" type="Label" parent="VBoxContainer"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0, 0, 0, 1)
+theme_override_font_sizes/font_size = 32
+text = "Keyword"
+
+[node name="DescriptionText" type="RichTextLabel" parent="VBoxContainer"]
+layout_mode = 2
+size_flags_vertical = 2
 theme_override_colors/default_color = Color(0, 0, 0, 1)
+theme_override_font_sizes/normal_font_size = 24
 bbcode_enabled = true
-text = "Test keyword"
+text = "Description text goes here"
 fit_content = true
 scroll_active = false

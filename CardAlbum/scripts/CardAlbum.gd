@@ -8,11 +8,15 @@ class_name CardAlbum
 @onready var next_button: Button = $"next_button"
 
 # Card popup manager - will be added to the scene
-var card_popup_manager: Control
+var card_popup_manager: CardPopupManager
 
 # Grid configuration
 const CARDS_PER_PAGE = 10
 const GRID_COLUMNS = 5
+
+# Popup positioning constants
+const POPUP_LEFT_MARGIN = 5
+const ENLARGED_CARD_HEIGHT = 600  # Match the ENLARGED_VIEWPORT_SIZE height
 
 var all_cards: Array[CardData] = []
 var current_page: int = 0
@@ -110,7 +114,15 @@ func _on_card_clicked(card: Card2D):
 
 func _on_card_right_clicked(card_data: CardData):
 	if card_popup_manager and card_popup_manager.has_method("show_card_popup"):
-		card_popup_manager.show_card_popup(card_data)
+		var album_position = _calculate_album_popup_position()
+		card_popup_manager.show_card_popup(card_data, album_position, CardPopupManager.DisplayMode.ENLARGED)
+
+func _calculate_album_popup_position() -> Vector2:
+	"""Calculate the position for card popup in album view (left side of screen)"""
+	var viewport_size = get_viewport().get_visible_rect().size
+	# Use the actual enlarged viewport height for positioning
+	var vertical_center = (viewport_size.y - ENLARGED_CARD_HEIGHT) / 2
+	return Vector2(POPUP_LEFT_MARGIN, vertical_center)
 
 func update_ui():
 	if page_label:

@@ -32,20 +32,20 @@ func update_display():
 	power_label.text = str(card_data.power)
 	
 	# Process text with keyword formatting
-	text_label.text = format_text_with_keywords(card_data.text_box)
+	text_label.text = format_text_with_keywords(card_data)
 
-func format_text_with_keywords(text: String) -> String:
-	# Enable BBCode processing
-	if text_label:
-		text_label.bbcode_enabled = true
-	
-	var formatted_text = text
+func format_text_with_keywords(card_data: CardData) -> String:
+	var formatted_text = card_data.text_box
+	# First, replace newlines with BBCode line breaks
+	# Try both common BBCode line break formats
+	formatted_text = formatted_text.replace("\n", "[p]")
+	formatted_text = formatted_text.replace("CARDNAME", card_data.cardName)
 	
 	# Get all known keywords from KeywordManager
 	for keyword in KeywordManager.keywords.keys():
 		# Simply replace the keyword with bold version
 		# This will find the keyword anywhere it appears as a whole word
-		formatted_text = formatted_text.replace(keyword, "[b]" + keyword + "[/b]")
+		formatted_text = formatted_text.replace(keyword, "[color=GOLDENROD]" + keyword + "[/color]")
 	
 	return formatted_text
 

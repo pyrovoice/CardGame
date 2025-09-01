@@ -1,11 +1,21 @@
 extends Control
 class_name CardPopupManager
 
-@onready var card_popup_display: TextureRect = $CardPopupDisplay
-@onready var card_popup_viewport: SubViewport = $CardPopupViewport
+# Display modes for card popup
+enum DisplayMode {
+	NORMAL,
+	ENLARGED
+}
+
+# Display configuration constants
+const NORMAL_SCALE = Vector2.ONE
+const ENLARGED_SCALE = Vector2(1.5, 1.5)
+const KEYWORD_GAP_NORMAL = 20
+const KEYWORD_GAP_ENLARGED = 5
+
 @onready var keyword_container: VBoxContainer = $KeywordContainer
-# Remove the static card reference - we'll create fresh ones each time
-var card_in_popup: Card = null
+# Use Card2D instead of 3D card and viewport
+var card_in_popup: Card2D = null
 
 var current_tween: Tween = null
 var keyword_panels: Array[Control] = []
@@ -24,42 +34,58 @@ func _input(event: InputEvent):
 		# Close popup on any mouse click
 		hide_popup()
 
-func show_card_popup(card_data: CardData, popup_position: Vector2 = Vector2.ZERO):
+func show_card_popup(card_data: CardData, popup_position: Vector2 = Vector2.ZERO, display_mode: DisplayMode = DisplayMode.NORMAL):
 	if not card_data:
 		return
 	
-	# Clear any existing card in the viewport
+	# Clear any existing card
 	clear_popup_card()
 	
-	# Create a fresh Card instance
-	var card_scene = preload("res://Game/scenes/Card.tscn")
-	card_in_popup = card_scene.instantiate()
-	card_popup_viewport.add_child(card_in_popup)
+	# Configure scale and keyword gap based on display mode
+	var card_scale = ENLARGED_SCALE if display_mode == DisplayMode.ENLARGED else NORMAL_SCALE
+	var keyword_gap = KEYWORD_GAP_ENLARGED if display_mode == DisplayMode.ENLARGED else KEYWORD_GAP_NORMAL
+	
+	# Create a fresh Card2D instance
+	var card_scene = preload("res://Shared/scenes/Card2D.tscn")
+	card_in_popup = card_scene.instantiate() as Card2D
+	add_child(card_in_popup)
 	
 	# Set the card data
-	card_in_popup.setData(card_data)
+	card_in_popup.set_card_data(card_data)
 	
-	# Force viewport to update and render the new card
-	card_popup_viewport.render_target_update_mode = SubViewport.UPDATE_ONCE
-	await get_tree().process_frame  # Wait one frame for the card to update
+	# Scale the card for display mode
+	card_in_popup.scale = card_scale
 	
-	# Show the popup display
-	card_popup_display.show()
-	card_popup_display.texture = card_popup_viewport.get_texture()
-	card_popup_display.visible = true
+	# Show the card
+	card_in_popup.visible = true
 	
 	# Position the popup
 	if popup_position != Vector2.ZERO:
-		card_popup_display.global_position = popup_position
+		card_in_popup.global_position = popup_position
 	else:
 		# Center on screen if no position provided
-		var viewport_size = get_viewport().get_visible_rect().size
-		card_popup_display.global_position = (viewport_size - card_popup_display.size) / 2
+		var screen_size = get_viewport().get_visible_rect().size
+		var card_size = card_in_popup.size * card_scale
+		card_in_popup.global_position = (screen_size - card_size) / 2
 	
-	# Show keyword reminder panels for each keyword
+	# Create keyword panels first
 	create_keyword_panels(card_data)
 	
-	# Animate the popup
+	# Position keyword container based on card position
+	if popup_position != Vector2.ZERO:
+		# Position keywords to the right of the card when specific position is given
+		var card_width = card_in_popup.size.x * card_scale.x
+		var keyword_x_pos = popup_position.x + card_width + keyword_gap
+		keyword_container.global_position = Vector2(keyword_x_pos, popup_position.y)
+	else:
+		# Default positioning when centered - keywords to the right of card
+		var screen_size = get_viewport().get_visible_rect().size
+		var card_size = card_in_popup.size * card_scale
+		var keyword_x_pos = (screen_size.x - card_size.x) / 2 + card_size.x + keyword_gap
+		var keyword_y_pos = (screen_size.y - card_size.y) / 2
+		keyword_container.global_position = Vector2(keyword_x_pos, keyword_y_pos)
+	
+	# Animate the popup (no scaling, just fade/size animation)
 	animate_popup_show()
 
 func clear_popup_card():
@@ -104,7 +130,8 @@ func clear_keyword_panels():
 	keyword_panels.clear()
 
 func hide_popup():
-	card_popup_display.hide()
+	if card_in_popup and is_instance_valid(card_in_popup):
+		card_in_popup.hide()
 	clear_keyword_panels()
 	clear_popup_card()  # Clear the card when hiding
 	popup_closed.emit()
@@ -113,6 +140,7 @@ func animate_popup_show():
 	if current_tween:
 		current_tween.kill()
 	
-	current_tween = create_tween()
-	card_popup_display.scale = Vector2.ZERO
-	current_tween.tween_property(card_popup_display, "scale", Vector2.ONE, 0.2).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	if card_in_popup and is_instance_valid(card_in_popup):
+		current_tween = create_tween()
+		card_in_popup.modulate.a = 0.0
+		current_tween.tween_property(card_in_popup, "modulate:a", 1.0, 0.2).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)

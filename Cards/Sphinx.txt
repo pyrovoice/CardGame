@@ -3,4 +3,4 @@ ManaCost:5
 Types:Creature Sphinx
 Power:1
 TODO effects
-CardText:Flying, Ganking\nWhen CARDNAME enters, Draw a card.\nWhile CARDNAME is in combat, other creatures at this location deal one less damage.
+CardText:Flying, Ganking[p]When CARDNAME enters, Draw a card.[p]While CARDNAME is in combat, other creatures at this location deal one less damage.
