@@ -67,9 +67,6 @@ func setData(_cardData):
 	updateDisplay()
 	
 func updateDisplay():
-	print("🔍 updateDisplay() called for card: ", cardData.cardName if cardData else "NO CARD DATA")
-	print("  - is_small: ", is_small)
-	
 	if not cardData:
 		print("  - ❌ ERROR: No cardData, returning early")
 		return
@@ -77,25 +74,17 @@ func updateDisplay():
 	if is_small:
 		if card_2d_full:
 			card_2d_full.hide()
-		else:
-			print("    - ❌ ERROR: card_2d_full is null!")
 			
 		if card_2d_small:
 			card_2d_small.show()
 			card_2d_small.set_card_data(cardData)
-		else:
-			print("    - ❌ ERROR: card_2d_small is null!")
 	else:
 		if card_2d_small:
 			card_2d_small.hide()
-		else:
-			print("    - ❌ ERROR: card_2d_small is null!")
 			
 		if card_2d_full:
 			card_2d_full.show()
 			card_2d_full.set_card_data(cardData)
-		else:
-			print("    - ❌ ERROR: card_2d_full is null!")
 
 func popUp():
 	if cardControlState == CardControlState.MOVED_BY_GAME:
@@ -139,87 +128,39 @@ func setRotation(angle_deg: Vector3, rotationValue):
 		angleInHand = card_representation.rotation_degrees
 
 func makeSmall():
-	print("🔍 makeSmall() called for card: ", cardData.cardName if cardData else "NO CARD DATA")
-	print("  - Current is_small state: ", is_small)
-	
 	if is_small:
-		print("  - Card is already small, returning early")
 		return
-		
 	is_small = true
-	print("  - Setting is_small = true")
-	
-	# Check if UI elements exist before trying to manipulate them
-	if not card_2d_full:
-		print("  - ❌ ERROR: card_2d_full is null!")
-		return
-	if not card_2d_small:
-		print("  - ❌ ERROR: card_2d_small is null!")
-		return
-	if not sub_viewport:
-		print("  - ❌ ERROR: sub_viewport is null!")
-		return
-	if not card_2d_display:
-		print("  - ❌ ERROR: card_2d_display is null!")
-		return
-	
-	print("  - All UI elements found, proceeding with size change")
-	
-	# Simply hide full card and show small card
 	card_2d_full.hide()
 	card_2d_small.show()
-	print("  - Switched to small card display")
-	
 	# Adjust SubViewport size to match small card size
-	print("  - Old SubViewport size: ", sub_viewport.size)
 	sub_viewport.size = Vector2i(120, 100)
-	print("  - New SubViewport size: ", sub_viewport.size)
-	
 	# Force SubViewport to update using different methods
 	sub_viewport.render_target_update_mode = SubViewport.UPDATE_ONCE
-	print("  - Set SubViewport to UPDATE_ONCE")
-	
 	# Also try to force an immediate render
 	sub_viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 	call_deferred("_finish_make_small_setup")
 
 func _finish_make_small_setup():
-	print("  - _finish_make_small_setup() called")
-	
 	# Check SubViewport texture
 	var viewport_texture = sub_viewport.get_texture()
-	print("  - SubViewport texture: ", viewport_texture)
-	if viewport_texture:
-		print("    - Texture size: ", viewport_texture.get_size())
 	
 	# Scale the 3D display accordingly
 	if card_2d_display:
-		print("  - Old card_2d_display scale: ", card_2d_display.scale)
 		card_2d_display.scale = Vector3(1, 0.60, 1.0)  # Roughly half the length
-		print("  - New card_2d_display scale: ", card_2d_display.scale)
-		
 		# Check if the material has the updated texture
 		var material = card_2d_display.get_surface_override_material(0)
 		if material:
-			print("  - Material found: ", material)
-			print("  - Material texture: ", material.albedo_texture)
-			if material.albedo_texture:
-				print("    - Material texture size: ", material.albedo_texture.get_size())
-			
 			# Try to refresh the material texture
 			material.albedo_texture = sub_viewport.get_texture()
-			print("  - Updated material texture reference")
 		else:
 			print("  - ❌ WARNING: No material found on card_2d_display")
 	
 	# Update display to ensure small card has correct data
 	if cardData:
-		print("  - Calling updateDisplay() to refresh card data")
 		updateDisplay()
 	else:
 		print("  - ❌ WARNING: No cardData available to update display")
-	
-	print("  - makeSmall() completed")
 
 func makeBig():
 	if not is_small:

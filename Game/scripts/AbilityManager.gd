@@ -203,10 +203,6 @@ func isValidCardCondition(condition: String, triggerSource: Card, abilityOwner: 
 func getTriggerType(_triggerSource: Card, from: GameZone.e, to: GameZone.e, isPlayed = false):
 	# getTriggerType depending on parameters. For example, from hand to Player_Base would return ChangesZone
 	
-	# If isPlayed is true, this is explicitly a card being played
-	if isPlayed:
-		return "CARD_PLAYED"
-	
 	# If zones are different, this is a zone change
 	if from != to:
 		return "CHANGES_ZONE"
