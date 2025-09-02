@@ -124,7 +124,6 @@ func _input(event):
 			else:
 				var clickedCard: Card = getObjectUnderMouse(Card)
 				if clickedCard:
-					print(clickedCard.cardData.cardName)
 					dragged_card = clickedCard
 		else:
 			if !event.pressed && dragged_card && !isMousePointerInHandZone():

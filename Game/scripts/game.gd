@@ -1,4 +1,5 @@
 extends Node3D
+class_name Game
 
 @onready var player_control: PlayerControl = $playerControl
 @onready var player_hand: Node3D = $Camera3D/PlayerHand
@@ -49,8 +50,7 @@ func tryPlayCard(card: Card, _location: Node3D) -> bool:
 			return false
 		return playCardToCombatZone(card, _location)
 	elif _location is PlayerBase:
-		return playCardToPlayerBase(card, _location as PlayerBase)
-		return playCardToPlayerBase(card, _location as PlayerBase)
+		return playCardToPlayerBase(card)
 	return false
 	
 	
@@ -61,37 +61,22 @@ func payCard(card: Card):
 	return true
 	
 func playCardToCombatZone(card: Card, zone: CombatantFightingSpot):
+	var from_zone = card.current_zone  # Get the current zone before moving
 	zone.setCard(card)
 	card.animatePlayedTo(zone.global_position + Vector3(0, 0.1, 0))
-	
-	# Trigger abilities when card enters battlefield
-	trigger_enter_battlefield_abilities(card)
-	
 	return true
 
-func playCardToPlayerBase(card: Card, base: PlayerBase) -> bool:
-	var target_position = base.getNextEmptyLocation()
+func playCardToPlayerBase(card: Card) -> bool:
+	var target_position = player_base.getNextEmptyLocation()
 	if target_position == Vector3.INF:  # No empty location available
 		return false
 	
 	# Convert local position to global position
-	var global_target = base.global_position + target_position
+	var global_target = player_base.global_position + target_position
 	card.animatePlayedTo(global_target + Vector3(0, 0.1, 0))
-	card.reparent(base)
-	
-	# Trigger abilities when card enters battlefield
-	trigger_enter_battlefield_abilities(card)
-	
+	card.reparent(player_base)
+	AbilityManagerAL.triggerGameAction(self, card, GameZone.e.HAND, GameZone.e.PLAYER_BASE, true)
 	return true
-
-func trigger_enter_battlefield_abilities(entering_card: Card):
-	"""Trigger all abilities that respond to a card entering the battlefield"""
-	print("\n=== Card entered battlefield: ", entering_card.cardData.cardName, " ===")
-	
-	# Use the AbilityManager to detect and trigger abilities
-	AbilityManager.detect_and_trigger_abilities(self, "CARD_ENTERS_BATTLEFIELD", entering_card)
-	
-	print("=== End of trigger detection ===\n")
 
 func drawCard():
 	var card = deck.draw_card_from_top()
@@ -166,8 +151,8 @@ func createOpposingToken():
 		location.setCard(card, false)
 	card.makeSmall()
 
-func getAllCardsInPlay() -> Array:
-	var cards = []
+func getAllCardsInPlay() -> Array[Card]:
+	var cards:Array[Card] = player_base.getCards()
 	for cz:CombatZone in combatZones:
 		cz.allySpots.filter(func(c:CombatantFightingSpot): return c.getCard() != null).map(func(c:CombatantFightingSpot): cards.push_back(c.getCard()))
 	return cards 
@@ -176,3 +161,47 @@ func putInOwnerGraveyard(card: Card):
 	await card.animatePlayedTo(graveyard.global_position)
 	graveyard.cards.push_back(card.cardData)
 	card.queue_free()
+
+static var objectCount = 0
+static func getObjectCountAndIncrement():
+	objectCount +=1
+	return objectCount-1
+func createCardFromData(cardData: CardData):
+	if cardData == null:
+		push_warning("Tried to draw from empty deck.")
+		return null
+	
+	if !CARD.can_instantiate():
+		push_error("Can't instantiate.")
+		return
+	var card_instance: Card = CARD.instantiate() as Card
+	if card_instance == null:
+		push_error("Card instance is null! Check if Card.gd is attached to Card.tscn root.")
+		return
+	add_child(card_instance)
+	card_instance.setData(cardData)
+	card_instance.name = cardData.cardName + "_" + str(getObjectCountAndIncrement())
+	return card_instance
+
+func getCardZone(card: Card) -> GameZone.e:
+	"""Determine what zone a card is currently in based on its parent"""
+	var parent = card.get_parent()
+	if not parent:
+		return GameZone.e.DECK # Default fallback
+	
+	var parent_name = parent.name
+	
+	# Check parent name/type to determine zone
+	if parent_name == "PlayerHand":
+		return GameZone.e.HAND
+	elif parent_name == "playerBase" or parent.get_script() != null and parent.get_script().get_global_name() == "PlayerBase":
+		return GameZone.e.PLAYER_BASE
+	elif parent_name.begins_with("combatZone") or parent.get_script() != null and parent.get_script().get_global_name() == "CombatantFightingSpot":
+		return GameZone.e.COMBAT_ZONE
+	elif parent_name == "graveyard" or parent.get_script() != null and parent.get_script().get_global_name() == "Graveyard":
+		return GameZone.e.GRAVEYARD
+	elif parent_name == "Deck" or parent.get_script() != null and parent.get_script().get_global_name() == "Deck":
+		return GameZone.e.DECK
+		
+		# Default fallback
+	return GameZone.e.DECK

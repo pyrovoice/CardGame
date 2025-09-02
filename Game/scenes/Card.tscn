@@ -1,7 +1,8 @@
-[gd_scene load_steps=7 format=3 uid="uid://dr51qu20aa77"]
+[gd_scene load_steps=8 format=3 uid="uid://dr51qu20aa77"]
 
 [ext_resource type="Script" uid="uid://m81mshlqb0l7" path="res://Game/scripts/Card.gd" id="1_p5v87"]
 [ext_resource type="PackedScene" uid="uid://d3lfyqqnp8p75" path="res://Shared/scenes/Card2D.tscn" id="2_card2d"]
+[ext_resource type="PackedScene" uid="uid://i36vftw0aqxr" path="res://Shared/scenes/Card2D_Small.tscn" id="3_020dk"]
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_card"]
 size = Vector3(0.66, 0.05, 0.89)
@@ -38,6 +39,8 @@ size = Vector2i(150, 200)
 render_target_update_mode = 1
 
 [node name="Card2D" parent="CardRepresentation/Card2DDisplay/SubViewport" instance=ExtResource("2_card2d")]
+
+[node name="Card2D_Small" parent="CardRepresentation/Card2DDisplay/SubViewport" instance=ExtResource("3_020dk")]
 
 [node name="HighlightMesh" type="MeshInstance3D" parent="CardRepresentation"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.002, 0)

@@ -22,21 +22,8 @@ func shuffle():
 # Draw and instantiate the top card, then remove it from the deck
 func draw_card_from_top() -> Card:
 	var card_data: CardData = cards.pop_front()
-	if card_data == null:
-		push_warning("Tried to draw from empty deck.")
-		return null
+	return (get_parent() as Game).createCardFromData(card_data)
 	
-	if !CARD.can_instantiate():
-		push_error("Can't instantiate.")
-		return
-	var card_instance: Card = CARD.instantiate() as Card
-	if card_instance == null:
-		push_error("Card instance is null! Check if Card.gd is attached to Card.tscn root.")
-		return
-	add_child(card_instance)
-	card_instance.setData(card_data)
-	return card_instance
-
 # Peek at the top N card data (does not remove or instantiate)
 func get_cards_from_top(n: int) -> Array:
 	return cards.slice(0, min(n, cards.size()))
