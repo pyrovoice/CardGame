@@ -2,5 +2,6 @@ Name:Sphinx
 ManaCost:5
 Types:Creature Sphinx
 Power:1
-TODO effects
+T:Mode$ ChangesZone | Origin$ Any | Destination$ Battlefield | ValidCard$ Card.Self | Execute$ TrigDraw | TriggerDescription$ When I enter, draw a card.
+SVar:TrigDraw:DB$ Draw | Defined$ You | NumCards$ 1
 CardText:Flying, Ganking[p]When CARDNAME enters, Draw a card.[p]While CARDNAME is in combat, other creatures at this location deal one less damage.

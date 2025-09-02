@@ -149,6 +149,10 @@ static func parse_effect_parameters(effect_text: String) -> Dictionary:
 			parameters["DB"] = part.substr(4)
 		elif part.begins_with("TokenScript$"):
 			parameters["TokenScript"] = part.substr(13)
+		elif part.begins_with("Defined$"):
+			parameters["Defined"] = part.substr(9)
+		elif part.begins_with("NumCards$"):
+			parameters["NumCards"] = part.substr(10)
 		# Add more parameter parsing as needed
 	
 	return parameters

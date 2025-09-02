@@ -14,7 +14,7 @@ func triggerGameAction(game:Game, triggerSource: Card, from: GameZone.e, to: Gam
 		var triggeringCard = abilityPair.card
 		var ability = abilityPair.ability
 		# Execute the specific ability
-		executeAbility(triggeringCard, ability)
+		executeAbility(triggeringCard, ability, game)
 
 func execute_token_creation(parameters: Dictionary, source_card: Card, game_context: Game):
 	"""Execute token creation effect"""
@@ -28,6 +28,31 @@ func execute_token_creation(parameters: Dictionary, source_card: Card, game_cont
 	var token_data = CardLoader.load_card_from_file(token_path)
 	var card = game_context.createCardFromData(token_data)
 	game_context.playCardToPlayerBase(card)
+
+func execute_draw_card(parameters: Dictionary, source_card: Card, game_context: Game):
+	"""Execute draw card effect"""
+	# Check who should draw the card (default to "You" if not specified)
+	var defined_player = parameters.get("Defined", "You")
+	if defined_player != "You":
+		print("⚡ Draw card triggered by: ", source_card.cardData.cardName)
+		print("  But effect is for: ", defined_player, " (not implemented for non-player)")
+		return
+	
+	# Get the number of cards to draw
+	var cards_to_draw = 1  # Default to 1
+	if parameters.has("NumCards"):
+		cards_to_draw = int(parameters.get("NumCards", "1"))
+	elif parameters.has("Amount"):
+		cards_to_draw = int(parameters.get("Amount", "1"))
+	elif parameters.has("CardsDrawn"):
+		cards_to_draw = int(parameters.get("CardsDrawn", "1"))
+	
+	print("⚡ Draw card triggered by: ", source_card.cardData.cardName)
+	print("  Drawing ", cards_to_draw, " card(s) for: ", defined_player)
+	
+	# Draw the specified number of cards
+	for i in range(cards_to_draw):
+		game_context.drawCard()
 
 static func create_token_card(token_data: CardData, _game_context: Node) -> Card:
 	"""Create a new Card instance for the token"""
@@ -171,17 +196,18 @@ func getTriggeredAbilities(cards: Array[Card], triggerSource: Card, from: GameZo
 	
 	return triggeredAbilities
 
-func executeAbility(triggeringCard: Card, ability: Dictionary):
+func executeAbility(triggeringCard: Card, ability: Dictionary, game_context: Game):
 	"""Execute a specific triggered ability"""
 	var effect_name = ability.get("effect_name", "")
 	var effect_parameters = ability.get("effect_parameters", {})
 	
 	match effect_name:
 		"TrigToken":
-			# For now, we'll need to pass the game context from the caller
-			# This is a temporary solution until we can access it properly
-			print("⚡ Token creation triggered by: ", triggeringCard.cardData.cardName)
-			print("  Effect parameters: ", effect_parameters)
+			# Call the existing token creation logic
+			execute_token_creation(effect_parameters, triggeringCard, game_context)
+		"TrigDraw", "Draw":
+			# Call the existing draw card logic
+			execute_draw_card(effect_parameters, triggeringCard, game_context)
 		_:
 			print("❌ Unknown effect: ", effect_name)
 
@@ -201,8 +227,6 @@ func isValidCardCondition(condition: String, triggerSource: Card, abilityOwner: 
 	return false
 	
 func getTriggerType(_triggerSource: Card, from: GameZone.e, to: GameZone.e, isPlayed = false):
-	# getTriggerType depending on parameters. For example, from hand to Player_Base would return ChangesZone
-	
 	# If zones are different, this is a zone change
 	if from != to:
 		return "CHANGES_ZONE"
