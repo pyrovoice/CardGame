@@ -23,6 +23,7 @@ var objectID
 var cardControlState: CardControlState = CardControlState.FREE
 var angleInHand: Vector3 = Vector3.ZERO
 var damage = 0
+var isToken = false
 const popUpVal = 1.0
 
 static var objectUUID = -1

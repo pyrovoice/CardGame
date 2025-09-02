@@ -23,11 +23,29 @@ func execute_token_creation(parameters: Dictionary, source_card: Card, game_cont
 		print("❌ No TokenScript specified for token creation")
 		return
 	
-	# Load the token data from the Cards/Tokens/ folder
-	var token_path = "res://Cards/Tokens/" + token_script + ".txt"
-	var token_data = CardLoader.load_card_from_file(token_path)
-	var card = game_context.createCardFromData(token_data)
-	game_context.playCardToPlayerBase(card)
+	# Load the token data from the tokensData array
+	var token_data = CardLoader.load_token_by_name(token_script)
+	if not token_data:
+		print("❌ Failed to load token: " + token_script)
+		return
+	
+	# Check for replacement effects before creating tokens
+	var effect_context = {
+		"effect_type": "CreateToken",
+		"source_card": source_card,
+		"token_data": token_data,
+		"tokens_to_create": 1,  # Default amount
+		"game_context": game_context
+	}
+	
+	# Apply replacement effects
+	effect_context = onEffectTrigger(effect_context, game_context)
+	
+	# Create the modified number of tokens
+	var tokens_to_create = effect_context.get("tokens_to_create", 1)
+	for i in range(tokens_to_create):
+		var card = game_context.createCardFromData(token_data)
+		game_context.playCardToPlayerBase(card)
 
 func execute_draw_card(parameters: Dictionary, source_card: Card, game_context: Game):
 	"""Execute draw card effect"""
@@ -53,6 +71,111 @@ func execute_draw_card(parameters: Dictionary, source_card: Card, game_context: 
 	# Draw the specified number of cards
 	for i in range(cards_to_draw):
 		game_context.drawCard()
+
+func onEffectTrigger(effect_context: Dictionary, game_context: Game) -> Dictionary:
+	"""Check for replacement effects that modify the given effect"""
+	var effect_type = effect_context.get("effect_type", "")
+	var modified_context = effect_context.duplicate()
+	
+	# Get all cards that could have replacement effects
+	var all_cards = game_context.getAllCardsInPlay()
+	
+	for card in all_cards:
+		if not card.cardData or card.cardData.abilities.is_empty():
+			continue
+		
+		for ability in card.cardData.abilities:
+			if ability.get("type", "") != "ReplacementEffect":
+				continue
+			
+			# Check if this replacement effect applies to the current effect
+			if shouldReplacementEffectApply(ability, effect_context, card, game_context):
+				# Apply the replacement effect
+				modified_context = applyReplacementEffect(ability, modified_context, card)
+	
+	return modified_context
+
+func shouldReplacementEffectApply(replacement_ability: Dictionary, effect_context: Dictionary, replacement_source: Card, game_context: Game) -> bool:
+	"""Check if a replacement effect should apply to the current effect"""
+	var effect_type = effect_context.get("effect_type", "")
+	var ability_event_type = replacement_ability.get("event_type", "")
+	
+	# Check if the event type matches
+	if ability_event_type != effect_type:
+		return false
+	
+	# Check ActiveZones condition
+	var conditions = replacement_ability.get("replacement_conditions", {})
+	var active_zones = conditions.get("ActiveZones", "Any")
+	
+	if active_zones != "Any":
+		var replacement_source_zone = game_context.getCardZone(replacement_source)
+		if active_zones == "Battlefield":
+			if replacement_source_zone != GameZone.e.PLAYER_BASE and replacement_source_zone != GameZone.e.COMBAT_ZONE:
+				return false
+		elif active_zones == "Hand":
+			if replacement_source_zone != GameZone.e.HAND:
+				return false
+		# Add other zones as needed
+	
+	# Check ValidToken condition for token creation
+	if effect_type == "CreateToken":
+		var valid_token = conditions.get("ValidToken", "Any")
+		if valid_token != "Any":
+			if not isValidTokenCondition(valid_token, effect_context):
+				return false
+	
+	return true
+
+func isValidTokenCondition(condition: String, effect_context: Dictionary) -> bool:
+	"""Check if the token being created matches the ValidToken condition"""
+	if condition == "Any":
+		return true
+	
+	# Parse condition like "Card.YouCtrl+Creature.Goblin"
+	var conditions = condition.split("+")
+	
+	for single_condition in conditions:
+		single_condition = single_condition.strip_edges()
+		
+		if single_condition == "Card.YouCtrl":
+			# For now, assume all tokens are created under player control
+			continue
+		elif single_condition.begins_with("Creature."):
+			# Check if token is a creature with specific subtype
+			var required_subtype = single_condition.substr(9)  # Remove "Creature."
+			var token_data = effect_context.get("token_data") as CardData
+			
+			if not token_data:
+				return false
+			
+			# Check if it's a creature
+			if token_data.type != CardData.CardType.CREATURE:
+				return false
+			
+			# Check if it has the required subtype
+			if not token_data.subtypes or not (required_subtype in token_data.subtypes):
+				return false
+	
+	return true
+
+func applyReplacementEffect(replacement_ability: Dictionary, effect_context: Dictionary, replacement_source: Card) -> Dictionary:
+	"""Apply a replacement effect to modify the effect context"""
+	var modified_context = effect_context.duplicate()
+	var effect_parameters = replacement_ability.get("effect_parameters", {})
+	var replacement_type = effect_parameters.get("Type", "")
+	
+	match replacement_type:
+		"AddToken":
+			# Add additional tokens to be created
+			var amount_to_add = int(effect_parameters.get("Amount", "0"))
+			var current_amount = modified_context.get("tokens_to_create", 1)
+			modified_context["tokens_to_create"] = current_amount + amount_to_add
+			print("  Adding ", amount_to_add, " additional token(s). Total: ", modified_context["tokens_to_create"])
+		_:
+			print("  Unknown replacement type: ", replacement_type)
+	
+	return modified_context
 
 static func create_token_card(token_data: CardData, _game_context: Node) -> Card:
 	"""Create a new Card instance for the token"""
@@ -226,7 +349,7 @@ func isValidCardCondition(condition: String, triggerSource: Card, abilityOwner: 
 	
 	return false
 	
-func getTriggerType(_triggerSource: Card, from: GameZone.e, to: GameZone.e, isPlayed = false):
+func getTriggerType(_triggerSource: Card, from: GameZone.e, to: GameZone.e, _isPlayed = false):
 	# If zones are different, this is a zone change
 	if from != to:
 		return "CHANGES_ZONE"

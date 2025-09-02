@@ -1,4 +1,4 @@
-Name:Goblin
+Name:goblin
 Types:Creature Goblin
 Power:1
 CardText:Token creature created by Goblin Pair.

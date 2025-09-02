@@ -2,6 +2,7 @@ extends RefCounted
 class_name CardLoader
 
 static var cardData: Array[CardData] = []
+static var tokensData: Array[CardData] = []
 # Parse card data from text content (can be from file or string)
 static func parse_card_data(card_text: String) -> CardData:
 	var card_data = CardData.new()
@@ -78,12 +79,16 @@ static func parse_abilities(properties: Dictionary) -> Array:
 				var effect_value = svar_parts[1].strip_edges()
 				svar_effects[effect_name] = effect_value
 	
-	# Second pass: parse trigger abilities
+	# Second pass: parse triggered abilities
 	for key in properties.keys():
 		if key == "T":
 			var trigger_ability = parse_triggered_ability(properties[key], svar_effects)
 			if trigger_ability:
 				abilities.append(trigger_ability)
+		elif key == "R":
+			var replacement_effect = parse_replacement_effect(properties[key], svar_effects)
+			if replacement_effect:
+				abilities.append(replacement_effect)
 	
 	return abilities
 
@@ -138,6 +143,39 @@ static func parse_triggered_ability(trigger_text: String, svar_effects: Dictiona
 	
 	return ability_data
 
+# Parse a single replacement effect
+static func parse_replacement_effect(replacement_text: String, svar_effects: Dictionary) -> Dictionary:
+	var ability_data = {
+		"type": "ReplacementEffect",
+		"event_type": "",  # What event this replaces (e.g., "CreateToken")
+		"replacement_conditions": {},
+		"effect_name": "",
+		"effect_parameters": {},
+		"description": ""
+	}
+	
+	var replacement_parts = replacement_text.split(" | ")
+	
+	# Parse replacement conditions and parameters
+	for part in replacement_parts:
+		part = part.strip_edges()
+		if part.begins_with("Event$"):
+			ability_data.event_type = part.substr(7)  # Remove "Event$ "
+		elif part.begins_with("ActiveZones$"):
+			ability_data.replacement_conditions["ActiveZones"] = part.substr(13)
+		elif part.begins_with("ValidToken$"):
+			ability_data.replacement_conditions["ValidToken"] = part.substr(12)
+		elif part.begins_with("ReplaceWith$"):
+			ability_data.effect_name = part.substr(13)
+		elif part.begins_with("Description$"):
+			ability_data.description = part.substr(13)
+	
+	# Get effect parameters from SVar
+	if ability_data.effect_name in svar_effects:
+		ability_data.effect_parameters = parse_effect_parameters(svar_effects[ability_data.effect_name])
+	
+	return ability_data
+
 # Parse effect parameters from SVar text
 static func parse_effect_parameters(effect_text: String) -> Dictionary:
 	var parameters: Dictionary = {}
@@ -153,6 +191,10 @@ static func parse_effect_parameters(effect_text: String) -> Dictionary:
 			parameters["Defined"] = part.substr(9)
 		elif part.begins_with("NumCards$"):
 			parameters["NumCards"] = part.substr(10)
+		elif part.begins_with("Type$"):
+			parameters["Type"] = part.substr(6)
+		elif part.begins_with("Amount$"):
+			parameters["Amount"] = part.substr(8)
 		# Add more parameter parsing as needed
 	
 	return parameters
@@ -171,27 +213,57 @@ static func load_card_from_file(file_path: String) -> CardData:
 
 # Load all cards from the Cards/Cards directory
 static func load_all_cards():
+	# Load regular cards
 	var dir = DirAccess.open("res://Cards/Cards/")
 	
 	if not dir:
 		push_error("Could not open Cards/Cards directory")
+	else:
+		dir.list_dir_begin()
+		var file_name = dir.get_next()
+		
+		while file_name != "":
+			# Load card files, but skip directories
+			if file_name.ends_with(".txt") and not dir.current_is_dir():
+				var card_data = load_card_from_file("res://Cards/Cards/" + file_name)
+				if card_data:
+					cardData.append(card_data)
+			file_name = dir.get_next()
 	
-	dir.list_dir_begin()
-	var file_name = dir.get_next()
+	# Load tokens
+	var token_dir = DirAccess.open("res://Cards/Tokens/")
 	
-	while file_name != "":
-		# Load card files, but skip directories
-		if file_name.ends_with(".txt") and not dir.current_is_dir():
-			var card_data = load_card_from_file("res://Cards/Cards/" + file_name)
-			if card_data:
-				cardData.append(card_data)
-		file_name = dir.get_next()
+	if not token_dir:
+		push_error("Could not open Cards/Tokens directory")
+	else:
+		token_dir.list_dir_begin()
+		var token_file_name = token_dir.get_next()
+		
+		while token_file_name != "":
+			# Load token files, but skip directories
+			if token_file_name.ends_with(".txt") and not token_dir.current_is_dir():
+				var token_data = load_card_from_file("res://Cards/Tokens/" + token_file_name)
+				if token_data:
+					tokensData.push_back(token_data)
+			token_file_name = token_dir.get_next()
 
 # Load a specific card by name
-static func load_card_by_name(card_name: String):
+static func load_card_by_name(card_name: String) -> CardData:
 	if !cardData || cardData.size() == 0:
 		load_all_cards()
-	return cardData.find(func(c:CardData): return c.cardName == card_name)
+	var filter = cardData.filter(func(c:CardData): return c.cardName == card_name)
+	if filter.size() >= 1:
+		return filter[0]
+	return null
+
+# Load a specific token by name
+static func load_token_by_name(token_name: String) -> CardData:
+	if !tokensData || tokensData.size() == 0:
+		load_all_cards()
+	var filter = tokensData.filter(func(c:CardData): return c.cardName.contains(token_name))
+	if filter.size() >= 1:
+		return filter[0]
+	return null
 
 static func getRandomCard() -> CardData:
 	if !cardData || cardData.size() == 0:
