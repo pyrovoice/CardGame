@@ -1,10 +1,11 @@
 [gd_scene load_steps=5 format=3 uid="uid://d3lfyqqnp8p75"]
 
 [ext_resource type="Script" uid="uid://ci3bqdvknwjrq" path="res://Shared/scripts/Card2D.gd" id="1_card2d"]
-[ext_resource type="Texture2D" uid="uid://bvhgqh6fy2vbd" path="res://icon.svg" id="2_icon"]
 [ext_resource type="FontVariation" uid="uid://cjtrikaejtvs3" path="res://Shared/Fonts/font.tres" id="3_foy7b"]
 
 [sub_resource type="MeshTexture" id="MeshTexture_q3asr"]
+
+[sub_resource type="ViewportTexture" id="ViewportTexture_q3asr"]
 
 [node name="Card2D" type="Control"]
 custom_minimum_size = Vector2(150, 200)
@@ -23,6 +24,7 @@ grow_vertical = 2
 texture = SubResource("MeshTexture_q3asr")
 
 [node name="CardArt" type="TextureRect" parent="Background"]
+texture_filter = 4
 layout_mode = 1
 anchors_preset = 8
 anchor_left = 0.5
@@ -36,9 +38,8 @@ offset_bottom = 17.0
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
-texture = ExtResource("2_icon")
+texture = SubResource("ViewportTexture_q3asr")
 expand_mode = 2
-stretch_mode = 1
 
 [node name="NameLabel" type="Label" parent="Background"]
 layout_mode = 1

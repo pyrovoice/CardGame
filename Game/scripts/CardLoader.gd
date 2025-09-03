@@ -200,6 +200,18 @@ static func parse_effect_parameters(effect_text: String) -> Dictionary:
 	return parameters
 
 # Load a card from a text file
+static func load_card_art(card_name: String) -> Texture2D:
+	"""Load card art texture for the given card name"""
+	var art_path = "res://Assets/CardArts/" + card_name + ".png"
+	
+	# Check if the file exists
+	if ResourceLoader.exists(art_path):
+		var texture = load(art_path) as Texture2D
+		if texture:
+			return texture
+	
+	return null
+
 static func load_card_from_file(file_path: String) -> CardData:
 	var file = FileAccess.open(file_path, FileAccess.READ)
 	if not file:
@@ -209,7 +221,13 @@ static func load_card_from_file(file_path: String) -> CardData:
 	var file_content = file.get_as_text()
 	file.close()
 	
-	return parse_card_data(file_content)
+	var card_data = parse_card_data(file_content)
+	
+	# Extract card name from file path to load corresponding art
+	if card_data and card_data.cardName:
+		card_data.cardArt = load_card_art(card_data.cardName)
+	
+	return card_data
 
 # Load all cards from the Cards/Cards directory
 static func load_all_cards():
