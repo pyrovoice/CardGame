@@ -14,6 +14,8 @@ var power: int
 var text_box: String
 #Contain all abilities from the card textBox to be useable by the game
 var abilities: Array = []
+# Card artwork texture
+var cardArt: Texture2D
 
 func _init(
 	_cardName: String = "",

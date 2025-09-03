@@ -44,6 +44,13 @@ func update_display():
 	type_label.text = card_data.getFullTypeString()
 	power_label.text = str(card_data.power)
 	
+	# Set card art if available
+	if card_data.cardArt:
+		card_art.texture = card_data.cardArt
+	else:
+		# Clear the texture if no art is available
+		card_art.texture = null
+	
 	# Process text with keyword formatting
 	text_label.text = format_text_with_keywords(card_data)
 

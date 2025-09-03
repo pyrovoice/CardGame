@@ -21,7 +21,6 @@ func set_card_data(data: CardData):
 func update_display():
 	
 	if not card_data:
-		print("  - ❌ No card_data, returning early")
 		return
 	
 	# Check if UI elements exist
@@ -34,6 +33,16 @@ func update_display():
 		print("  - ❌ ERROR: power_label is null!")
 	else:
 		power_label.text = str(card_data.power)
+	
+	# Set card art if available
+	if card_art:
+		if card_data.cardArt:
+			card_art.texture = card_data.cardArt
+		else:
+			# Clear the texture if no art is available
+			card_art.texture = null
+	else:
+		print("  - ❌ ERROR: card_art is null!")
 
 func _on_gui_input(event: InputEvent):
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
