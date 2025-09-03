@@ -3,12 +3,14 @@ extends Node3D
 class_name Deck
 
 @onready var deck_mesh: MeshInstance3D = $deckMesh
-var cards: Array = [] #CardData; 0 is topmost card
+var cards: Array[CardData] = [] #CardData; 0 is topmost card
 const CARD = preload("res://Game/scenes/Card.tscn")
 
 # Add cards to the deck
 func add_card(card_data):
 	cards.append(card_data)
+	
+
 
 # Shuffle the deck using Fisher-Yates
 func shuffle():

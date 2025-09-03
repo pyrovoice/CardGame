@@ -6,9 +6,9 @@ class_name AbilityManager
 # Main entry point for trigger detection when game action happens
 
 
-func triggerGameAction(game:Game, triggerSource: Card, from: GameZone.e, to: GameZone.e, isPlayed = false):
+func triggerGameAction(game: Game, action: GameAction):
 	var objectsInCorrectLocationToTrigger = game.getAllCardsInPlay().filter(func(c: Card): return isCorrectTriggerLocation(c, game.getCardZone(c)))
-	var triggeredAbilities = getTriggeredAbilities(objectsInCorrectLocationToTrigger, triggerSource, from, to, isPlayed)
+	var triggeredAbilities = getTriggeredAbilities(objectsInCorrectLocationToTrigger, action)
 	
 	for abilityPair in triggeredAbilities:
 		var triggeringCard = abilityPair.card
@@ -249,10 +249,10 @@ func isCorrectTriggerLocation(triggeringObject: Card, current_zone: GameZone.e):
 	
 	return false
 	
-func getTriggeredAbilities(cards: Array[Card], triggerSource: Card, from: GameZone.e, to: GameZone.e, isPlayed = false) -> Array:
+func getTriggeredAbilities(cards: Array[Card], action: GameAction) -> Array:
 	"""Return an array of {card: Card, ability: Dictionary} pairs for abilities that should trigger"""
 	var triggeredAbilities = []
-	var triggerType = getTriggerType(triggerSource, from, to, isPlayed)
+	var triggerType = action.get_trigger_type_string()
 	
 	for triggeringObject in cards:
 		# Check if the card has any triggered abilities
@@ -275,33 +275,68 @@ func getTriggeredAbilities(cards: Array[Card], triggerSource: Card, from: GameZo
 					
 					# Validate origin condition
 					if origin_condition != "Any":
-						if origin_condition == "Battlefield" and from != GameZone.e.PLAYER_BASE and from != GameZone.e.COMBAT_ZONE:
+						if origin_condition == "Battlefield" and action.from_zone != GameZone.e.PLAYER_BASE and action.from_zone != GameZone.e.COMBAT_ZONE:
 							continue
-						elif origin_condition == "Hand" and from != GameZone.e.HAND:
+						elif origin_condition == "Hand" and action.from_zone != GameZone.e.HAND:
 							continue
-						elif origin_condition == "Graveyard" and from != GameZone.e.GRAVEYARD:
+						elif origin_condition == "Graveyard" and action.from_zone != GameZone.e.GRAVEYARD:
 							continue
-						elif origin_condition == "Deck" and from != GameZone.e.DECK:
+						elif origin_condition == "Deck" and action.from_zone != GameZone.e.DECK:
 							continue
 					
 					# Validate destination condition  
 					if destination_condition != "Any":
-						if destination_condition == "Battlefield" and to != GameZone.e.PLAYER_BASE and to != GameZone.e.COMBAT_ZONE:
+						if destination_condition == "Battlefield" and action.to_zone != GameZone.e.PLAYER_BASE and action.to_zone != GameZone.e.COMBAT_ZONE:
 							continue
-						elif destination_condition == "Hand" and to != GameZone.e.HAND:
+						elif destination_condition == "Hand" and action.to_zone != GameZone.e.HAND:
 							continue
-						elif destination_condition == "Graveyard" and to != GameZone.e.GRAVEYARD:
+						elif destination_condition == "Graveyard" and action.to_zone != GameZone.e.GRAVEYARD:
 							continue
-						elif destination_condition == "Deck" and to != GameZone.e.DECK:
+						elif destination_condition == "Deck" and action.to_zone != GameZone.e.DECK:
 							continue
 				
 				elif triggerType == "CARD_PLAYED":
-					# Add validation for card played triggers if needed
+					# Check Origin and Destination conditions for card played
+					var origin_condition = ability.get("trigger_conditions", {}).get("Origin", "Any")
+					var destination_condition = ability.get("trigger_conditions", {}).get("Destination", "Any")
+					
+					# Validate origin condition
+					if origin_condition != "Any":
+						if origin_condition == "Hand" and action.from_zone != GameZone.e.HAND:
+							print("      Failed Origin condition: ", origin_condition, " (from zone: ", action.from_zone, ")")
+							continue
+						elif origin_condition == "Battlefield" and action.from_zone != GameZone.e.PLAYER_BASE and action.from_zone != GameZone.e.COMBAT_ZONE:
+							print("      Failed Origin condition: ", origin_condition, " (from zone: ", action.from_zone, ")")
+							continue
+						elif origin_condition == "Graveyard" and action.from_zone != GameZone.e.GRAVEYARD:
+							print("      Failed Origin condition: ", origin_condition, " (from zone: ", action.from_zone, ")")
+							continue
+						elif origin_condition == "Deck" and action.from_zone != GameZone.e.DECK:
+							print("      Failed Origin condition: ", origin_condition, " (from zone: ", action.from_zone, ")")
+							continue
+					
+					# Validate destination condition  
+					if destination_condition != "Any":
+						if destination_condition == "Battlefield" and action.to_zone != GameZone.e.PLAYER_BASE and action.to_zone != GameZone.e.COMBAT_ZONE:
+							print("      Failed Destination condition: ", destination_condition, " (to zone: ", action.to_zone, ")")
+							continue
+						elif destination_condition == "Hand" and action.to_zone != GameZone.e.HAND:
+							print("      Failed Destination condition: ", destination_condition, " (to zone: ", action.to_zone, ")")
+							continue
+						elif destination_condition == "Graveyard" and action.to_zone != GameZone.e.GRAVEYARD:
+							print("      Failed Destination condition: ", destination_condition, " (to zone: ", action.to_zone, ")")
+							continue
+						elif destination_condition == "Deck" and action.to_zone != GameZone.e.DECK:
+							print("      Failed Destination condition: ", destination_condition, " (to zone: ", action.to_zone, ")")
+							continue
+				
+				elif triggerType == "CARD_DRAWN":
+					# Add validation for card drawn triggers if needed
 					pass
 				
 				# Check ValidCard condition
 				var valid_card_condition = ability.get("trigger_conditions", {}).get("ValidCard", "Any")
-				if not isValidCardCondition(valid_card_condition, triggerSource, triggeringObject):
+				if not isValidCardCondition(valid_card_condition, action.trigger_source, triggeringObject):
 					continue
 				
 				# Check ValidActivatingPlayer condition
@@ -348,17 +383,3 @@ func isValidCardCondition(condition: String, triggerSource: Card, abilityOwner: 
 			return condition in triggerSource.cardData.subtypes
 	
 	return false
-	
-func getTriggerType(_triggerSource: Card, from: GameZone.e, to: GameZone.e, _isPlayed = false):
-	# If zones are different, this is a zone change
-	if from != to:
-		return "CHANGES_ZONE"
-	
-	# Add more trigger types as needed:
-	# - Attacks
-	# - Dies  
-	# - Deals damage
-	# - etc.
-	
-	# Default fallback
-	return "CHANGES_ZONE"

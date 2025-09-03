@@ -2,6 +2,8 @@ Name:Sphinx
 ManaCost:5
 Types:Creature Sphinx
 Power:1
-T:Mode$ ChangesZone | Origin$ Any | Destination$ Battlefield | ValidCard$ Card.Self | Execute$ TrigDraw | TriggerDescription$ When I enter, draw a card.
+T:Mode$ CardPlayed | Origin$ Any | Destination$ Battlefield | ValidCard$ Card.Self | Execute$ TrigDraw | TriggerDescription$ When I enter, draw a card.
 SVar:TrigDraw:DB$ Draw | Defined$ You | NumCards$ 1
-CardText:Flying, Ganking[p]When CARDNAME enters, Draw a card.[p]While CARDNAME is in combat, other creatures at this location deal one less damage.
+T:Mode$ CardDraw | TriggerZones$ Battlefield | ValidCard$ Card.Self | Execute$ TrigToken | TriggerDescription$ When you draw a card, create a 1 power goblin at base.
+SVar:TrigToken:DB$ Token | TokenScript$ goblin
+CardText:When CARDNAME enters, Draw a card.[p]When you draw a card, create a 1 power goblin at base.

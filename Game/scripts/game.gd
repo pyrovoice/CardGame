@@ -29,8 +29,7 @@ func _ready() -> void:
 
 func populate_deck():
 	deck.cards.clear()
-	for i in range(10):
-		deck.add_card(CardLoader.getRandomCard())
+	deck.cards.append_array(CardLoader.cardData.duplicate())
 
 func onTurnStart():
 	resolveCombats()
@@ -40,17 +39,25 @@ func onTurnStart():
 func tryPlayCard(card: Card, _location: Node3D) -> bool:
 	if !_location:
 		return false
-	var needsPay = card.get_parent() == player_hand
-	if needsPay:
+	var cardZone = getCardZone(card)
+	if cardZone == GameZone.e.HAND:
 		if isCardPlayable(card):
 			if !payCard(card):
 				return false
 	if _location is CombatantFightingSpot:
 		if (_location as CombatantFightingSpot).getCard() != null:
 			return false
-		return playCardToCombatZone(card, _location)
+		var played = playCardToCombatZone(card, _location)
+		# Trigger CARD_PLAYED event (for enters-the-battlefield effects)
+		var played_action = GameAction.new(GameAction.TriggerType.CARD_PLAYED, card, cardZone, GameZone.e.COMBAT_ZONE)
+		AbilityManagerAL.triggerGameAction(self, played_action)
+		return played
 	elif _location is PlayerBase:
-		return playCardToPlayerBase(card)
+		var played = playCardToPlayerBase(card)
+		# Trigger CARD_PLAYED event (for enters-the-battlefield effects)
+		var played_action = GameAction.new(GameAction.TriggerType.CARD_PLAYED, card, cardZone, GameZone.e.PLAYER_BASE)
+		AbilityManagerAL.triggerGameAction(self, played_action)
+		return played
 	return false
 	
 	
@@ -61,7 +68,6 @@ func payCard(card: Card):
 	return true
 	
 func playCardToCombatZone(card: Card, zone: CombatantFightingSpot):
-	var from_zone = card.current_zone  # Get the current zone before moving
 	zone.setCard(card)
 	card.animatePlayedTo(zone.global_position + Vector3(0, 0.1, 0))
 	return true
@@ -73,16 +79,21 @@ func playCardToPlayerBase(card: Card) -> bool:
 	
 	# Convert local position to global position
 	var global_target = player_base.global_position + target_position
-	card.animatePlayedTo(global_target + Vector3(0, 0.1, 0))
 	card.reparent(player_base)
-	AbilityManagerAL.triggerGameAction(self, card, GameZone.e.HAND, GameZone.e.PLAYER_BASE, true)
+	card.animatePlayedTo(global_target + Vector3(0, 0.1, 0))
 	return true
+	
 
 func drawCard():
 	var card = deck.draw_card_from_top()
 	if card == null:
 		return
 	card.reparent(player_hand, false)
+	
+	# Trigger card drawn action
+	var action = GameAction.new(GameAction.TriggerType.CARD_DRAWN, card, GameZone.e.DECK, GameZone.e.HAND)
+	AbilityManagerAL.triggerGameAction(self, action)
+	
 	arrange_cards_fan()
 
 func arrange_cards_fan():
