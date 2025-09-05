@@ -12,7 +12,7 @@ var previoustween: Tween = null
 signal tryMoveCard(card: Card, target: Node3D)
 signal displayCardPopup(card: Card)
 
-const HAND_ZONE_CUTTOFF = 500
+const HAND_ZONE_CUTTOFF = 530
 
 # Dragging offset constant
 const DRAG_OFFSET_X = 150  # Pixels to offset dragged card to the right
@@ -42,9 +42,9 @@ func _process(_delta):
 	
 	# First check for cards in hand zone (existing logic)
 	if isMousePointerInHandZone():
-		var hover_range = 130
+		var hover_range = 50
 		var _lift_amount = 1
-		var closest_card = null
+		var closest_card: Card = null
 		var closest_dist = hover_range + 1  # start bigger than range
 		var cards = player_hand.get_children()
 		var mouse_pos = get_viewport().get_mouse_position()

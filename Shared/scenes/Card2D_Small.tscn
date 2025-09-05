@@ -7,7 +7,7 @@
 [sub_resource type="MeshTexture" id="MeshTexture_small"]
 
 [node name="Card2D_Small" type="Control"]
-custom_minimum_size = Vector2(120, 100)
+custom_minimum_size = Vector2(150, 150)
 layout_mode = 3
 anchors_preset = 0
 script = ExtResource("1_card2d_small")
@@ -29,10 +29,10 @@ anchor_left = 0.5
 anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
-offset_left = -57.0
-offset_top = -39.0
-offset_right = 56.0
-offset_bottom = 46.0
+offset_left = -74.0
+offset_top = -56.0
+offset_right = 74.0
+offset_bottom = 74.0
 grow_horizontal = 2
 grow_vertical = 2
 texture = ExtResource("2_icon")
@@ -41,11 +41,11 @@ expand_mode = 2
 [node name="CardName" type="Label" parent="Background"]
 layout_mode = 0
 offset_left = 1.0
-offset_right = 149.0
-offset_bottom = 24.0
+offset_right = 299.0
+offset_bottom = 39.0
 scale = Vector2(0.5, 0.5)
 theme_override_colors/font_color = Color(0, 0, 0, 1)
-theme_override_font_sizes/font_size = 18
+theme_override_font_sizes/font_size = 32
 text = "Card Name"
 
 [node name="powerBackground" type="NinePatchRect" parent="Background"]
@@ -55,8 +55,8 @@ anchor_left = 1.0
 anchor_top = 1.0
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_left = -17.0
-offset_top = -19.0
+offset_left = -26.0
+offset_top = -26.0
 grow_horizontal = 0
 grow_vertical = 0
 texture = ExtResource("3_pl6ll")
@@ -64,17 +64,19 @@ texture = ExtResource("3_pl6ll")
 [node name="PowerLabel" type="Label" parent="Background/powerBackground"]
 layout_mode = 1
 anchors_preset = -1
-anchor_top = 0.157895
-anchor_right = 1.23529
-anchor_bottom = 1.05263
-offset_top = -3.0
-offset_right = 13.0
-offset_bottom = 19.0
+anchor_left = 0.077
+anchor_top = -0.038
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -0.00200009
+offset_top = -0.0120004
+offset_right = 21.0
+offset_bottom = 27.0
 grow_horizontal = 2
 grow_vertical = 2
 scale = Vector2(0.5, 0.5)
 theme_override_colors/font_color = Color(0, 0, 0, 1)
-theme_override_font_sizes/font_size = 32
+theme_override_font_sizes/font_size = 44
 text = "3"
 horizontal_alignment = 1
 vertical_alignment = 1

@@ -15,13 +15,7 @@ signal card_clicked(card: Card2D)
 signal card_right_clicked(card_data: CardData)
 
 func _ready():
-	gui_input.connect(_on_gui_input)
-	# Only set random card data if no data was already provided
-	if not card_data:
-		set_card_data(CardLoader.getRandomCard())
-	else:
-		# If card_data was set before _ready, update display now
-		update_display()
+	update_display()
 
 func set_card_data(data: CardData):
 	card_data = data
@@ -35,7 +29,7 @@ func update_display():
 	
 	# At this point, if we're being called, the UI elements should be ready
 	# If they're not, there's a structural problem with the scene
-	if not name_label or not cost_label or not type_label or not power_label or not text_label:
+	if not name_label:
 		push_error("Card2D: UI elements are null. Check that the scene structure matches the @onready variable paths.")
 		return
 		
@@ -47,9 +41,6 @@ func update_display():
 	# Set card art if available
 	if card_data.cardArt:
 		card_art.texture = card_data.cardArt
-	else:
-		# Clear the texture if no art is available
-		card_art.texture = null
 	
 	# Process text with keyword formatting
 	text_label.text = format_text_with_keywords(card_data)

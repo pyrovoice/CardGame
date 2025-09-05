@@ -1,14 +1,13 @@
 [gd_scene load_steps=5 format=3 uid="uid://d3lfyqqnp8p75"]
 
 [ext_resource type="Script" uid="uid://ci3bqdvknwjrq" path="res://Shared/scripts/Card2D.gd" id="1_card2d"]
+[ext_resource type="Texture2D" uid="uid://bvhgqh6fy2vbd" path="res://icon.svg" id="2_icon"]
 [ext_resource type="FontVariation" uid="uid://cjtrikaejtvs3" path="res://Shared/Fonts/font.tres" id="3_foy7b"]
 
 [sub_resource type="MeshTexture" id="MeshTexture_q3asr"]
 
-[sub_resource type="ViewportTexture" id="ViewportTexture_q3asr"]
-
 [node name="Card2D" type="Control"]
-custom_minimum_size = Vector2(150, 200)
+custom_minimum_size = Vector2(198, 267)
 layout_mode = 3
 anchors_preset = 0
 mouse_default_cursor_shape = 2
@@ -31,25 +30,25 @@ anchor_left = 0.5
 anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
-offset_left = -66.0
-offset_top = -82.0
-offset_right = 62.0
-offset_bottom = 17.0
+offset_left = -81.0
+offset_top = -110.5
+offset_right = 82.0
+offset_bottom = 15.5
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
-texture = SubResource("ViewportTexture_q3asr")
+texture = ExtResource("2_icon")
 expand_mode = 2
 
 [node name="NameLabel" type="Label" parent="Background"]
 layout_mode = 1
 offset_left = 2.0
 offset_top = 1.0
-offset_right = 234.0
-offset_bottom = 31.0
+offset_right = 342.0
+offset_bottom = 45.0
 scale = Vector2(0.5, 0.5)
 theme_override_colors/font_color = Color(0, 0, 0, 1)
-theme_override_font_sizes/font_size = 24
+theme_override_font_sizes/font_size = 36
 text = "Card Name"
 vertical_alignment = 1
 autowrap_mode = 2
@@ -66,7 +65,7 @@ offset_bottom = 39.0
 grow_horizontal = 0
 scale = Vector2(0.5, 0.5)
 theme_override_colors/font_color = Color(0, 0, 0, 1)
-theme_override_font_sizes/font_size = 32
+theme_override_font_sizes/font_size = 48
 text = "5"
 horizontal_alignment = 1
 vertical_alignment = 1
@@ -78,15 +77,15 @@ anchor_left = 1.0
 anchor_top = 0.5
 anchor_right = 1.0
 anchor_bottom = 0.5
-offset_left = -147.0
-offset_top = 17.0
-offset_right = 133.0
-offset_bottom = 42.0
+offset_left = -194.0
+offset_top = 17.5
+offset_right = 180.0
+offset_bottom = 53.5
 grow_horizontal = 0
 grow_vertical = 2
 scale = Vector2(0.5, 0.5)
 theme_override_colors/font_color = Color(0, 0, 0, 1)
-theme_override_font_sizes/font_size = 20
+theme_override_font_sizes/font_size = 28
 text = "Creature: Goblin Warchief"
 autowrap_mode = 2
 
@@ -97,10 +96,10 @@ anchor_left = 1.0
 anchor_top = 1.0
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_left = -11.0
-offset_top = -21.0
-offset_right = 9.0
-offset_bottom = 18.0
+offset_left = -22.0
+offset_top = -29.0
+offset_right = 20.0
+offset_bottom = 26.0
 grow_horizontal = 0
 grow_vertical = 0
 scale = Vector2(0.5, 0.5)
@@ -117,17 +116,17 @@ anchor_left = 0.5
 anchor_top = 1.0
 anchor_right = 0.5
 anchor_bottom = 1.0
-offset_left = -71.0
-offset_top = -70.0
-offset_right = 481.0
-offset_bottom = 194.0
+offset_left = -95.0
+offset_top = -96.0
+offset_right = 658.0
+offset_bottom = 260.0
 grow_horizontal = 2
 grow_vertical = 0
 scale = Vector2(0.25, 0.25)
 mouse_filter = 2
 theme_override_colors/default_color = Color(0, 0, 0, 1)
 theme_override_fonts/normal_font = ExtResource("3_foy7b")
-theme_override_font_sizes/normal_font_size = 30
+theme_override_font_sizes/normal_font_size = 60
 bbcode_enabled = true
 text = "[color=GOLDENROD]Haste[/color][p][/p]Other Goblin creatures you control get +1/+1 and have haste.
 "

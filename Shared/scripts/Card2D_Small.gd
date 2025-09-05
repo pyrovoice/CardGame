@@ -38,9 +38,6 @@ func update_display():
 	if card_art:
 		if card_data.cardArt:
 			card_art.texture = card_data.cardArt
-		else:
-			# Clear the texture if no art is available
-			card_art.texture = null
 	else:
 		print("  - ❌ ERROR: card_art is null!")
 

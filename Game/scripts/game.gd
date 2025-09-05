@@ -102,8 +102,7 @@ func arrange_cards_fan():
 	if count == 0:
 		return
 	
-	var max_angle_deg = 0.02 * count   # Total fan spread angle (degrees)
-	var spacing = 0.3        # Horizontal space between cards
+	var spacing = 0.75       # Horizontal space between cards
 	
 	# Clamp count to max 10 if needed
 	count = min(count, 10)
@@ -119,11 +118,8 @@ func arrange_cards_fan():
 		
 		# Position cards spread horizontally
 		card.position.x = start_x + spacing * i
-		card.position.z = i *0.02  # optional: slight z offset for layering if needed
-		card.position.y = -0.005 * pow(i - ((count - 1) / 2.0), 2)
 		
-		var angle_deg = lerp(max_angle_deg, -max_angle_deg, i / float(max(1.0, count - 1)))
-		card.setRotation(Vector3(90, 0, 0), angle_deg)
+		card.setRotation(Vector3(90, 0, 0), 0)
 
 
 func resolveCombats():

@@ -209,7 +209,10 @@ static func load_card_art(card_name: String) -> Texture2D:
 		var texture = load(art_path) as Texture2D
 		if texture:
 			return texture
-	
+	else:
+		var texture = load("res://icon.svg") as Texture2D
+		if texture:
+			return texture
 	return null
 
 static func load_card_from_file(file_path: String) -> CardData:

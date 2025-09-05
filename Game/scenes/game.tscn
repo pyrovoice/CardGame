@@ -1,4 +1,4 @@
-[gd_scene load_steps=12 format=3 uid="uid://bkqg746td2asx"]
+[gd_scene load_steps=13 format=3 uid="uid://bkqg746td2asx"]
 
 [ext_resource type="Script" uid="uid://dsb1ch8a7q1og" path="res://Game/scripts/game.gd" id="1_7475e"]
 [ext_resource type="PackedScene" uid="uid://dnt4p0i1i5qk1" path="res://Game/scenes/Deck.tscn" id="1_ds5t7"]
@@ -21,6 +21,10 @@ size = Vector2(5, 1.5)
 [sub_resource type="BoxShape3D" id="BoxShape3D_yieuc"]
 size = Vector3(5, 0.1, 1.5)
 
+[sub_resource type="Environment" id="Environment_bqf56"]
+background_mode = 3
+glow_enabled = true
+
 [node name="Game" type="Node3D"]
 script = ExtResource("1_7475e")
 
@@ -41,7 +45,7 @@ transform = Transform3D(1, 0, 0, 0, -4.37114e-08, 1, 0, -1, -4.37114e-08, -0.060
 current = true
 
 [node name="PlayerHand" type="Node3D" parent="Camera3D"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -1.3694, -1.6313)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -1.45, -2.3)
 
 [node name="mouseInterceptPlane" type="StaticBody3D" parent="Camera3D"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -1.3694, -1.6313)
@@ -94,3 +98,6 @@ mesh = SubResource("PlaneMesh_bqf56")
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="playerBase"]
 shape = SubResource("BoxShape3D_yieuc")
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_bqf56")
