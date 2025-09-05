@@ -45,7 +45,7 @@ func execute_token_creation(parameters: Dictionary, source_card: Card, game_cont
 	var tokens_to_create = effect_context.get("tokens_to_create", 1)
 	for i in range(tokens_to_create):
 		var card = game_context.createCardFromData(token_data)
-		game_context.playCardToPlayerBase(card)
+		game_context.moveCardToPlayerBase(card)
 
 func execute_draw_card(parameters: Dictionary, source_card: Card, game_context: Game):
 	"""Execute draw card effect"""
@@ -74,7 +74,6 @@ func execute_draw_card(parameters: Dictionary, source_card: Card, game_context: 
 
 func onEffectTrigger(effect_context: Dictionary, game_context: Game) -> Dictionary:
 	"""Check for replacement effects that modify the given effect"""
-	var effect_type = effect_context.get("effect_type", "")
 	var modified_context = effect_context.duplicate()
 	
 	# Get all cards that could have replacement effects
@@ -100,8 +99,12 @@ func shouldReplacementEffectApply(replacement_ability: Dictionary, effect_contex
 	var effect_type = effect_context.get("effect_type", "")
 	var ability_event_type = replacement_ability.get("event_type", "")
 	
-	# Check if the event type matches
-	if ability_event_type != effect_type:
+	# Check if the event type matches using ReplacementType for consistency
+	# Convert both to standardized format for comparison
+	var standardized_effect_type = _standardize_replacement_event_type(effect_type)
+	var standardized_ability_type = _standardize_replacement_event_type(ability_event_type)
+	
+	if standardized_ability_type != standardized_effect_type:
 		return false
 	
 	# Check ActiveZones condition
@@ -119,13 +122,39 @@ func shouldReplacementEffectApply(replacement_ability: Dictionary, effect_contex
 		# Add other zones as needed
 	
 	# Check ValidToken condition for token creation
-	if effect_type == "CreateToken":
+	if standardized_effect_type == "CreateToken":
 		var valid_token = conditions.get("ValidToken", "Any")
 		if valid_token != "Any":
 			if not isValidTokenCondition(valid_token, effect_context):
 				return false
 	
 	return true
+
+# Helper method to standardize replacement event types
+func _standardize_replacement_event_type(event_type: String) -> String:
+	match event_type:
+		"CreateToken", "CREATE_TOKEN":
+			return "CreateToken"
+		_:
+			return event_type
+
+# Helper method to check if a zone condition is met
+func _isZoneConditionMet(zone_condition: String, actual_zone: GameZone.e) -> bool:
+	"""Check if the actual zone meets the specified zone condition"""
+	if zone_condition == "Any":
+		return true
+	
+	match zone_condition:
+		"Battlefield":
+			return actual_zone == GameZone.e.PLAYER_BASE or actual_zone == GameZone.e.COMBAT_ZONE
+		"Hand":
+			return actual_zone == GameZone.e.HAND
+		"Graveyard":
+			return actual_zone == GameZone.e.GRAVEYARD
+		"Deck":
+			return actual_zone == GameZone.e.DECK
+		_:
+			return false
 
 func isValidTokenCondition(condition: String, effect_context: Dictionary) -> bool:
 	"""Check if the token being created matches the ValidToken condition"""
@@ -159,7 +188,7 @@ func isValidTokenCondition(condition: String, effect_context: Dictionary) -> boo
 	
 	return true
 
-func applyReplacementEffect(replacement_ability: Dictionary, effect_context: Dictionary, replacement_source: Card) -> Dictionary:
+func applyReplacementEffect(replacement_ability: Dictionary, effect_context: Dictionary, _replacement_source: Card) -> Dictionary:
 	"""Apply a replacement effect to modify the effect context"""
 	var modified_context = effect_context.duplicate()
 	var effect_parameters = replacement_ability.get("effect_parameters", {})
@@ -252,14 +281,14 @@ func isCorrectTriggerLocation(triggeringObject: Card, current_zone: GameZone.e):
 func getTriggeredAbilities(cards: Array[Card], action: GameAction) -> Array:
 	"""Return an array of {card: Card, ability: Dictionary} pairs for abilities that should trigger"""
 	var triggeredAbilities = []
-	var triggerType = action.get_trigger_type_string()
+	var triggerType = action.get_trigger_type_string()  # Use GameAction's trigger type
 	
 	for triggeringObject in cards:
 		# Check if the card has any triggered abilities
 		if not triggeringObject.cardData or triggeringObject.cardData.abilities.is_empty():
 			continue
 		
-		for ability in triggeringObject.cardData.abilities:
+		for ability: Dictionary in triggeringObject.cardData.abilities:
 			if ability.get("type", "") != "TriggeredAbility":
 				continue
 			
@@ -268,71 +297,28 @@ func getTriggeredAbilities(cards: Array[Card], action: GameAction) -> Array:
 			
 			if ability_trigger_type == triggerType:
 				# Additional validation for specific trigger types
-				if triggerType == "CHANGES_ZONE":
-					# Check Origin and Destination conditions
+				if triggerType == "CardEnters":
+					# Check Origin and Destination conditions for card enters
 					var origin_condition = ability.get("trigger_conditions", {}).get("Origin", "Any")
 					var destination_condition = ability.get("trigger_conditions", {}).get("Destination", "Any")
 					
 					# Validate origin condition
-					if origin_condition != "Any":
-						if origin_condition == "Battlefield" and action.from_zone != GameZone.e.PLAYER_BASE and action.from_zone != GameZone.e.COMBAT_ZONE:
-							continue
-						elif origin_condition == "Hand" and action.from_zone != GameZone.e.HAND:
-							continue
-						elif origin_condition == "Graveyard" and action.from_zone != GameZone.e.GRAVEYARD:
-							continue
-						elif origin_condition == "Deck" and action.from_zone != GameZone.e.DECK:
-							continue
+					if not _isZoneConditionMet(origin_condition, action.from_zone):
+						continue
 					
 					# Validate destination condition  
-					if destination_condition != "Any":
-						if destination_condition == "Battlefield" and action.to_zone != GameZone.e.PLAYER_BASE and action.to_zone != GameZone.e.COMBAT_ZONE:
-							continue
-						elif destination_condition == "Hand" and action.to_zone != GameZone.e.HAND:
-							continue
-						elif destination_condition == "Graveyard" and action.to_zone != GameZone.e.GRAVEYARD:
-							continue
-						elif destination_condition == "Deck" and action.to_zone != GameZone.e.DECK:
-							continue
+					if not _isZoneConditionMet(destination_condition, action.to_zone):
+						continue
 				
-				elif triggerType == "CARD_PLAYED":
-					# Check Origin and Destination conditions for card played
+				elif triggerType == "CardPlayed":
+					# Check if there's a specific Origin condition
 					var origin_condition = ability.get("trigger_conditions", {}).get("Origin", "Any")
-					var destination_condition = ability.get("trigger_conditions", {}).get("Destination", "Any")
+					if not _isZoneConditionMet(origin_condition, action.from_zone):
+						continue
 					
-					# Validate origin condition
-					if origin_condition != "Any":
-						if origin_condition == "Hand" and action.from_zone != GameZone.e.HAND:
-							print("      Failed Origin condition: ", origin_condition, " (from zone: ", action.from_zone, ")")
-							continue
-						elif origin_condition == "Battlefield" and action.from_zone != GameZone.e.PLAYER_BASE and action.from_zone != GameZone.e.COMBAT_ZONE:
-							print("      Failed Origin condition: ", origin_condition, " (from zone: ", action.from_zone, ")")
-							continue
-						elif origin_condition == "Graveyard" and action.from_zone != GameZone.e.GRAVEYARD:
-							print("      Failed Origin condition: ", origin_condition, " (from zone: ", action.from_zone, ")")
-							continue
-						elif origin_condition == "Deck" and action.from_zone != GameZone.e.DECK:
-							print("      Failed Origin condition: ", origin_condition, " (from zone: ", action.from_zone, ")")
-							continue
-					
-					# Validate destination condition  
-					if destination_condition != "Any":
-						if destination_condition == "Battlefield" and action.to_zone != GameZone.e.PLAYER_BASE and action.to_zone != GameZone.e.COMBAT_ZONE:
-							print("      Failed Destination condition: ", destination_condition, " (to zone: ", action.to_zone, ")")
-							continue
-						elif destination_condition == "Hand" and action.to_zone != GameZone.e.HAND:
-							print("      Failed Destination condition: ", destination_condition, " (to zone: ", action.to_zone, ")")
-							continue
-						elif destination_condition == "Graveyard" and action.to_zone != GameZone.e.GRAVEYARD:
-							print("      Failed Destination condition: ", destination_condition, " (to zone: ", action.to_zone, ")")
-							continue
-						elif destination_condition == "Deck" and action.to_zone != GameZone.e.DECK:
-							print("      Failed Destination condition: ", destination_condition, " (to zone: ", action.to_zone, ")")
-							continue
-				
-				elif triggerType == "CARD_DRAWN":
-					# Add validation for card drawn triggers if needed
-					pass
+					# Validate destination is battlefield (where cards are "played" to)
+					if not action.is_battlefield_entry():
+						continue
 				
 				# Check ValidCard condition
 				var valid_card_condition = ability.get("trigger_conditions", {}).get("ValidCard", "Any")

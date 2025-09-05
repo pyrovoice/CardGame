@@ -18,7 +18,7 @@ var playerControlLock:PlayerControlLock = PlayerControlLock.new()
 var loaded_card_data: Array[CardData] = []
 
 func _ready() -> void:
-	player_control.tryMoveCard.connect(tryPlayCard)
+	player_control.tryMoveCard.connect(tryMoveCard)
 	draw.pressed.connect(onTurnStart)
 	CardLoader.load_all_cards()
 	populate_deck()
@@ -35,31 +35,125 @@ func onTurnStart():
 	resolveCombats()
 	drawCard()
 	createOpposingToken()
+
+func tryMoveCard(card: Card, target_location: Node3D) -> void:
+	"""Attempt to move a card to the specified location - handles different movement types based on source zone"""
+	if not target_location or not card:
+		return
 	
-func tryPlayCard(card: Card, _location: Node3D) -> bool:
-	if !_location:
+	var source_zone = getCardZone(card)
+	var _target_zone = _getTargetZone(target_location)
+	
+	match source_zone:
+		GameZone.e.HAND:
+			# Playing from hand - use the full play logic
+			tryPlayCard(card, target_location)
+		
+		GameZone.e.PLAYER_BASE:
+			# Moving from PlayerBase to combat - this is an attack
+			if target_location is CombatantFightingSpot:
+				executeCardAttacks(card, target_location as CombatantFightingSpot)
+			else:
+				print("❌ Cannot move card from PlayerBase to non-combat location")
+		
+		GameZone.e.COMBAT_ZONE:
+			# Moving from combat back to PlayerBase - retreat/return
+			if target_location is PlayerBase:
+				moveCardToPlayerBase(card)
+			else:
+				print("❌ Cannot move card from CombatZone to non-PlayerBase location")
+		
+		_:
+			print("❌ Cannot move card from zone: ", source_zone)
+	
+func tryPlayCard(card: Card, target_location: Node3D) -> void:
+	"""Attempt to play a card to the specified location"""
+	if not target_location or not card:
+		return
+	
+	var source_zone = getCardZone(card)
+	
+	# Validate the play attempt
+	if not _canPlayCard(card, source_zone, target_location):
+		return
+	
+	# Pay costs if playing from hand
+	if source_zone == GameZone.e.HAND:
+		if not _payCardCosts(card):
+			return
+	
+	# Determine target zone and execute the play
+	var target_zone = _getTargetZone(target_location)
+	_executeCardPlay(card, source_zone, target_zone, target_location)
+	
+	# If target was combat location, also execute the attack
+	if target_location is CombatantFightingSpot:
+		executeCardAttacks(card, target_location as CombatantFightingSpot)
+
+func _canPlayCard(card: Card, source_zone: GameZone.e, target_location: Node3D) -> bool:
+	"""Check if the card can be played to the target location"""
+	# Can only play cards from hand
+	if source_zone != GameZone.e.HAND:
 		return false
-	var cardZone = getCardZone(card)
-	if cardZone == GameZone.e.HAND:
-		if isCardPlayable(card):
-			if !payCard(card):
-				return false
-	if _location is CombatantFightingSpot:
-		if (_location as CombatantFightingSpot).getCard() != null:
-			return false
-		var played = playCardToCombatZone(card, _location)
-		# Trigger CARD_PLAYED event (for enters-the-battlefield effects)
-		var played_action = GameAction.new(GameAction.TriggerType.CARD_PLAYED, card, cardZone, GameZone.e.COMBAT_ZONE)
-		AbilityManagerAL.triggerGameAction(self, played_action)
-		return played
-	elif _location is PlayerBase:
-		var played = playCardToPlayerBase(card)
-		# Trigger CARD_PLAYED event (for enters-the-battlefield effects)
-		var played_action = GameAction.new(GameAction.TriggerType.CARD_PLAYED, card, cardZone, GameZone.e.PLAYER_BASE)
-		AbilityManagerAL.triggerGameAction(self, played_action)
-		return played
-	return false
 	
+	# Basic playability check
+	if not isCardPlayable(card):
+		return false
+	
+	# Check target location availability
+	if target_location is CombatantFightingSpot:
+		var combat_spot = target_location as CombatantFightingSpot
+		if combat_spot.getCard() != null:
+			# TODO: Add fallback to next available spot or PlayerBase
+			return false
+	
+	return true
+
+func _payCardCosts(card: Card) -> bool:
+	"""Pay the costs required to play the card"""
+	return payCard(card)
+
+func _getTargetZone(target_location: Node3D) -> GameZone.e:
+	"""Determine the game zone for the target location"""
+	if target_location is CombatantFightingSpot:
+		return GameZone.e.COMBAT_ZONE
+	elif target_location is PlayerBase:
+		return GameZone.e.PLAYER_BASE
+	else:
+		# Default to player base for unknown locations
+		return GameZone.e.PLAYER_BASE
+
+func _executeCardPlay(card: Card, source_zone: GameZone.e, _target_zone: GameZone.e, _target_location: Node3D):
+	"""Execute the card play to battlefield (PlayerBase) and trigger appropriate game actions"""
+	# Trigger CARD_PLAYED action first (before the card moves)
+	var played_action = GameAction.new(TriggerType.Type.CARD_PLAYED, card, source_zone, GameZone.e.PLAYER_BASE)
+	AbilityManagerAL.triggerGameAction(self, played_action)
+	
+	# Move the card to player base
+	var play_successful = moveCardToPlayerBase(card)
+	
+	if not play_successful:
+		print("❌ Failed to play card to player base")
+		return
+	
+	# Trigger CARD_ENTERS action after the card has moved to battlefield
+	var enters_action = GameAction.new(TriggerType.Type.CARD_ENTERS, card, source_zone, GameZone.e.PLAYER_BASE)
+	AbilityManagerAL.triggerGameAction(self, enters_action)
+
+func executeCardAttacks(card: Card, combat_spot: CombatantFightingSpot):
+	"""Execute card attack - move card from PlayerBase to CombatZone and trigger attack"""
+	var source_zone = getCardZone(card)  # Should be PLAYER_BASE
+	
+	# Move the card to combat zone
+	var attack_successful = moveCardToCombatZone(card, combat_spot)
+	
+	if not attack_successful:
+		print("❌ Failed to move card to combat zone")
+		return
+	
+	# Trigger CARD_ATTACKS action after the card has moved to combat zone
+	var attacks_action = GameAction.new(TriggerType.Type.CARD_ATTACKS, card, source_zone, GameZone.e.COMBAT_ZONE)
+	AbilityManagerAL.triggerGameAction(self, attacks_action)
 	
 func isCardPlayable(card: Card):
 	return player_hand.get_children().find(card) != -1
@@ -67,12 +161,12 @@ func isCardPlayable(card: Card):
 func payCard(card: Card):
 	return true
 	
-func playCardToCombatZone(card: Card, zone: CombatantFightingSpot):
+func moveCardToCombatZone(card: Card, zone: CombatantFightingSpot) -> bool:
 	zone.setCard(card)
 	card.animatePlayedTo(zone.global_position + Vector3(0, 0.1, 0))
 	return true
 
-func playCardToPlayerBase(card: Card) -> bool:
+func moveCardToPlayerBase(card: Card) -> bool:
 	var target_position = player_base.getNextEmptyLocation()
 	if target_position == Vector3.INF:  # No empty location available
 		return false
@@ -91,7 +185,7 @@ func drawCard():
 	card.reparent(player_hand, false)
 	
 	# Trigger card drawn action
-	var action = GameAction.new(GameAction.TriggerType.CARD_DRAWN, card, GameZone.e.DECK, GameZone.e.HAND)
+	var action = GameAction.new(TriggerType.Type.CARD_DRAWN, card, GameZone.e.DECK, GameZone.e.HAND)
 	AbilityManagerAL.triggerGameAction(self, action)
 	
 	arrange_cards_fan()

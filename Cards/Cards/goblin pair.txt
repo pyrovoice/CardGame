@@ -2,12 +2,6 @@ Name:Goblin pair
 ManaCost:1
 Types:Creature Goblin
 Power:1
-T:Mode$ CardPlayed | Origin$ Hand | Destination$ Battlefield | ValidCard$ Card.Self | Execute$ TrigToken | TriggerDescription$ When CARDNAME enters, create a 1 power Goblin creature token at the same location.
-SVar:TrigToken:DB$ Token | TokenScript$ goblin
-CardText:When CARDNAME enters, create a 1 power Goblin creature token at the same location.blin pair
-ManaCost:1
-Types:Creature Goblin
-Power:1
-T:Mode$ CardPlayed | Origin$ Any | Destination$ Battlefield | ValidCard$ Card.Self | Execute$ TrigToken | TriggerDescription$ When CARDNAME enters, create a 1 power Goblin creature token at the same location.
+T:Mode$ CardEnters | Origin$ Any | Destination$ Battlefield | ValidCard$ Card.Self | Execute$ TrigToken | TriggerDescription$ When CARDNAME enters, create a 1 power Goblin creature token at the same location.
 SVar:TrigToken:DB$ Token | TokenScript$ goblin
 CardText:When CARDNAME enters, create a 1 power Goblin creature token at the same location.

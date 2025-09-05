@@ -63,8 +63,8 @@ static func parse_card_data(card_text: String) -> CardData:
 	return card_data
 
 # Parse abilities from card properties
-static func parse_abilities(properties: Dictionary) -> Array:
-	var abilities: Array = []
+static func parse_abilities(properties: Dictionary) -> Array[Dictionary]:
+	var abilities: Array[Dictionary] = []
 	var svar_effects: Dictionary = {}
 	
 	# First pass: collect all SVar definitions
@@ -110,12 +110,20 @@ static func parse_triggered_ability(trigger_text: String, svar_effects: Dictiona
 		part = part.strip_edges()
 		if part.begins_with("Mode$"):
 			var mode = part.substr(6)  # Remove "Mode$ "
-			# Map mode to trigger type
+			# Use TriggerType enum for consistent mapping
+			ability_data.trigger_type = mode  # Store the original string
+			# Map mode to trigger type using TriggerType enum
 			match mode:
 				"ChangesZone":
-					ability_data.trigger_type = "CHANGES_ZONE"
+					ability_data.trigger_type = "CardEnters"  # Map old ChangesZone to CardEnters
 				"CardPlayed":
-					ability_data.trigger_type = "CARD_PLAYED"
+					ability_data.trigger_type = "CardPlayed"
+				"CardEnters":
+					ability_data.trigger_type = "CardEnters"
+				"StartAttack":
+					ability_data.trigger_type = "StartAttack"
+				"CardDraw":
+					ability_data.trigger_type = "CardDraw"
 		elif part.begins_with("Origin$"):
 			ability_data.trigger_conditions["Origin"] = part.substr(8)
 		elif part.begins_with("Destination$"):
@@ -160,7 +168,8 @@ static func parse_replacement_effect(replacement_text: String, svar_effects: Dic
 	for part in replacement_parts:
 		part = part.strip_edges()
 		if part.begins_with("Event$"):
-			ability_data.event_type = part.substr(7)  # Remove "Event$ "
+			var event_string = part.substr(7)  # Remove "Event$ "
+			ability_data.event_type = event_string
 		elif part.begins_with("ActiveZones$"):
 			ability_data.replacement_conditions["ActiveZones"] = part.substr(13)
 		elif part.begins_with("ValidToken$"):
@@ -209,10 +218,7 @@ static func load_card_art(card_name: String) -> Texture2D:
 		var texture = load(art_path) as Texture2D
 		if texture:
 			return texture
-	else:
-		var texture = load("res://icon.svg") as Texture2D
-		if texture:
-			return texture
+	
 	return null
 
 static func load_card_from_file(file_path: String) -> CardData:

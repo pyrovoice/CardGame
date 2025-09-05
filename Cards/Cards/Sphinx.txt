@@ -2,8 +2,9 @@ Name:Sphinx
 ManaCost:5
 Types:Creature Sphinx
 Power:1
-T:Mode$ CardPlayed | Origin$ Any | Destination$ Battlefield | ValidCard$ Card.Self | Execute$ TrigDraw | TriggerDescription$ When I enter, draw a card.
+T:Mode$ CardEnters | Origin$ Any | Destination$ Battlefield | ValidCard$ Card.Self | Execute$ TrigDraw | TriggerDescription$ When CARDNAME enters, draw a card.
 SVar:TrigDraw:DB$ Draw | Defined$ You | NumCards$ 1
-T:Mode$ CardDraw | TriggerZones$ Battlefield | ValidCard$ Card.Self | Execute$ TrigToken | TriggerDescription$ When you draw a card, create a 1 power goblin at base.
-SVar:TrigToken:DB$ Token | TokenScript$ goblin
-CardText:When CARDNAME enters, Draw a card.[p]When you draw a card, create a 1 power goblin at base.
+//TODO replacement effect when dealing damage
+R:Event$ DealCombatDamage | Affected$ Creature+Other+SameLocation | ReduceDamage$ CardCount | Description$ While in Combat, other creatures at my location deal one less damage per card you drew this turn.
+SVar:CardCount:PlayerCountRegisteredPlayer$CardDrawnThisTurn
+CardText:When CARDNAME enters, Draw a card.[p]While in Combat, other creatures at my location deal one less damage per card you drew this turn.
