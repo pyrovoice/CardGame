@@ -3,12 +3,12 @@ class_name GameAction
 
 # Use the unified TriggerType enum
 var trigger_type: int  # Will store TriggerType.Type values
-var trigger_source: Card  # The card that caused the action
+var trigger_source  # The card that caused the action (flexible type for testing)
 var from_zone: GameZone.e
 var to_zone: GameZone.e
 var additional_data: Dictionary = {}  # For any extra context needed
 
-func _init(type: int, source: Card, from: GameZone.e = GameZone.e.HAND, to: GameZone.e = GameZone.e.HAND, data: Dictionary = {}):
+func _init(type: int, source, from: GameZone.e = GameZone.e.HAND, to: GameZone.e = GameZone.e.HAND, data: Dictionary = {}):
 	trigger_type = type
 	trigger_source = source
 	from_zone = from

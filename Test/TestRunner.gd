@@ -16,6 +16,14 @@ static func run_all_tests():
 	else:
 		print("Failed to load CardLoaderTest")
 	
+	# Load and run Card Interaction Tests
+	var interaction_test_script = load("res://Test/CardInteractionTest.gd")
+	if interaction_test_script:
+		var test_instance = interaction_test_script.new()
+		# Test instance will run automatically via _init()
+	else:
+		print("Failed to load CardInteractionTest")
+	
 	print("\n=== All Tests Complete ===")
 
 # Entry point

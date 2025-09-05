@@ -38,16 +38,16 @@ The game script uses CardLoader for all card loading operations and maintains a 
 As requested, the system uses Godot 4's `int()` function to convert string values and parses subtypes:
 ```gdscript
 if "ManaCost" in properties:
-    card_data.cost = int(properties["ManaCost"])  # Converts "1" to 1
+	card_data.cost = int(properties["ManaCost"])  # Converts "1" to 1
 
 if "Types" in properties:
-    var types_text = properties["Types"]
-    var type_parts = types_text.split(" ")
-    
-    # First part is main type (Creature, Spell, Permanent)
-    # Remaining parts are subtypes (up to 3)
-    for i in range(1, min(type_parts.size(), 4)):
-        card_data.subtypes.append(type_parts[i])
+	var types_text = properties["Types"]
+	var type_parts = types_text.split(" ")
+	
+	# First part is main type (Creature, Spell, Permanent)
+	# Remaining parts are subtypes (up to 3)
+	for i in range(1, min(type_parts.size(), 4)):
+		card_data.subtypes.append(type_parts[i])
 ```
 
 ## Usage Examples

@@ -278,7 +278,7 @@ func isCorrectTriggerLocation(triggeringObject: Card, current_zone: GameZone.e):
 	
 	return false
 	
-func getTriggeredAbilities(cards: Array[Card], action: GameAction) -> Array:
+func getTriggeredAbilities(cards: Array, action: GameAction) -> Array:
 	"""Return an array of {card: Card, ability: Dictionary} pairs for abilities that should trigger"""
 	var triggeredAbilities = []
 	var triggerType = action.get_trigger_type_string()  # Use GameAction's trigger type
@@ -355,7 +355,7 @@ func executeAbility(triggeringCard: Card, ability: Dictionary, game_context: Gam
 		_:
 			print("❌ Unknown effect: ", effect_name)
 
-func isValidCardCondition(condition: String, triggerSource: Card, abilityOwner: Card) -> bool:
+func isValidCardCondition(condition: String, triggerSource, abilityOwner) -> bool:
 	"""Check if the trigger source meets the ValidCard condition"""
 	if condition == "Any":
 		return true
