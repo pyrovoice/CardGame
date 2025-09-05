@@ -4,4 +4,4 @@ Types:Creature Goblin
 Power:2
 T:Mode$ StartAttack | ValidCard$ Card.Self | Execute$ TrigToken | TriggerDescription$ When CARDNAME attacks, create a 1 power Goblin creature token at base.
 SVar:TrigToken:DB$ Token | TokenScript$ goblin
-CardText:When CARDNAME attacks, create a 1 power Goblin creature token at base.
+CardText:When CARDNAME attacks, create a 1 power Goblin creature token at base.[p]While in combat, Goblins here deal one more damage.

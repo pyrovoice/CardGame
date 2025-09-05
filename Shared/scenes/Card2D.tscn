@@ -39,6 +39,7 @@ grow_vertical = 2
 mouse_filter = 2
 texture = ExtResource("2_icon")
 expand_mode = 2
+stretch_mode = 5
 
 [node name="NameLabel" type="Label" parent="Background"]
 layout_mode = 1
@@ -126,7 +127,7 @@ scale = Vector2(0.25, 0.25)
 mouse_filter = 2
 theme_override_colors/default_color = Color(0, 0, 0, 1)
 theme_override_fonts/normal_font = ExtResource("3_foy7b")
-theme_override_font_sizes/normal_font_size = 60
+theme_override_font_sizes/normal_font_size = 50
 bbcode_enabled = true
 text = "[color=GOLDENROD]Haste[/color][p][/p]Other Goblin creatures you control get +1/+1 and have haste.
 "

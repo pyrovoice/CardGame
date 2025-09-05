@@ -4,4 +4,4 @@ Types:Creature Goblin
 Power:1
 T:Mode$ CardPlayed | ValidCard$ Goblin | ValidActivatingPlayer$ You | TriggerZones$ Battlefield | Execute$ TrigCreateGoblin | TriggerDescription$ Whenever you play a Goblin card, create a Goblin token.
 SVar:TrigToken:DB$ Token | TokenScript$ goblin
-Oracle:Whenever you play a Goblin card, create a Goblin token.
+CardText:Whenever you play a Goblin card, create a Goblin token.
