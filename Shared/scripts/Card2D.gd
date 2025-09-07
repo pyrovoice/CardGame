@@ -6,8 +6,8 @@ class_name Card2D
 @onready var name_label: Label = $Background/NameLabel
 @onready var type_label: Label = $Background/TypeLabel
 @onready var text_label: RichTextLabel = $Background/TextLabel
-@onready var cost_label: Label = $Background/costBackground/CostLabel
-@onready var power_label: Label = $Background/TextureRect/PowerLabel
+@onready var cost_label: Label = $Background/CostLabel
+@onready var power_label: Label = $Background/PowerLabel
 
 var card_data: CardData
 

@@ -1,13 +1,9 @@
-[gd_scene load_steps=8 format=3 uid="uid://d3lfyqqnp8p75"]
+[gd_scene load_steps=5 format=3 uid="uid://d3lfyqqnp8p75"]
 
 [ext_resource type="Script" uid="uid://ci3bqdvknwjrq" path="res://Shared/scripts/Card2D.gd" id="1_card2d"]
-[ext_resource type="Texture2D" uid="uid://cjd50rcaq4yb3" path="res://Assets/Images/card_background_thin.png" id="2_fan0f"]
 [ext_resource type="Texture2D" uid="uid://bvhgqh6fy2vbd" path="res://icon.svg" id="2_icon"]
+[ext_resource type="Texture2D" uid="uid://ms2u8wwghai0" path="res://Assets/CardFrame/background_silver - Copy.png" id="2_sgk8p"]
 [ext_resource type="FontVariation" uid="uid://cjtrikaejtvs3" path="res://Shared/Fonts/font.tres" id="3_foy7b"]
-[ext_resource type="Texture2D" uid="uid://dkmniw1rj2l6i" path="res://Assets/Images/gold_coin_detailed.png" id="4_tgpg6"]
-[ext_resource type="Texture2D" uid="uid://ddfj24ua4c2wf" path="res://Assets/Images/greyRound.png" id="6_tgpg6"]
-
-[sub_resource type="MeshTexture" id="MeshTexture_q3asr"]
 
 [node name="Card2D" type="Control"]
 custom_minimum_size = Vector2(198, 267)
@@ -24,19 +20,7 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-texture = SubResource("MeshTexture_q3asr")
-
-[node name="CardBorder" type="TextureRect" parent="Background"]
-texture_filter = 4
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
-mouse_filter = 2
-texture = ExtResource("2_fan0f")
-expand_mode = 1
+texture = ExtResource("2_sgk8p")
 
 [node name="CardArt" type="TextureRect" parent="Background"]
 texture_filter = 4
@@ -47,9 +31,9 @@ anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
 offset_left = -81.0
-offset_top = -110.5
+offset_top = -96.5
 offset_right = 82.0
-offset_bottom = 15.5
+offset_bottom = 8.5
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
@@ -57,56 +41,16 @@ texture = ExtResource("2_icon")
 expand_mode = 2
 stretch_mode = 5
 
-[node name="costBackground" type="TextureRect" parent="Background"]
-texture_filter = 4
-layout_mode = 1
-anchors_preset = 8
-anchor_left = 0.5
-anchor_top = 0.5
-anchor_right = 0.5
-anchor_bottom = 0.5
-offset_left = -106.0
-offset_top = -137.5
-offset_right = -58.0
-offset_bottom = -94.5
-grow_horizontal = 2
-grow_vertical = 2
-mouse_filter = 2
-texture = ExtResource("4_tgpg6")
-expand_mode = 2
-stretch_mode = 5
-
-[node name="CostLabel" type="Label" parent="Background/costBackground"]
-layout_mode = 1
-anchors_preset = 8
-anchor_left = 0.5
-anchor_top = 0.5
-anchor_right = 0.5
-anchor_bottom = 0.5
-offset_left = -7.5
-offset_top = -15.5
-offset_right = 20.5
-offset_bottom = 43.5
-grow_horizontal = 2
-grow_vertical = 2
-scale = Vector2(0.5, 0.5)
-theme_override_colors/font_color = Color(0, 0, 0, 1)
-theme_override_font_sizes/font_size = 48
-text = "5"
-horizontal_alignment = 1
-vertical_alignment = 1
-
 [node name="NameLabel" type="Label" parent="Background"]
 layout_mode = 1
-offset_left = 28.0
-offset_top = 3.0
-offset_right = 330.0
-offset_bottom = 47.0
+offset_left = 47.0
+offset_top = 6.0
+offset_right = 329.0
+offset_bottom = 50.0
 scale = Vector2(0.5, 0.5)
 theme_override_colors/font_color = Color(0, 0, 0, 1)
 theme_override_font_sizes/font_size = 36
 text = "Card Name"
-horizontal_alignment = 1
 vertical_alignment = 1
 autowrap_mode = 2
 clip_text = true
@@ -118,10 +62,10 @@ anchor_left = 1.0
 anchor_top = 0.5
 anchor_right = 1.0
 anchor_bottom = 0.5
-offset_left = -194.0
-offset_top = 17.5
-offset_right = 180.0
-offset_bottom = 53.5
+offset_left = -184.0
+offset_top = 12.5
+offset_right = 166.0
+offset_bottom = 48.5
 grow_horizontal = 0
 grow_vertical = 2
 scale = Vector2(0.5, 0.5)
@@ -137,10 +81,10 @@ anchor_left = 0.5
 anchor_top = 1.0
 anchor_right = 0.5
 anchor_bottom = 1.0
-offset_left = -94.0
-offset_top = -96.0
-offset_right = 651.0
-offset_bottom = 260.0
+offset_left = -86.0
+offset_top = -99.0
+offset_right = 610.0
+offset_bottom = 245.0
 grow_horizontal = 2
 grow_vertical = 0
 scale = Vector2(0.25, 0.25)
@@ -153,26 +97,37 @@ text = "[color=GOLDENROD]Haste[/color][p][/p]Other Goblin creatures you control 
 "
 autowrap_mode = 2
 
-[node name="TextureRect" type="TextureRect" parent="Background"]
-modulate = Color(1, 0.357326, 0.290208, 1)
-layout_mode = 0
-offset_top = 102.0
-offset_right = 34.0
-offset_bottom = 138.0
-texture = ExtResource("6_tgpg6")
-expand_mode = 1
+[node name="CostLabel" type="Label" parent="Background"]
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -83.0
+offset_top = -126.5
+offset_right = -55.0
+offset_bottom = -67.5
+grow_horizontal = 2
+grow_vertical = 2
+scale = Vector2(0.5, 0.5)
+theme_override_colors/font_color = Color(0, 0, 0, 1)
+theme_override_font_sizes/font_size = 48
+text = "5"
+horizontal_alignment = 1
+vertical_alignment = 1
 
-[node name="PowerLabel" type="Label" parent="Background/TextureRect"]
+[node name="PowerLabel" type="Label" parent="Background"]
 layout_mode = 1
 anchors_preset = 3
 anchor_left = 1.0
 anchor_top = 1.0
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_left = -28.0
-offset_top = -33.0
-offset_right = 14.0
-offset_bottom = 26.0
+offset_left = -185.0
+offset_top = -155.0
+offset_right = -143.0
+offset_bottom = -96.0
 grow_horizontal = 0
 grow_vertical = 0
 scale = Vector2(0.5, 0.5)
