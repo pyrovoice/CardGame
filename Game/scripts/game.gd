@@ -7,6 +7,10 @@ class_name Game
 @onready var combatZones: Array = [$combatZone, $combatZone2, $combatZone3]
 @onready var draw: Button = $UI/draw
 @onready var player_point: Label = $UI/PlayerPoint
+@onready var player_life_label: Label = $UI/PlayerLife
+@onready var player_shield_label: Label = $UI/PlayerShield  
+@onready var danger_level_label: Label = $UI/DangerLevel
+@onready var turn_label: Label = $UI/Turn
 @onready var player_base: PlayerBase = $playerBase
 const CARD = preload("res://Game/scenes/Card.tscn")
 @onready var card_popup: SubViewport = $cardPopup
@@ -14,10 +18,22 @@ const CARD = preload("res://Game/scenes/Card.tscn")
 var playerControlLock:PlayerControlLock = PlayerControlLock.new()
 @onready var graveyard: Graveyard = $graveyard
 
+# Game data and state management
+var game_data: GameData
+
 # Card library loaded from files
 var loaded_card_data: Array[CardData] = []
 
 func _ready() -> void:
+	# Initialize game data
+	game_data = GameData.new()
+	
+	# Connect game data signals to UI updates
+	game_data.player_life_changed.connect(_on_player_life_changed)
+	game_data.player_shield_changed.connect(_on_player_shield_changed)
+	game_data.danger_level_changed.connect(_on_danger_level_changed)
+	game_data.turn_started.connect(_on_turn_started)
+	
 	player_control.tryMoveCard.connect(tryMoveCard)
 	draw.pressed.connect(onTurnStart)
 	CardLoader.load_all_cards()
@@ -26,12 +42,18 @@ func _ready() -> void:
 	drawCard()
 	drawCard()
 	drawCard()
+	
+	# Initial UI update
+	_update_all_ui()
 
 func populate_deck():
 	deck.cards.clear()
 	deck.cards.append_array(CardLoader.cardData.duplicate())
 
 func onTurnStart():
+	# Start a new turn (increases danger level)
+	game_data.start_new_turn()
+	
 	resolveCombats()
 	drawCard()
 	createOpposingToken()
@@ -306,3 +328,60 @@ func getCardZone(card: Card) -> GameZone.e:
 		
 		# Default fallback
 	return GameZone.e.DECK
+
+# UI Update Functions
+func _update_all_ui():
+	"""Update all UI elements with current game state"""
+	if game_data:
+		_on_player_life_changed(game_data.player_life)
+		_on_player_shield_changed(game_data.player_shield)
+		_on_danger_level_changed(game_data.danger_level)
+		_on_turn_started(game_data.current_turn)
+
+func _on_player_life_changed(new_life: int):
+	"""Update player life display"""
+	if player_life_label:
+		player_life_label.text = "Life: " + str(new_life)
+	print("Player Life: ", new_life)
+
+func _on_player_shield_changed(new_shield: int):
+	"""Update player shield display"""
+	if player_shield_label:
+		player_shield_label.text = "Shield: " + str(new_shield)
+	print("Player Shield: ", new_shield)
+
+func _on_danger_level_changed(new_level: int):
+	"""Update danger level display"""
+	if danger_level_label:
+		danger_level_label.text = "Danger: " + str(new_level)
+	print("Danger Level: ", new_level)
+
+func _on_turn_started(turn_number: int):
+	"""Update turn display"""
+	if turn_label:
+		turn_label.text = "Turn: " + str(turn_number)
+	print("Turn Started: ", turn_number)
+
+# Game Data Access Functions
+func get_game_data() -> GameData:
+	"""Get the current game data"""
+	return game_data
+
+func damage_player(amount: int):
+	"""Apply damage to the player"""
+	if game_data:
+		game_data.damage_player(amount)
+
+func heal_player(amount: int):
+	"""Heal the player"""
+	if game_data:
+		game_data.heal_player(amount)
+
+func restore_shield(amount: int):
+	"""Restore player shield"""
+	if game_data:
+		game_data.restore_shield(amount)
+
+func is_game_over() -> bool:
+	"""Check if the game is over (player defeated)"""
+	return game_data and game_data.is_player_defeated()
