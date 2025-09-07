@@ -1,8 +1,11 @@
-[gd_scene load_steps=5 format=3 uid="uid://d3lfyqqnp8p75"]
+[gd_scene load_steps=8 format=3 uid="uid://d3lfyqqnp8p75"]
 
 [ext_resource type="Script" uid="uid://ci3bqdvknwjrq" path="res://Shared/scripts/Card2D.gd" id="1_card2d"]
+[ext_resource type="Texture2D" uid="uid://cjd50rcaq4yb3" path="res://Assets/Images/card_background_thin.png" id="2_fan0f"]
 [ext_resource type="Texture2D" uid="uid://bvhgqh6fy2vbd" path="res://icon.svg" id="2_icon"]
 [ext_resource type="FontVariation" uid="uid://cjtrikaejtvs3" path="res://Shared/Fonts/font.tres" id="3_foy7b"]
+[ext_resource type="Texture2D" uid="uid://dkmniw1rj2l6i" path="res://Assets/Images/gold_coin_detailed.png" id="4_tgpg6"]
+[ext_resource type="Texture2D" uid="uid://ddfj24ua4c2wf" path="res://Assets/Images/greyRound.png" id="6_tgpg6"]
 
 [sub_resource type="MeshTexture" id="MeshTexture_q3asr"]
 
@@ -14,6 +17,7 @@ mouse_default_cursor_shape = 2
 script = ExtResource("1_card2d")
 
 [node name="Background" type="NinePatchRect" parent="."]
+clip_contents = true
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -21,6 +25,18 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 texture = SubResource("MeshTexture_q3asr")
+
+[node name="CardBorder" type="TextureRect" parent="Background"]
+texture_filter = 4
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+texture = ExtResource("2_fan0f")
+expand_mode = 1
 
 [node name="CardArt" type="TextureRect" parent="Background"]
 texture_filter = 4
@@ -41,35 +57,59 @@ texture = ExtResource("2_icon")
 expand_mode = 2
 stretch_mode = 5
 
-[node name="NameLabel" type="Label" parent="Background"]
+[node name="costBackground" type="TextureRect" parent="Background"]
+texture_filter = 4
 layout_mode = 1
-offset_left = 2.0
-offset_top = 1.0
-offset_right = 342.0
-offset_bottom = 45.0
-scale = Vector2(0.5, 0.5)
-theme_override_colors/font_color = Color(0, 0, 0, 1)
-theme_override_font_sizes/font_size = 36
-text = "Card Name"
-vertical_alignment = 1
-autowrap_mode = 2
-clip_text = true
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -106.0
+offset_top = -137.5
+offset_right = -58.0
+offset_bottom = -94.5
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+texture = ExtResource("4_tgpg6")
+expand_mode = 2
+stretch_mode = 5
 
-[node name="CostLabel" type="Label" parent="Background"]
+[node name="CostLabel" type="Label" parent="Background/costBackground"]
 layout_mode = 1
-anchors_preset = 1
-anchor_left = 1.0
-anchor_right = 1.0
-offset_left = -15.0
-offset_right = 11.0
-offset_bottom = 39.0
-grow_horizontal = 0
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -7.5
+offset_top = -15.5
+offset_right = 20.5
+offset_bottom = 43.5
+grow_horizontal = 2
+grow_vertical = 2
 scale = Vector2(0.5, 0.5)
 theme_override_colors/font_color = Color(0, 0, 0, 1)
 theme_override_font_sizes/font_size = 48
 text = "5"
 horizontal_alignment = 1
 vertical_alignment = 1
+
+[node name="NameLabel" type="Label" parent="Background"]
+layout_mode = 1
+offset_left = 28.0
+offset_top = 3.0
+offset_right = 330.0
+offset_bottom = 47.0
+scale = Vector2(0.5, 0.5)
+theme_override_colors/font_color = Color(0, 0, 0, 1)
+theme_override_font_sizes/font_size = 36
+text = "Card Name"
+horizontal_alignment = 1
+vertical_alignment = 1
+autowrap_mode = 2
+clip_text = true
 
 [node name="TypeLabel" type="Label" parent="Background"]
 layout_mode = 1
@@ -90,26 +130,6 @@ theme_override_font_sizes/font_size = 28
 text = "Creature: Goblin Warchief"
 autowrap_mode = 2
 
-[node name="PowerLabel" type="Label" parent="Background"]
-layout_mode = 1
-anchors_preset = 3
-anchor_left = 1.0
-anchor_top = 1.0
-anchor_right = 1.0
-anchor_bottom = 1.0
-offset_left = -22.0
-offset_top = -29.0
-offset_right = 20.0
-offset_bottom = 26.0
-grow_horizontal = 0
-grow_vertical = 0
-scale = Vector2(0.5, 0.5)
-theme_override_colors/font_color = Color(0, 0, 0, 1)
-theme_override_font_sizes/font_size = 32
-text = "3"
-horizontal_alignment = 1
-vertical_alignment = 1
-
 [node name="TextLabel" type="RichTextLabel" parent="Background"]
 layout_mode = 1
 anchors_preset = 7
@@ -117,9 +137,9 @@ anchor_left = 0.5
 anchor_top = 1.0
 anchor_right = 0.5
 anchor_bottom = 1.0
-offset_left = -95.0
+offset_left = -94.0
 offset_top = -96.0
-offset_right = 658.0
+offset_right = 651.0
 offset_bottom = 260.0
 grow_horizontal = 2
 grow_vertical = 0
@@ -132,6 +152,35 @@ bbcode_enabled = true
 text = "[color=GOLDENROD]Haste[/color][p][/p]Other Goblin creatures you control get +1/+1 and have haste.
 "
 autowrap_mode = 2
+
+[node name="TextureRect" type="TextureRect" parent="Background"]
+modulate = Color(1, 0.357326, 0.290208, 1)
+layout_mode = 0
+offset_top = 102.0
+offset_right = 34.0
+offset_bottom = 138.0
+texture = ExtResource("6_tgpg6")
+expand_mode = 1
+
+[node name="PowerLabel" type="Label" parent="Background/TextureRect"]
+layout_mode = 1
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -28.0
+offset_top = -33.0
+offset_right = 14.0
+offset_bottom = 26.0
+grow_horizontal = 0
+grow_vertical = 0
+scale = Vector2(0.5, 0.5)
+theme_override_colors/font_color = Color(0, 0, 0, 1)
+theme_override_font_sizes/font_size = 48
+text = "3"
+horizontal_alignment = 1
+vertical_alignment = 1
 
 [connection signal="mouse_entered" from="." to="." method="_on_mouse_entered"]
 [connection signal="mouse_exited" from="." to="." method="_on_mouse_exited"]

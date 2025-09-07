@@ -4,10 +4,10 @@ class_name Card2D
 @onready var background: NinePatchRect = $Background
 @onready var card_art: TextureRect = $Background/CardArt
 @onready var name_label: Label = $Background/NameLabel
-@onready var cost_label: Label = $Background/CostLabel
 @onready var type_label: Label = $Background/TypeLabel
-@onready var power_label: Label = $Background/PowerLabel
 @onready var text_label: RichTextLabel = $Background/TextLabel
+@onready var cost_label: Label = $Background/costBackground/CostLabel
+@onready var power_label: Label = $Background/TextureRect/PowerLabel
 
 var card_data: CardData
 
