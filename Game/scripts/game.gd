@@ -6,11 +6,7 @@ class_name Game
 @onready var deck: Deck = $"Deck"
 @onready var combatZones: Array = [$combatZone, $combatZone2, $combatZone3]
 @onready var draw: Button = $UI/draw
-@onready var player_point: Label = $UI/PlayerPoint
-@onready var player_life_label: Label = $UI/PlayerLife
-@onready var player_shield_label: Label = $UI/PlayerShield  
-@onready var danger_level_label: Label = $UI/DangerLevel
-@onready var turn_label: Label = $UI/Turn
+@onready var game_ui: GameUI = $UI
 @onready var player_base: PlayerBase = $playerBase
 const CARD = preload("res://Game/scenes/Card.tscn")
 @onready var card_popup: SubViewport = $cardPopup
@@ -28,11 +24,8 @@ func _ready() -> void:
 	# Initialize game data
 	game_data = GameData.new()
 	
-	# Connect game data signals to UI updates
-	game_data.player_life_changed.connect(_on_player_life_changed)
-	game_data.player_shield_changed.connect(_on_player_shield_changed)
-	game_data.danger_level_changed.connect(_on_danger_level_changed)
-	game_data.turn_started.connect(_on_turn_started)
+	# Setup UI to follow SignalFloat signals
+	game_ui.setup_game_data(game_data)
 	
 	player_control.tryMoveCard.connect(tryMoveCard)
 	draw.pressed.connect(onTurnStart)
@@ -42,16 +35,13 @@ func _ready() -> void:
 	drawCard()
 	drawCard()
 	drawCard()
-	
-	# Initial UI update
-	_update_all_ui()
 
 func populate_deck():
 	deck.cards.clear()
 	deck.cards.append_array(CardLoader.cardData.duplicate())
 
 func onTurnStart():
-	# Start a new turn (increases danger level)
+	# Start a new turn (increases danger level via SignalFloat)
 	game_data.start_new_turn()
 	
 	resolveCombats()
@@ -258,7 +248,10 @@ func resolveCombatInZone(combatZone: CombatZone):
 			damageCounter -= oppCard.getPower()
 	resolveStateBasedAction()
 	if combatZone.getTotalStrengthForSide(true) > combatZone.getTotalStrengthForSide(false):
-		player_point.text = str(player_point.text.to_int()+1)
+		var current_points = game_ui.player_point.text.to_int() if game_ui.player_point else 0
+		update_player_points(current_points + 1)
+	elif combatZone.getTotalStrengthForSide(true) < combatZone.getTotalStrengthForSide(false):
+		damage_player(1)
 
 func resolveStateBasedAction():
 	for c:Card in getAllCardsInPlay():
@@ -266,13 +259,60 @@ func resolveStateBasedAction():
 			putInOwnerGraveyard(c)
 			
 func createOpposingToken():
-	var card = CARD.instantiate()
-	add_child(card)
-	card.setData(CardData.new("Ennemy", 0, CardData.CardType.CREATURE, 3, ""))
-	var location = combatZones[0].getFirstEmptyLocation(false)
-	if location:
-		location.setCard(card, false)
-	card.makeSmall()
+	if not game_data:
+		return
+		
+	var danger_level = game_data.danger_level.getValue()
+	var increment_counter = 0
+	
+	print("Creating opposing tokens with danger level: ", danger_level)
+	
+	while increment_counter < danger_level:
+		# Roll a random value from 1 to dangerLevel/2 (rounded up)
+		var max_roll = max(1, ceil(danger_level / 2.0))
+		var rolled_value = randi_range(1, max_roll)
+		
+		# Add the rolled value to the counter
+		increment_counter += rolled_value
+		
+		print("Rolled: ", rolled_value, " (Counter: ", increment_counter, "/", danger_level, ")")
+		
+		# Create a token with the rolled value as power
+		var card = CARD.instantiate()
+		add_child(card)
+		card.setData(CardData.new("Enemy", 0, CardData.CardType.CREATURE, rolled_value, ""))
+		
+		# Create a pool of available combat zones (indices)
+		var available_zones = []
+		for i in range(combatZones.size()):
+			available_zones.append(i)
+		
+		var token_placed = false
+		
+		# Try to place the token in available zones
+		while available_zones.size() > 0 and not token_placed:
+			# Choose a random zone from available zones
+			var random_index = randi_range(0, available_zones.size() - 1)
+			var zone_index = available_zones[random_index]
+			var chosen_combat_zone = combatZones[zone_index]
+			
+			# Get the first empty location on the enemy side (false)
+			var location = chosen_combat_zone.getFirstEmptyLocation(false)
+			if location:
+				location.setCard(card, false)
+				card.makeSmall()
+				print("Created enemy token with power ", rolled_value, " in combat zone ", zone_index)
+				token_placed = true
+			else:
+				# Remove this zone from available zones and try again
+				available_zones.remove_at(random_index)
+				print("Combat zone ", zone_index, " is full, removing from pool. Remaining zones: ", available_zones.size())
+		
+		# If no zones are available, destroy the card and stop
+		if not token_placed:
+			card.queue_free()
+			print("No empty locations found in any combat zone - token destroyed, stopping token creation")
+			break
 
 func getAllCardsInPlay() -> Array[Card]:
 	var cards:Array[Card] = player_base.getCards()
@@ -329,55 +369,22 @@ func getCardZone(card: Card) -> GameZone.e:
 		# Default fallback
 	return GameZone.e.DECK
 
-# UI Update Functions
-func _update_all_ui():
-	"""Update all UI elements with current game state"""
-	if game_data:
-		_on_player_life_changed(game_data.player_life)
-		_on_player_shield_changed(game_data.player_shield)
-		_on_danger_level_changed(game_data.danger_level)
-		_on_turn_started(game_data.current_turn)
-
-func _on_player_life_changed(new_life: int):
-	"""Update player life display"""
-	if player_life_label:
-		player_life_label.text = "Life: " + str(new_life)
-	print("Player Life: ", new_life)
-
-func _on_player_shield_changed(new_shield: int):
-	"""Update player shield display"""
-	if player_shield_label:
-		player_shield_label.text = "Shield: " + str(new_shield)
-	print("Player Shield: ", new_shield)
-
-func _on_danger_level_changed(new_level: int):
-	"""Update danger level display"""
-	if danger_level_label:
-		danger_level_label.text = "Danger: " + str(new_level)
-	print("Danger Level: ", new_level)
-
-func _on_turn_started(turn_number: int):
-	"""Update turn display"""
-	if turn_label:
-		turn_label.text = "Turn: " + str(turn_number)
-	print("Turn Started: ", turn_number)
-
 # Game Data Access Functions
 func get_game_data() -> GameData:
 	"""Get the current game data"""
 	return game_data
 
-func damage_player(amount: int):
+func damage_player(amount: float):
 	"""Apply damage to the player"""
 	if game_data:
 		game_data.damage_player(amount)
 
-func heal_player(amount: int):
+func heal_player(amount: float):
 	"""Heal the player"""
 	if game_data:
 		game_data.heal_player(amount)
 
-func restore_shield(amount: int):
+func restore_shield(amount: float):
 	"""Restore player shield"""
 	if game_data:
 		game_data.restore_shield(amount)
@@ -385,3 +392,8 @@ func restore_shield(amount: int):
 func is_game_over() -> bool:
 	"""Check if the game is over (player defeated)"""
 	return game_data and game_data.is_player_defeated()
+
+func update_player_points(points: int):
+	"""Update player points through UI"""
+	if game_ui:
+		game_ui.update_player_points(points)

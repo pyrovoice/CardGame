@@ -28,6 +28,7 @@ Hero power: Each hero has several shared power + an archetype power
 
 Ideas to justify pull and push: 
 - Locations have a crystal that can be corrupted or fred, the player adds "good" resource while the opponent add "corruption" to it. Possible ressource: Vitality, to restore the crystal. Purification. 
-
+- Add stuff to the opponent's deck or hand ("Fool, 2c 1p with no effect", here to waste opponent's ressource)
 Questions:
 - How much can a player prepare before starting scoring? What are ways to prevent the player from just farming resources before winning in one swoop?
+- How is the opponent's cards decided? First draft: Start turn by drawing up to its danger level, then play revealed stuff and keep other hidden, then player can interact with played or stuff in hand, then combat phase where opponent plays the rest, then resolve and end turn

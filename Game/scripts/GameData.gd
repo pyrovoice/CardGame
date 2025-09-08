@@ -1,81 +1,68 @@
 extends RefCounted
 class_name GameData
 
-# Player stats
-var player_life: int = 3
-var player_shield: int = 3
+# Player stats using SignalFloat
+var player_life: SignalFloat
+var player_shield: SignalFloat
 
-# Game state
-var danger_level: int = 5
-var current_turn: int = 1
-
-signal danger_level_changed(new_level: int)
-signal player_life_changed(new_life: int)
-signal player_shield_changed(new_shield: int)
-signal turn_started(turn_number: int)
+# Game state using SignalFloat
+var danger_level: SignalFloat
+var current_turn: SignalFloat
 
 func _init():
-	pass
+	# Initialize SignalFloat values
+	player_life = SignalFloat.new(3.0)
+	player_shield = SignalFloat.new(3.0)
+	danger_level = SignalFloat.new(5.0)
+	current_turn = SignalFloat.new(1.0)
 
 func increase_danger_level():
 	"""Increase the danger level by 1 each turn"""
-	danger_level += 1
-	danger_level_changed.emit(danger_level)
+	danger_level.value += 1
 
-func damage_player(amount: int):
+func damage_player(amount: float):
 	"""Apply damage to the player, shield absorbs damage first"""
 	var remaining_damage = amount
 	
 	# Shield absorbs damage first
-	if player_shield > 0:
-		var shield_damage = min(player_shield, remaining_damage)
-		player_shield -= shield_damage
+	if player_shield.value > 0:
+		var shield_damage = min(player_shield.value, remaining_damage)
+		player_shield.value -= shield_damage
 		remaining_damage -= shield_damage
-		player_shield_changed.emit(player_shield)
 	
 	# Remaining damage goes to life
 	if remaining_damage > 0:
-		player_life -= remaining_damage
-		player_life_changed.emit(player_life)
+		player_life.value -= remaining_damage
 
-func heal_player(amount: int):
+func heal_player(amount: float):
 	"""Heal the player's life"""
-	player_life += amount
-	player_life_changed.emit(player_life)
+	player_life.value += amount
 
-func restore_shield(amount: int):
+func restore_shield(amount: float):
 	"""Restore the player's shield"""
-	player_shield += amount
-	player_shield_changed.emit(player_shield)
+	player_shield.value += amount
 
 func start_new_turn():
 	"""Start a new turn and increase danger level"""
-	current_turn += 1
+	current_turn.value += 1
 	increase_danger_level()
-	turn_started.emit(current_turn)
 
 func is_player_defeated() -> bool:
 	"""Check if the player has been defeated"""
-	return player_life <= 0
+	return player_life.value <= 0
 
 func get_game_state() -> Dictionary:
 	"""Get the current game state as a dictionary"""
 	return {
-		"player_life": player_life,
-		"player_shield": player_shield,
-		"danger_level": danger_level,
-		"current_turn": current_turn
+		"player_life": player_life.value,
+		"player_shield": player_shield.value,
+		"danger_level": danger_level.value,
+		"current_turn": current_turn.value
 	}
 
 func reset_game():
 	"""Reset the game to initial state"""
-	player_life = 3
-	player_shield = 3
-	danger_level = 5
-	current_turn = 1
-	
-	# Emit all signals to update UI
-	player_life_changed.emit(player_life)
-	player_shield_changed.emit(player_shield)
-	danger_level_changed.emit(danger_level)
-	turn_started.emit(current_turn)
+	player_life.value = 3
+	player_shield.value = 3
+	danger_level.value = 5
+	current_turn.value = 1

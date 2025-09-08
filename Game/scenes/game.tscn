@@ -1,4 +1,4 @@
-[gd_scene load_steps=12 format=3 uid="uid://bkqg746td2asx"]
+[gd_scene load_steps=13 format=3 uid="uid://bkqg746td2asx"]
 
 [ext_resource type="Script" uid="uid://dsb1ch8a7q1og" path="res://Game/scripts/game.gd" id="1_7475e"]
 [ext_resource type="PackedScene" uid="uid://dnt4p0i1i5qk1" path="res://Game/scenes/Deck.tscn" id="1_ds5t7"]
@@ -7,6 +7,7 @@
 [ext_resource type="PackedScene" uid="uid://dueg4t10qe41s" path="res://Game/scenes/graveyard.tscn" id="6_2jiha"]
 [ext_resource type="Script" uid="uid://cwo3od4ulniaq" path="res://Game/scenes/player_base.gd" id="7_bqf56"]
 [ext_resource type="PackedScene" uid="uid://cqj7vnp5xo8dy" path="res://Shared/scenes/CardPopupManager.tscn" id="7_popup"]
+[ext_resource type="Script" uid="uid://djvgmgqknsvcs" path="res://Game/scripts/GameUI.gd" id="12_gameui"]
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_vc2ns"]
 size = Vector3(20, 20, 0.01)
@@ -77,6 +78,7 @@ layout_mode = 3
 anchors_preset = 0
 offset_right = 40.0
 offset_bottom = 40.0
+script = ExtResource("12_gameui")
 
 [node name="draw" type="Button" parent="UI"]
 layout_mode = 0

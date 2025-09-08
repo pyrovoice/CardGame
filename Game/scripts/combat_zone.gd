@@ -1,8 +1,6 @@
 extends Node3D
 class_name CombatZone
 
-@onready var ally_container: GridContainer3D = $allyContainer
-@onready var opponent_container: GridContainer3D = $opponentContainer
 @onready var opponent_total_strength: Label3D = $OpponentTotalStrength
 @onready var ally_total_strength: Label3D = $AllyTotalStrength
 var ennemySpots = []
@@ -17,6 +15,7 @@ func _ready() -> void:
 			arr.push_back(c)
 	
 func _on_child_change(child: Node):
+	print(child.name)
 	ally_total_strength.text = str(getTotalStrengthForSide(true))
 	opponent_total_strength.text = str(getTotalStrengthForSide(false))
 
