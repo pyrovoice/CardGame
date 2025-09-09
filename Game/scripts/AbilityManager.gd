@@ -45,6 +45,7 @@ func execute_token_creation(parameters: Dictionary, source_card: Card, game_cont
 	var tokens_to_create = effect_context.get("tokens_to_create", 1)
 	for i in range(tokens_to_create):
 		var card = game_context.createCardFromData(token_data)
+		card.global_position = effect_context.get("source_card", source_card).global_position
 		game_context.moveCardToPlayerBase(card)
 
 func execute_draw_card(parameters: Dictionary, source_card: Card, game_context: Game):
@@ -205,17 +206,6 @@ func applyReplacementEffect(replacement_ability: Dictionary, effect_context: Dic
 			print("  Unknown replacement type: ", replacement_type)
 	
 	return modified_context
-
-static func create_token_card(token_data: CardData, _game_context: Node) -> Card:
-	"""Create a new Card instance for the token"""
-	var card_scene = preload("res://Game/scenes/Card.tscn")
-	var token_card = card_scene.instantiate()
-	
-	# Set the card data BEFORE adding to scene tree
-	token_card.cardData = token_data
-	
-	# Don't set rotation here - wait until after _ready() is called
-	return token_card
 
 static func place_token_at_location(token_card: Card, location: Node3D):
 	"""Place the token card at the specified location"""

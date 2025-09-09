@@ -34,8 +34,8 @@ func _input(event: InputEvent):
 		# Close popup on any mouse click
 		hide_popup()
 
-func show_card_popup(card_data: CardData, popup_position: Vector2 = Vector2.ZERO, display_mode: DisplayMode = DisplayMode.NORMAL):
-	if not card_data:
+func show_card_popup(card: Card, popup_position: Vector2 = Vector2.ZERO, display_mode: DisplayMode = DisplayMode.NORMAL):
+	if not card:
 		return
 	
 	# Clear any existing card
@@ -51,7 +51,7 @@ func show_card_popup(card_data: CardData, popup_position: Vector2 = Vector2.ZERO
 	add_child(card_in_popup)
 	
 	# Set the card data - the Card2D will handle timing correctly
-	card_in_popup.set_card_data(card_data)
+	card_in_popup.set_card(card)
 	
 	# Scale the card for display mode
 	card_in_popup.scale = card_scale
@@ -69,7 +69,7 @@ func show_card_popup(card_data: CardData, popup_position: Vector2 = Vector2.ZERO
 		card_in_popup.global_position = (screen_size - card_size) / 2
 	
 	# Store card data for delayed keyword creation
-	var keyword_card_data = card_data
+	var keyword_card_data = card.cardData
 	
 	# Position keyword container based on card position (but don't create panels yet)
 	if popup_position != Vector2.ZERO:

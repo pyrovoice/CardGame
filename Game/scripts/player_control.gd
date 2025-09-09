@@ -29,7 +29,6 @@ var currently_highlighted_card: Card = null
 var currently_highlighted_target: Node3D = null
 
 func _process(_delta):
-	cardInHandUnderMouse = null
 	if dragged_card:
 		dragged_card.dragged(getMousePositionHand())
 		# When dragging, highlight the specific target under mouse (if any)
@@ -41,10 +40,10 @@ func _process(_delta):
 		clearTargetHighlight()
 	
 	# First check for cards in hand zone (existing logic)
+	var closest_card: Card = null
 	if isMousePointerInHandZone():
 		var hover_range = 50
 		var _lift_amount = 1
-		var closest_card: Card = null
 		var closest_dist = hover_range + 1  # start bigger than range
 		var cards = player_hand.get_children()
 		var mouse_pos = get_viewport().get_mouse_position()
@@ -54,10 +53,15 @@ func _process(_delta):
 			if dist < hover_range && dist < closest_dist:
 				closest_dist = dist
 				closest_card = card
-		if closest_card:
-			closest_card.popUp()
-			cardInHandUnderMouse = closest_card
-	
+		
+	if closest_card && closest_card != cardInHandUnderMouse:
+		AnimationsManagerAL.animate_card_to_rest_position(cardInHandUnderMouse)
+		AnimationsManagerAL.animate_card_popup(closest_card)
+		cardInHandUnderMouse = closest_card
+	elif !closest_card && cardInHandUnderMouse != null:
+		AnimationsManagerAL.animate_card_to_rest_position(cardInHandUnderMouse)
+		cardInHandUnderMouse = null
+
 	# Update highlights based on current mouse position
 	updateHighlights()
 
@@ -131,6 +135,12 @@ func _input(event):
 				if not target:
 					target = getObjectUnderMouse(PlayerBase)
 				tryMoveCard.emit(dragged_card, target)
+				# Reset card state after trying to move it
+				if dragged_card:
+					AnimationsManagerAL.animate_card_to_rest_position(dragged_card)
+			elif !event.pressed && dragged_card:
+				# If released in hand zone, reset the card state
+				AnimationsManagerAL.animate_card_to_rest_position(dragged_card)
 			dragged_card = null
 	
 	if event is InputEventMouseButton && event.button_index == MOUSE_BUTTON_RIGHT:
@@ -163,7 +173,7 @@ func showCardPopup(card: Card):
 	# Use the shared popup system with enlarged mode and left-side positioning
 	if card_popup_manager and card_popup_manager.has_method("show_card_popup"):
 		var popup_position = _calculate_game_popup_position()
-		card_popup_manager.show_card_popup(card.cardData, popup_position, CardPopupManager.DisplayMode.ENLARGED)
+		card_popup_manager.show_card_popup(card, popup_position, CardPopupManager.DisplayMode.ENLARGED)
 
 func _calculate_game_popup_position() -> Vector2:
 	"""Calculate the position for card popup in game view (left side of screen)"""

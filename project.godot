@@ -18,6 +18,7 @@ config/icon="res://icon.svg"
 [autoload]
 
 AbilityManagerAL="*res://Game/scripts/AbilityManager.gd"
+AnimationsManagerAL="*res://Shared/scripts/AnimationsManager.gd"
 
 [debug_draw_3d]
 

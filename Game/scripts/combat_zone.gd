@@ -3,8 +3,8 @@ class_name CombatZone
 
 @onready var opponent_total_strength: Label3D = $OpponentTotalStrength
 @onready var ally_total_strength: Label3D = $AllyTotalStrength
-var ennemySpots = []
-var allySpots = []
+var ennemySpots: Array[CombatantFightingSpot] = []
+var allySpots: Array[CombatantFightingSpot] = []
 
 func _ready() -> void:
 	for i in range(1, 4):
@@ -14,8 +14,7 @@ func _ready() -> void:
 			c.onCardEnteredOrLeft.connect(_on_child_change)
 			arr.push_back(c)
 	
-func _on_child_change(child: Node):
-	print(child.name)
+func _on_child_change():
 	ally_total_strength.text = str(getTotalStrengthForSide(true))
 	opponent_total_strength.text = str(getTotalStrengthForSide(false))
 
@@ -31,7 +30,7 @@ func getTotalStrengthForSide(playerSide: bool):
 	var sideArray = allySpots if playerSide else ennemySpots
 	for c: CombatantFightingSpot in sideArray:
 		var card = c.getCard()
-		total += 0 if card == null else card.cardData.power
+		total += card.cardData.power if card != null else 0
 	return total
 
 func getCardSlot(i: int , allyTeam: bool) -> CombatantFightingSpot:

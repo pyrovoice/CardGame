@@ -9,7 +9,7 @@ class_name Card2D
 @onready var cost_label: Label = $Background/costBackground/CostLabel
 @onready var power_label: Label = $Background/TextureRect/PowerLabel
 
-var card_data: CardData
+var card: Card
 
 signal card_clicked(card: Card2D)
 signal card_right_clicked(card_data: CardData)
@@ -17,14 +17,14 @@ signal card_right_clicked(card_data: CardData)
 func _ready():
 	update_display()
 
-func set_card_data(data: CardData):
-	card_data = data
+func set_card(data: Card):
+	card = data
 	# If we're already ready, update immediately; otherwise wait for _ready
 	if name_label: # If onready vars are available, we can update now
 		update_display()
 
 func update_display():
-	if not card_data:
+	if not card:
 		return
 	
 	# At this point, if we're being called, the UI elements should be ready
@@ -33,17 +33,17 @@ func update_display():
 		push_error("Card2D: UI elements are null. Check that the scene structure matches the @onready variable paths.")
 		return
 		
-	name_label.text = card_data.cardName
-	cost_label.text = str(card_data.cost)
-	type_label.text = card_data.getFullTypeString()
-	power_label.text = str(card_data.power)
+	name_label.text = card.cardData.cardName
+	cost_label.text = str(card.cardData.cost)
+	type_label.text = card.cardData.getFullTypeString()
+	power_label.text = str(card.cardData.power)
 	
 	# Set card art if available
-	if card_data.cardArt:
-		card_art.texture = card_data.cardArt
+	if card.cardData.cardArt:
+		card_art.texture = card.cardData.cardArt
 	
 	# Process text with keyword formatting
-	text_label.text = format_text_with_keywords(card_data)
+	text_label.text = format_text_with_keywords(card.cardData)
 
 func format_text_with_keywords(data: CardData) -> String:
 	var formatted_text = data.text_box
@@ -65,7 +65,7 @@ func _on_gui_input(event: InputEvent):
 		if event.button_index == MOUSE_BUTTON_LEFT:
 			card_clicked.emit(self)
 		elif event.button_index == MOUSE_BUTTON_RIGHT:
-			card_right_clicked.emit(card_data)
+			card_right_clicked.emit(card.card_data)
 
 func _on_mouse_entered():
 	modulate = Color(1.1, 1.1, 1.1)

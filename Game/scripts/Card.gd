@@ -22,7 +22,6 @@ enum CardControlState{
 var cardData: CardData
 var objectID
 var cardControlState: CardControlState = CardControlState.FREE
-var angleInHand: Vector3 = Vector3.ZERO
 var damage = 0
 var isToken = false
 
@@ -33,10 +32,6 @@ static func getNextID():
 
 func _ready():
 	# Initially show the small card, hide the full card (cards start small by default)
-	if is_small:
-		makeSmall()
-	else:
-		makeBig()
 	# Create a unique material for this card instance
 	if sub_viewport and card_2d_display:
 		# Create a new material instance (not shared)
@@ -49,16 +44,8 @@ func _ready():
 		
 		# Apply the unique material to this card
 		card_2d_display.set_surface_override_material(0, material)
+	makeSmall()
 
-func _process(delta):
-	if cardControlState == CardControlState.FREE:
-		card_representation.position = card_representation.position.lerp(Vector3.ZERO, 0.2)
-		card_representation.rotation_degrees.x = lerp(card_representation.rotation_degrees.x, angleInHand.x, 0.2)
-		makeSmall()
-	
-	if cardControlState == CardControlState.MOVED_BY_PLAYER:
-		cardControlState = CardControlState.FREE
-	
 func setData(_cardData):
 	if !_cardData:
 		push_error("Card data is null")
@@ -78,57 +65,29 @@ func updateDisplay():
 			
 		if card_2d_small:
 			card_2d_small.show()
-			card_2d_small.set_card_data(cardData)
+			card_2d_small.set_card(self)
 	else:
 		if card_2d_small:
 			card_2d_small.hide()
 			
 		if card_2d_full:
 			card_2d_full.show()
-			card_2d_full.set_card_data(cardData)
+			card_2d_full.set_card(self)
 
 func popUp():
-	if cardControlState == CardControlState.MOVED_BY_GAME:
-		return
-	var pos := card_representation.position
-	pos.y = lerp(pos.y, 0.37+position.y, 0.4)
-	card_representation.position = pos
-	card_representation.rotation_degrees.x = 90
-	makeBig()
-	set_glow_effect(true)
+	"""Delegate popup animation to AnimationsManager"""
+	AnimationsManagerAL.animate_card_popup(self)
 
 func dragged(pos: Vector3):
-	if cardControlState == CardControlState.MOVED_BY_GAME:
-		return
-	cardControlState = CardControlState.MOVED_BY_PLAYER
-	card_representation.global_position = card_representation.global_position.lerp(pos, 0.4)
-	card_representation.position.z = 0.1
-
-func animatePlayedTo(targetPos: Vector3):
-	cardControlState = CardControlState.MOVED_BY_GAME
-	var cardRepresentationPosBefore = card_representation.global_position
-	global_position = targetPos
-	card_representation.global_position = cardRepresentationPosBefore
-	makeSmall()
-	while card_representation.position.distance_to(Vector3.ZERO) > 0.1:
-		await move_to_position(Vector3.ZERO, 10)
-	rotation_degrees = Vector3(0, 0, 0)
-	card_representation.rotation_degrees = Vector3(0, 0, 0)
-	return true
+	"""Delegate dragged animation to AnimationsManager"""
+	AnimationsManagerAL.animate_card_dragged(self, pos)
 	
-func move_to_position(target: Vector3, speed: float) -> void:
-	var posBefore = card_representation.global_position
-	card_representation.position = card_representation.position.lerp(target, speed * get_process_delta_time())
-	var posafter = card_representation.global_position
-	await get_tree().process_frame
+func animatePlayedTo(targetPos: Vector3):
+	"""Delegate card movement animation to AnimationsManager"""
+	return await AnimationsManagerAL.animate_card_to_position(self, targetPos)
 	
 func describe() -> String:
 	return objectID + cardData.describe()
-
-func setRotation(angle_deg: Vector3, rotationValue):
-		card_representation.rotation_degrees = angle_deg
-		card_representation.rotate_z(rotationValue)
-		angleInHand = card_representation.rotation_degrees
 
 func makeSmall():
 	if is_small:

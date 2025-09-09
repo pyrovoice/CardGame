@@ -5,7 +5,7 @@ class_name PlayerBase
 var original_material: Material
 var highlight_material: StandardMaterial3D
 var is_highlighted: bool = false
-
+var lastCardCount = 0
 # Spacing between cards
 const CARD_SPACING_X: float = 0.7  # Horizontal spacing between cards
 
@@ -22,36 +22,25 @@ func _ready():
 		highlight_material.flags_unshaded = true
 		highlight_material.flags_do_not_receive_shadows = true
 	
-	# Connect signals to reorganize cards when they are added or removed
-	child_entered_tree.connect(_on_child_entered_tree)
-	child_exiting_tree.connect(_on_child_exiting_tree)
-
-func _on_child_entered_tree(node: Node):
-	"""Called when a child node is added to the PlayerBase"""
-	if node is Card:
-		# Use call_deferred to ensure the card is fully added before organizing
-		call_deferred("organize")
-
-func _on_child_exiting_tree(node: Node):
-	"""Called when a child node is removed from the PlayerBase"""
-	if node is Card:
-		# Use call_deferred to reorganize after the card is removed
-		call_deferred("organize")
+		# Connect signal to reorganize cards only when they are removed/leave
+	child_order_changed.connect(organize)
 
 func organize():
 	"""Reorganize all cards in the PlayerBase to be placed next to each other"""
 	var cards = getCards()
-	
-	for i in range(cards.size()):
-		var card = cards[i]
-		var target_position = Vector3(i * CARD_SPACING_X, 0, 0)
-		
-		# Use the card's move_to_position method for smooth movement
-		if card.has_method("move_to_position"):
-			card.move_to_position(target_position, 5.0)  # 5.0 speed for smooth movement
-		else:
-			# Fallback to direct position setting if method doesn't exist
-			card.position = target_position
+	if lastCardCount > cards.size():
+		for i in range(cards.size()):
+			var card = cards[i]
+				
+			var target_position = Vector3(i * CARD_SPACING_X, 0, 0)
+			
+			# Use AnimationsManager for consistent positioning
+			if card.cardControlState == Card.CardControlState.FREE:
+				AnimationsManagerAL.animate_card_to_position(card, global_position + target_position)
+			else:
+				# Direct position setting for cards being dragged or in other states
+				card.position = target_position
+	lastCardCount = cards.size()
 
 func getNextEmptyLocation() -> Vector3:
 	"""Returns the next empty location in local coordinates, or Vector3.INF if no space"""

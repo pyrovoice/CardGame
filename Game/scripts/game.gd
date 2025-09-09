@@ -44,7 +44,7 @@ func onTurnStart():
 	# Start a new turn (increases danger level via SignalFloat)
 	game_data.start_new_turn()
 	
-	resolveCombats()
+	await resolveCombats()
 	drawCard()
 	createOpposingToken()
 
@@ -60,6 +60,7 @@ func tryMoveCard(card: Card, target_location: Node3D) -> void:
 		GameZone.e.HAND:
 			# Playing from hand - use the full play logic
 			tryPlayCard(card, target_location)
+			arrange_cards_fan()
 		
 		GameZone.e.PLAYER_BASE:
 			# Moving from PlayerBase to combat - this is an attack
@@ -142,7 +143,7 @@ func _executeCardPlay(card: Card, source_zone: GameZone.e, _target_zone: GameZon
 	AbilityManagerAL.triggerGameAction(self, played_action)
 	
 	# Move the card to player base
-	var play_successful = moveCardToPlayerBase(card)
+	var play_successful = await moveCardToPlayerBase(card)
 	
 	if not play_successful:
 		print("❌ Failed to play card to player base")
@@ -157,7 +158,7 @@ func executeCardAttacks(card: Card, combat_spot: CombatantFightingSpot):
 	var source_zone = getCardZone(card)  # Should be PLAYER_BASE
 	
 	# Move the card to combat zone
-	var attack_successful = moveCardToCombatZone(card, combat_spot)
+	var attack_successful = await moveCardToCombatZone(card, combat_spot)
 	
 	if not attack_successful:
 		print("❌ Failed to move card to combat zone")
@@ -175,7 +176,7 @@ func payCard(card: Card):
 	
 func moveCardToCombatZone(card: Card, zone: CombatantFightingSpot) -> bool:
 	zone.setCard(card)
-	card.animatePlayedTo(zone.global_position + Vector3(0, 0.1, 0))
+	await AnimationsManagerAL.animate_card_to_position(card, zone.global_position + Vector3(0, 0.1, 0))
 	return true
 
 func moveCardToPlayerBase(card: Card) -> bool:
@@ -186,7 +187,7 @@ func moveCardToPlayerBase(card: Card) -> bool:
 	# Convert local position to global position
 	var global_target = player_base.global_position + target_position
 	card.reparent(player_base)
-	card.animatePlayedTo(global_target + Vector3(0, 0.1, 0))
+	await AnimationsManagerAL.animate_card_to_position(card, global_target + Vector3(0, 0.1, 0))
 	return true
 	
 
@@ -224,39 +225,83 @@ func arrange_cards_fan():
 		
 		# Position cards spread horizontally
 		card.position.x = start_x + spacing * i
-		
-		card.setRotation(Vector3(90, 0, 0), 0)
-
 
 func resolveCombats():
 	var lock = playerControlLock.addLock()
 	for cv in combatZones:
-		resolveCombatInZone(cv)
+		await resolveCombatInZone(cv)
 	playerControlLock.removeLock(lock)
 	
 func resolveCombatInZone(combatZone: CombatZone):
-	var damageCounter = 0
+	var _damageCounter = 0
+	
+	# Animate combat for each slot
 	for i in range(1, 4):
 		var allyCard = combatZone.getCardSlot(i, true).getCard()
 		var oppCard = combatZone.getCardSlot(i, false).getCard()
+		
 		if allyCard && oppCard:
+			# Animate opponent card striking ally card
+			await AnimationsManagerAL.animate_combat_strike(oppCard, allyCard)
+			
+			# Apply damage after animation
 			allyCard.receiveDamage(oppCard.getPower())
 			oppCard.receiveDamage(allyCard.getPower())
 		elif allyCard && !oppCard:
-			damageCounter += allyCard.getPower()
+			_damageCounter += allyCard.getPower()
 		elif !allyCard && oppCard:
-			damageCounter -= oppCard.getPower()
+			_damageCounter -= oppCard.getPower()
+	
 	resolveStateBasedAction()
-	if combatZone.getTotalStrengthForSide(true) > combatZone.getTotalStrengthForSide(false):
+	
+	#HERE: Add animation for +1 point or -1 life
+	var player_strength = combatZone.getTotalStrengthForSide(true)
+	var opponent_strength = combatZone.getTotalStrengthForSide(false)
+	
+	if player_strength > opponent_strength:
+		await AnimationsManagerAL.show_floating_text(self, combatZone.global_position, "+1 Point", Color.GREEN)
 		var current_points = game_ui.player_point.text.to_int() if game_ui.player_point else 0
 		update_player_points(current_points + 1)
-	elif combatZone.getTotalStrengthForSide(true) < combatZone.getTotalStrengthForSide(false):
+	elif player_strength < opponent_strength:
+		await AnimationsManagerAL.show_floating_text(self, combatZone.global_position, "-1 Life", Color.RED)
 		damage_player(1)
+	else:
+		await AnimationsManagerAL.show_floating_text(self, combatZone.global_position, "Draw", Color.YELLOW)
 
 func resolveStateBasedAction():
 	for c:Card in getAllCardsInPlay():
 		if c.getDamage() >= c.getPower():
 			putInOwnerGraveyard(c)
+			
+func _show_floating_text(text_position: Vector3, text: String, color: Color):
+	"""Show floating text animation at the specified position"""
+	# Create a Label3D for the floating text
+	var floating_label = Label3D.new()
+	floating_label.text = text
+	floating_label.modulate = color
+	floating_label.font_size = 48
+	floating_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	floating_label.global_position = text_position + Vector3(0, 1, 0)  # Start slightly above the position
+	
+	# Add to scene
+	add_child(floating_label)
+	
+	# Create animation tween
+	var tween = create_tween()
+	tween.set_parallel(true)  # Allow multiple properties to animate simultaneously
+	
+	# Animate upward movement and fade out
+	var end_position = text_position + Vector3(0, 2, 0)  # Move up 2 units
+	tween.tween_property(floating_label, "global_position", end_position, 2.0)
+	tween.tween_property(floating_label, "modulate:a", 0.0, 2.0)  # Fade out alpha
+	
+	# Scale animation for emphasis
+	floating_label.scale = Vector3.ZERO
+	tween.tween_property(floating_label, "scale", Vector3.ONE, 0.3)
+	
+	# Wait for animation to complete then clean up
+	await tween.finished
+	floating_label.queue_free()
 			
 func createOpposingToken():
 	if not game_data:
@@ -297,16 +342,13 @@ func createOpposingToken():
 			var chosen_combat_zone = combatZones[zone_index]
 			
 			# Get the first empty location on the enemy side (false)
-			var location = chosen_combat_zone.getFirstEmptyLocation(false)
+			var location: CombatantFightingSpot = chosen_combat_zone.getFirstEmptyLocation(false)
 			if location:
 				location.setCard(card, false)
-				card.makeSmall()
-				print("Created enemy token with power ", rolled_value, " in combat zone ", zone_index)
 				token_placed = true
 			else:
 				# Remove this zone from available zones and try again
 				available_zones.remove_at(random_index)
-				print("Combat zone ", zone_index, " is full, removing from pool. Remaining zones: ", available_zones.size())
 		
 		# If no zones are available, destroy the card and stop
 		if not token_placed:
@@ -329,6 +371,7 @@ static var objectCount = 0
 static func getObjectCountAndIncrement():
 	objectCount +=1
 	return objectCount-1
+	
 func createCardFromData(cardData: CardData):
 	if cardData == null:
 		push_warning("Tried to draw from empty deck.")
