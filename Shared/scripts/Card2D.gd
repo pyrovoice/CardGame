@@ -34,7 +34,7 @@ func update_display():
 		return
 		
 	name_label.text = card.cardData.cardName
-	cost_label.text = str(card.cardData.cost)
+	cost_label.text = str(card.cardData.goldCost)
 	type_label.text = card.cardData.getFullTypeString()
 	power_label.text = str(card.cardData.power)
 	

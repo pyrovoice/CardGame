@@ -12,6 +12,7 @@ const CARD = preload("res://Game/scenes/Card.tscn")
 @onready var card_in_popup: Card = $cardPopup/Card
 var playerControlLock:PlayerControlLock = PlayerControlLock.new()
 @onready var graveyard: Graveyard = $graveyard
+@onready var extra_deck: CardContainer = $extraDeck
 @onready var draw: Button = $UI/draw
 
 # Game data and state management
@@ -20,6 +21,9 @@ var game_data: GameData
 # Card library loaded from files
 var loaded_card_data: Array[CardData] = []
 
+# Container for castable extra deck cards (displayed to the right of hand)
+@onready var extra_deck_display: Node3D = $Camera3D/extra_deck_display
+
 func _ready() -> void:
 	# Initialize game data
 	game_data = GameData.new()
@@ -27,9 +31,16 @@ func _ready() -> void:
 	# Setup UI to follow SignalFloat signals
 	game_ui.setup_game_data(game_data)
 	
+	# Set up payment manager context
+	CardPaymentManagerAL.set_game_context(self)
+	
 	player_control.tryMoveCard.connect(tryMoveCard)
 	draw.pressed.connect(onTurnStart)
 	CardLoader.load_all_cards()
+	
+	# Test additional cost parsing for Goblin Boss
+	test_additional_costs()
+	
 	populate_deck()
 	createOpposingToken()
 	drawCard()
@@ -38,8 +49,14 @@ func _ready() -> void:
 
 func populate_deck():
 	deck.clear_cards()
+	extra_deck.clear_cards()
+	
 	for card_data in CardLoader.cardData:
-		deck.add_card(card_data)
+		# Boss cards go to extra deck, others go to regular deck
+		if card_data.hasType(CardData.CardType.BOSS):
+			extra_deck.add_card(card_data)
+		else:
+			deck.add_card(card_data)
 
 func onTurnStart():
 	# Start a new turn (increases danger level via SignalFloat)
@@ -91,9 +108,9 @@ func tryPlayCard(card: Card, target_location: Node3D) -> void:
 	if not _canPlayCard(card, source_zone, target_location):
 		return
 	
-	# Pay costs if playing from hand
-	if source_zone == GameZone.e.HAND:
-		if not _payCardCosts(card):
+	# Pay costs if playing from hand or extra deck
+	if source_zone == GameZone.e.HAND or source_zone == GameZone.e.EXTRA_DECK:
+		if not CardPaymentManagerAL.tryPayCard(card):
 			return
 	
 	# Determine target zone and execute the play
@@ -106,13 +123,20 @@ func tryPlayCard(card: Card, target_location: Node3D) -> void:
 
 func _canPlayCard(card: Card, source_zone: GameZone.e, target_location: Node3D) -> bool:
 	"""Check if the card can be played to the target location"""
-	# Can only play cards from hand
-	if source_zone != GameZone.e.HAND:
+	# Can play cards from hand or extra deck
+	var can_play_from_zone = (source_zone == GameZone.e.HAND) or (source_zone == GameZone.e.EXTRA_DECK)
+	if not can_play_from_zone:
 		return false
 	
 	# Basic playability check
+	print("Attempting to play card: ", card.cardData.cardName, " (Cost: ", card.cardData.goldCost, ")")
+	debug_player_resources()
+	
 	if not isCardPlayable(card):
+		print("❌ Card not playable!")
 		return false
+	
+	print("✅ Card is playable, proceeding...")
 	
 	# Check target location availability
 	if target_location is CombatantFightingSpot:
@@ -122,10 +146,6 @@ func _canPlayCard(card: Card, source_zone: GameZone.e, target_location: Node3D) 
 			return false
 	
 	return true
-
-func _payCardCosts(card: Card) -> bool:
-	"""Pay the costs required to play the card"""
-	return payCard(card)
 
 func _getTargetZone(target_location: Node3D) -> GameZone.e:
 	"""Determine the game zone for the target location"""
@@ -153,6 +173,9 @@ func _executeCardPlay(card: Card, source_zone: GameZone.e, _target_zone: GameZon
 	# Trigger CARD_ENTERS action after the card has moved to battlefield
 	var enters_action = GameAction.new(TriggerType.Type.CARD_ENTERS, card, source_zone, GameZone.e.PLAYER_BASE)
 	AbilityManagerAL.triggerGameAction(self, enters_action)
+	
+	# Resolve state-based actions after card play
+	resolveStateBasedAction()
 
 func executeCardAttacks(card: Card, combat_spot: CombatantFightingSpot):
 	"""Execute card attack - move card from PlayerBase to CombatZone and trigger attack"""
@@ -169,12 +192,19 @@ func executeCardAttacks(card: Card, combat_spot: CombatantFightingSpot):
 	var attacks_action = GameAction.new(TriggerType.Type.CARD_ATTACKS, card, source_zone, GameZone.e.COMBAT_ZONE)
 	AbilityManagerAL.triggerGameAction(self, attacks_action)
 	
-func isCardPlayable(card: Card):
-	return player_hand.get_children().find(card) != -1
+	# Resolve state-based actions after attack
+	resolveStateBasedAction()
 	
-func payCard(card: Card):
-	return true
+func isCardPlayable(card: Card) -> bool:
+	"""Check if a card can be played (in hand/extra deck and affordable)"""
+	var card_zone = getCardZone(card)
 	
+	# Card must be in hand or extra deck to be playable
+	if card_zone != GameZone.e.HAND and card_zone != GameZone.e.EXTRA_DECK:
+		return false
+	
+	return CardPaymentManagerAL.canPayCard(card)  # Check if player can afford it
+
 func moveCardToCombatZone(card: Card, zone: CombatantFightingSpot) -> bool:
 	zone.setCard(card)
 	await AnimationsManagerAL.animate_card_to_position(card, zone.global_position + Vector3(0, 0.1, 0))
@@ -189,8 +219,8 @@ func moveCardToPlayerBase(card: Card) -> bool:
 	var global_target = player_base.global_position + target_position
 	card.reparent(player_base)
 	await AnimationsManagerAL.animate_card_to_position(card, global_target + Vector3(0, 0.1, 0))
+	resolveStateBasedAction()
 	return true
-	
 
 func drawCard():
 	var card = deck.draw_card_from_top()
@@ -203,6 +233,9 @@ func drawCard():
 	AbilityManagerAL.triggerGameAction(self, action)
 	
 	arrange_cards_fan()
+	
+	# Resolve state-based actions after drawing card
+	resolveStateBasedAction()
 
 func arrange_cards_fan():
 	var cards = player_hand.get_children()
@@ -286,6 +319,9 @@ func resolveStateBasedAction():
 	if game_data.player_points.getValue() >= 6:
 		print("Player win")
 		get_tree().change_scene_to_file("res://MainMenu/scenes/MainMenu.tscn")
+	
+	# Check and highlight castable cards
+	highlightCastableCards()
 
 func createOpposingToken():
 	if not game_data:
@@ -305,7 +341,7 @@ func createOpposingToken():
 		# Create a token with the rolled value as power
 		var card = CARD.instantiate()
 		add_child(card)
-		card.setData(CardData.new("Enemy", 0, CardData.CardType.CREATURE, rolled_value, ""))
+		card.setData(CardData.new("Enemy", 0, [CardData.CardType.CREATURE], rolled_value, ""))
 		
 		# Create a pool of available combat zones (indices)
 		var available_zones = []
@@ -389,6 +425,8 @@ func getCardZone(card: Card) -> GameZone.e:
 		return GameZone.e.GRAVEYARD
 	elif parent_name == "Deck" or parent.get_script() != null and parent.get_script().get_global_name() == "Deck":
 		return GameZone.e.DECK
+	elif parent_name == "extraDeck" or parent.get_script() != null and parent.get_script().get_global_name() == "CardContainer":
+		return GameZone.e.EXTRA_DECK
 		
 		# Default fallback
 	return GameZone.e.DECK
@@ -416,3 +454,143 @@ func restore_shield(amount: float):
 func is_game_over() -> bool:
 	"""Check if the game is over (player defeated)"""
 	return game_data and game_data.is_player_defeated()
+
+func debug_player_resources():
+	"""Debug function to print current player resources"""
+	if game_data:
+		print("=== PLAYER RESOURCES ===")
+		print("Life: ", game_data.player_life.value)
+		print("Shield: ", game_data.player_shield.value)
+		print("Gold: ", game_data.player_gold.value)
+		print("Points: ", game_data.player_points.value)
+		print("Turn: ", game_data.current_turn.value)
+		print("Danger Level: ", game_data.danger_level.value)
+		print("========================")
+
+func highlightCastableCards():
+	"""Check cards in hand and extra deck for castability and update their display"""
+	# Check cards in hand for highlighting
+	_highlightHandCards()
+	
+	# Check extra deck cards and display castable ones
+	_displayCastableExtraDeckCards()
+
+func _highlightHandCards():
+	"""Toggle highlight on cards in hand based on castability"""
+	var hand_cards = player_hand.get_children()
+	for card: Card in hand_cards:
+		if card is Card:
+			var is_castable = CardPaymentManagerAL.isCardCastable(card)
+			card.highlight(is_castable)
+
+func _displayCastableExtraDeckCards():
+	"""Display castable extra deck cards to the right of the hand"""
+	# Clear existing extra deck display
+	_clearExtraDeckDisplay()
+	
+	# Check each card in extra deck for castability
+	var castable_cards: Array[CardData] = []
+	print("=== Extra Deck Castability Check ===")
+	print("Extra deck has ", extra_deck.cards.size(), " cards")
+	
+	for card_data: CardData in extra_deck.cards:
+		print("Checking card: ", card_data.cardName)
+		print("  Gold cost: ", card_data.goldCost)
+		print("  Player gold: ", game_data.player_gold.value)
+		print("  Has gold: ", game_data.has_gold(card_data.goldCost))
+		print("  Has additional costs: ", card_data.hasAdditionalCosts())
+		if card_data.hasAdditionalCosts():
+			print("  Additional costs: ", card_data.getAdditionalCosts())
+		
+		var is_castable = CardPaymentManagerAL.isCardDataCastable(card_data)
+		print("  Is castable: ", is_castable)
+		
+		if is_castable:
+			castable_cards.append(card_data)
+	
+	print("Castable cards: ", castable_cards.size())
+	print("=====================================")
+	
+	# Display castable cards
+	_arrangeExtraDeckCards(castable_cards)
+
+func _createExtraDeckDisplay():
+	"""Create the container for extra deck card display"""
+	extra_deck_display = Node3D.new()
+	extra_deck_display.name = "ExtraDeckDisplay"
+	player_hand.get_parent().add_child(extra_deck_display)
+	
+	# Position it to the right of the hand area
+	extra_deck_display.position = Vector3(8, 0, 0)  # Adjust position as needed
+
+func _clearExtraDeckDisplay():
+	"""Clear all cards from the extra deck display"""
+	if extra_deck_display:
+		for child in extra_deck_display.get_children():
+			child.queue_free()
+
+func _arrangeExtraDeckCards(castable_cards: Array[CardData]):
+	"""Arrange castable extra deck cards in the display area"""
+	if not extra_deck_display or castable_cards.is_empty():
+		return
+	
+	var spacing = 0.8  # Horizontal spacing between cards
+	var start_x = 0
+	
+	for i in range(castable_cards.size()):
+		var card_data = castable_cards[i]
+		var card_instance = createCardFromData(card_data)
+		
+		if card_instance:
+			# Add to extra deck display
+			card_instance.reparent(extra_deck_display)
+			
+			# Position the card
+			card_instance.position.x = start_x + spacing * i
+			card_instance.position.y = 0
+			card_instance.position.z = 0
+			
+			# Make sure it's visible and properly sized
+			card_instance.makeSmall()
+			
+			# Add some visual indication that it's from extra deck (e.g., glow effect)
+			card_instance.set_glow_effect(true, Color.GOLD, 0.5)
+
+func test_additional_costs():
+	"""Test function to verify additional cost parsing and checking"""
+	print("=== Testing Additional Cost System ===")
+	
+	# Find Goblin Boss card
+	var goblin_boss_data = null
+	for card_data in CardLoader.cardData:
+		if card_data.cardName == "Goblin Boss":
+			goblin_boss_data = card_data
+			break
+	
+	if not goblin_boss_data:
+		print("❌ Goblin Boss not found in card data")
+		return
+	
+	print("✅ Found Goblin Boss")
+	print("   Gold Cost: ", goblin_boss_data.goldCost)
+	print("   Has Additional Costs: ", goblin_boss_data.hasAdditionalCosts())
+	
+	if goblin_boss_data.hasAdditionalCosts():
+		print("   Additional Costs: ", goblin_boss_data.additionalCosts)
+		print("   Cost Description: ", goblin_boss_data.getAdditionalCostDescription())
+	
+	# Test castability checking
+	print("   Player Gold: ", game_data.player_gold.value)
+	print("   Can Pay Gold Cost: ", game_data.has_gold(goblin_boss_data.goldCost))
+	
+	if goblin_boss_data.hasAdditionalCosts():
+		var can_pay_additional = CardPaymentManagerAL.canPayAdditionalCosts(goblin_boss_data.getAdditionalCosts())
+		print("   Can Pay Additional Costs: ", can_pay_additional)
+		print("   Player Controlled Cards: ", CardPaymentManagerAL.getPlayerControlledCards().size())
+		
+		# Show which cards player controls
+		var controlled = CardPaymentManagerAL.getPlayerControlledCards()
+		for card in controlled:
+			print("     - ", card.cardData.cardName, " (", card.cardData.subtypes, ")")
+	
+	print("===")

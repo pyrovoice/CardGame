@@ -5,6 +5,7 @@ class_name GameData
 var player_life: SignalFloat
 var player_shield: SignalFloat
 var player_points: SignalFloat
+var player_gold: SignalFloat
 
 # Game state using SignalFloat
 var danger_level: SignalFloat
@@ -15,6 +16,7 @@ func _init():
 	player_life = SignalFloat.new(3.0)
 	player_shield = SignalFloat.new(3.0)
 	player_points = SignalFloat.new(0.0)
+	player_gold = SignalFloat.new(3.0)  # Starting gold
 	danger_level = SignalFloat.new(5.0)
 	current_turn = SignalFloat.new(1.0)
 
@@ -44,7 +46,7 @@ func restore_shield(amount: float):
 	"""Restore the player's shield"""
 	player_shield.value += amount
 
-func add_player_points(amount: float = 1):
+func add_player_points(amount: float):
 	"""Add points to the player's score"""
 	player_points.value += amount
 
@@ -52,10 +54,27 @@ func subtract_player_points(amount: float):
 	"""Subtract points from the player's score"""
 	player_points.value = max(0, player_points.value - amount)
 
+func add_gold(amount: float):
+	"""Add gold to the player's resources"""
+	player_gold.value += amount
+
+func spend_gold(amount: float) -> bool:
+	"""Spend gold if player has enough, returns true if successful"""
+	if player_gold.value >= amount:
+		player_gold.value -= amount
+		return true
+	return false
+
+func has_gold(amount: float) -> bool:
+	"""Check if player has enough gold"""
+	return player_gold.value >= amount
+
 func start_new_turn():
 	"""Start a new turn and increase danger level"""
 	current_turn.value += 1
 	increase_danger_level()
+	# Add gold per turn (could be made configurable)
+	add_gold(1)
 
 func is_player_defeated() -> bool:
 	"""Check if the player has been defeated"""
@@ -67,6 +86,7 @@ func get_game_state() -> Dictionary:
 		"player_life": player_life.value,
 		"player_shield": player_shield.value,
 		"player_points": player_points.value,
+		"player_gold": player_gold.value,
 		"danger_level": danger_level.value,
 		"current_turn": current_turn.value
 	}
@@ -76,5 +96,6 @@ func reset_game():
 	player_life.value = 3
 	player_shield.value = 3
 	player_points.value = 0
+	player_gold.value = 3
 	danger_level.value = 5
 	current_turn.value = 1

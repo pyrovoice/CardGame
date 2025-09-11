@@ -148,7 +148,7 @@ func animate_card_popup(card: Card):
 		return
 	
 	var pos := card.card_representation.position
-	pos.y = lerp(pos.y, 0.6 + card.position.y, 0.4)
+	pos.z = lerp(pos.z, -0.6 + card.position.z, 0.4)
 	card.card_representation.position = pos
 	card.makeBig()
 	card.set_glow_effect(true)

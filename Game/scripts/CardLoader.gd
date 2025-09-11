@@ -28,7 +28,7 @@ static func parse_card_data(card_text: String) -> CardData:
 		card_data.cardName = properties["Name"]
 	
 	if "ManaCost" in properties:
-		card_data.cost = int(properties["ManaCost"])
+		card_data.goldCost = int(properties["ManaCost"])
 	
 	if "Power" in properties:
 		card_data.power = int(properties["Power"])
@@ -41,26 +41,80 @@ static func parse_card_data(card_text: String) -> CardData:
 		var types_text = properties["Types"]
 		var type_parts = types_text.split(" ")
 		
-		# First part is the main type
-		if type_parts.size() > 0:
-			var main_type = type_parts[0].strip_edges()
-			if "Creature" in main_type:
-				card_data.type = CardData.CardType.CREATURE
-			elif "Spell" in main_type:
-				card_data.type = CardData.CardType.SPELL
-			elif "Permanent" in main_type:
-				card_data.type = CardData.CardType.PERMANENT
-		
-		# Remaining parts are subtypes (up to 3)
-		for i in range(1, min(type_parts.size(), 4)):  # Skip first (main type), max 3 subtypes
-			var subtype = type_parts[i].strip_edges()
-			if subtype != "":
-				card_data.subtypes.append(subtype)
+		# Parse all types (can have multiple types like "Boss Creature")
+		for i in range(type_parts.size()):
+			var type_part = type_parts[i].strip_edges()
+			if "Creature" in type_part:
+				card_data.addType(CardData.CardType.CREATURE)
+			elif "Spell" in type_part:
+				card_data.addType(CardData.CardType.SPELL)
+			elif "Permanent" in type_part:
+				card_data.addType(CardData.CardType.PERMANENT)
+			elif "Boss" in type_part:
+				card_data.addType(CardData.CardType.BOSS)
+			else:
+				# If it's not a main type, treat it as a subtype
+				if type_part != "" and card_data.subtypes.size() < 3:
+					card_data.subtypes.append(type_part)
 	
 	# Parse abilities
 	card_data.abilities = parse_abilities(properties)
 	
+	# Parse additional costs
+	card_data.additionalCosts = parse_additional_costs(properties)
+	
+	# Parse spell effects (for spell cards)
+	if card_data.hasType(CardData.CardType.SPELL):
+		var spell_effects = parse_spell_effects(properties)
+		if spell_effects.size() > 0:
+			card_data.abilities.append_array(spell_effects)
+	
 	return card_data
+
+# Parse spell effects from card properties
+static func parse_spell_effects(properties: Dictionary) -> Array[Dictionary]:
+	var spell_effects: Array[Dictionary] = []
+	
+	# Look for E: lines (Effect lines for spells)
+	for key in properties.keys():
+		if key == "E":
+			var effect_line = properties[key]
+			var spell_effect = parse_single_spell_effect(effect_line)
+			if not spell_effect.is_empty():
+				spell_effects.append(spell_effect)
+	
+	return spell_effects
+
+# Parse a single spell effect line
+static func parse_single_spell_effect(effect_text: String) -> Dictionary:
+	var effect_data = {
+		"type": "SpellEffect",
+		"effect_type": "",
+		"parameters": {},
+		"description": ""
+	}
+	
+	# Remove the initial "$ " if present
+	if effect_text.begins_with("$ "):
+		effect_text = effect_text.substr(2)
+	
+	var parts = effect_text.split(" | ")
+	
+	for part in parts:
+		part = part.strip_edges()
+		
+		# Parse different effect types
+		if part == "DealDamage":
+			effect_data.effect_type = "DealDamage"
+		elif part.begins_with("ValidTgts$"):
+			effect_data.parameters["ValidTargets"] = part.substr(11)
+		elif part.begins_with("NumDmg$"):
+			effect_data.parameters["NumDamage"] = int(part.substr(8))
+		elif part.begins_with("SpellDescription$"):
+			effect_data.description = part.substr(18)
+		# Add more spell effect types as needed (Mill, Draw, Heal, etc.)
+	
+	return effect_data
 
 # Parse abilities from card properties
 static func parse_abilities(properties: Dictionary) -> Array[Dictionary]:
@@ -207,6 +261,45 @@ static func parse_effect_parameters(effect_text: String) -> Dictionary:
 		# Add more parameter parsing as needed
 	
 	return parameters
+
+# Parse additional costs from card properties
+static func parse_additional_costs(properties: Dictionary) -> Array[Dictionary]:
+	var additional_costs: Array[Dictionary] = []
+	
+	# Look for AC$ lines (Additional Cost)
+	for key in properties.keys():
+		if key == "AC$" or key == "AC":
+			var cost_line = properties[key]
+			var cost_data = parse_single_additional_cost(cost_line)
+			if not cost_data.is_empty():
+				additional_costs.append(cost_data)
+	
+	return additional_costs
+
+# Parse a single additional cost line
+static func parse_single_additional_cost(cost_text: String) -> Dictionary:
+	var cost_data: Dictionary = {}
+	var parts = cost_text.split(" | ")
+	
+	for part in parts:
+		part = part.strip_edges()
+		
+		# Check for exact match first
+		if part == "SacrificePermanent":
+			cost_data["cost_type"] = "SacrificePermanent"
+		elif part == "$ SacrificePermanent":
+			cost_data["cost_type"] = "SacrificePermanent"
+		elif part.begins_with("SacrificePermanent"):
+			cost_data["cost_type"] = "SacrificePermanent"
+		elif part.begins_with("ValidCard$"):
+			cost_data["valid_card"] = part.substr(11)
+		elif part.begins_with("Count "):
+			cost_data["count"] = int(part.substr(6))
+		elif part.begins_with("MinCount "):
+			cost_data["min_count"] = int(part.substr(9))
+		# Add more cost types as needed (PayLife, DiscardCard, etc.)
+	
+	return cost_data
 
 # Load a card from a text file
 static func load_card_art(card_name: String) -> Texture2D:

@@ -48,7 +48,17 @@ func hasSubtype(subtype: String) -> bool:
 
 func isCreature() -> bool:
 	if cardData:
-		return cardData.type == CardData.CardType.CREATURE
+		return cardData.hasType(CardData.CardType.CREATURE)
+	return false
+
+func isBoss() -> bool:
+	if cardData:
+		return cardData.hasType(CardData.CardType.BOSS)
+	return false
+
+func hasType(card_type: CardData.CardType) -> bool:
+	if cardData:
+		return cardData.hasType(card_type)
 	return false
 
 func set_current_zone(zone: String):

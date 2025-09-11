@@ -1,0 +1,6 @@
+Name:Goblin Boss
+Types:Boss Creature Goblin
+Power:5
+CC:$ ControlPermanent | ValidCard$ Card.YouCtrl+Goblin | MinCount 4
+AC:$ SacrificePermanent | ValidCard$ Card.YouCtrl+Goblin | Count 2
+CardText: Cast CARDNAME only if you control 4 or more Goblin permanent[p]As an additional cost to cast CARDNAME, sacrifice 2 Goblin permanent you control.

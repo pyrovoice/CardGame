@@ -15,6 +15,10 @@ func triggerGameAction(game: Game, action: GameAction):
 		var ability = abilityPair.ability
 		# Execute the specific ability
 		executeAbility(triggeringCard, ability, game)
+	
+	# Resolve state-based actions after all triggered abilities have executed
+	if triggeredAbilities.size() > 0:
+		game.resolveStateBasedAction()
 
 func execute_token_creation(parameters: Dictionary, source_card: Card, game_context: Game):
 	"""Execute token creation effect"""
@@ -180,7 +184,7 @@ func isValidTokenCondition(condition: String, effect_context: Dictionary) -> boo
 				return false
 			
 			# Check if it's a creature
-			if token_data.type != CardData.CardType.CREATURE:
+			if not token_data.hasType(CardData.CardType.CREATURE):
 				return false
 			
 			# Check if it has the required subtype

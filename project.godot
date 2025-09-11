@@ -19,6 +19,7 @@ config/icon="res://icon.svg"
 
 AbilityManagerAL="*res://Game/scripts/AbilityManager.gd"
 AnimationsManagerAL="*res://Shared/scripts/AnimationsManager.gd"
+CardPaymentManagerAL="*res://Game/scripts/CardPaymentManager.gd"
 
 [debug_draw_3d]
 

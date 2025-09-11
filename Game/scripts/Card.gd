@@ -123,6 +123,20 @@ func getDamage():
 func receiveDamage(v: int):
 	damage += v
 	updateDisplay()
+	
+	# Find the Game node and resolve state-based actions
+	var game_node = _find_game_node()
+	if game_node and game_node.has_method("resolveStateBasedAction"):
+		game_node.resolveStateBasedAction()
+
+func _find_game_node() -> Node:
+	"""Find the Game node by traversing up the tree"""
+	var current = self
+	while current:
+		if current is Game:
+			return current
+		current = current.get_parent()
+	return null
 
 func highlight(enabled: bool):
 	"""Enable or disable the highlight effect"""
