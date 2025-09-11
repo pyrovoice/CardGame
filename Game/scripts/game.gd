@@ -37,8 +37,9 @@ func _ready() -> void:
 	drawCard()
 
 func populate_deck():
-	deck.cards.clear()
-	deck.cards.append_array(CardLoader.cardData.duplicate())
+	deck.clear_cards()
+	for card_data in CardLoader.cardData:
+		deck.add_card(card_data)
 
 func onTurnStart():
 	# Start a new turn (increases danger level via SignalFloat)
@@ -344,7 +345,7 @@ func getAllCardsInPlay() -> Array[Card]:
 
 func putInOwnerGraveyard(card: Card):
 	await card.animatePlayedTo(graveyard.global_position)
-	graveyard.cards.push_back(card.cardData)
+	graveyard.add_card(card.cardData)
 	card.queue_free()
 
 static var objectCount = 0

@@ -1,0 +1,21 @@
+[gd_scene load_steps=5 format=3 uid="uid://dq0b45a6txn6s"]
+
+[ext_resource type="Script" uid="uid://7dgo51ergs8r" path="res://Game/scripts/extra_deck.gd" id="1_f18uv"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_613u6"]
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_xdevy"]
+material = SubResource("StandardMaterial3D_613u6")
+height = 0.2
+
+[sub_resource type="CylinderShape3D" id="CylinderShape3D_5mwtv"]
+height = 0.2
+
+[node name="extraDeck" type="StaticBody3D"]
+script = ExtResource("1_f18uv")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="."]
+mesh = SubResource("CylinderMesh_xdevy")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+shape = SubResource("CylinderShape3D_5mwtv")

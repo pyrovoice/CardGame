@@ -5,7 +5,7 @@
 [sub_resource type="BoxMesh" id="BoxMesh_f2aqt"]
 size = Vector3(0.66, 0.2, 0.8)
 
-[node name="Deck" type="Node3D"]
+[node name="Deck" type="StaticBody3D"]
 script = ExtResource("1_f2aqt")
 
 [node name="deckMesh" type="MeshInstance3D" parent="."]

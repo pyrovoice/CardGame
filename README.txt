@@ -11,6 +11,8 @@ Archetypes:
 - Dwarf faction mining for gold and getting stronger the more gold they have
 - Geomancer that vastly modify battlefields
 - Circus act: alternate between balls, diabolo and something else. have a number of item set or flying, with cards setting or using flying items for effects depending on the type of Act, and cards to switch between acts. act difficulty?
+- Pokemon: Capture opponent monsters and play them somehow
+- Boss maker: Turn regular monster into Boss cards that go in the extra deck
 
 Game principles:
 
