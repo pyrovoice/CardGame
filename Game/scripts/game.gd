@@ -5,7 +5,6 @@ class_name Game
 @onready var player_hand: Node3D = $Camera3D/PlayerHand
 @onready var deck: Deck = $"Deck"
 @onready var combatZones: Array = [$combatZone, $combatZone2, $combatZone3]
-@onready var draw: Button = $UI/draw
 @onready var game_ui: GameUI = $UI
 @onready var player_base: PlayerBase = $playerBase
 const CARD = preload("res://Game/scenes/Card.tscn")
@@ -13,6 +12,7 @@ const CARD = preload("res://Game/scenes/Card.tscn")
 @onready var card_in_popup: Card = $cardPopup/Card
 var playerControlLock:PlayerControlLock = PlayerControlLock.new()
 @onready var graveyard: Graveyard = $graveyard
+@onready var draw: Button = $UI/draw
 
 # Game data and state management
 var game_data: GameData
@@ -247,6 +247,7 @@ func resolveCombatInZone(combatZone: CombatZone):
 			# Apply damage after animation
 			allyCard.receiveDamage(oppCard.getPower())
 			oppCard.receiveDamage(allyCard.getPower())
+
 		elif allyCard && !oppCard:
 			_damageCounter += allyCard.getPower()
 		elif !allyCard && oppCard:
@@ -259,58 +260,38 @@ func resolveCombatInZone(combatZone: CombatZone):
 	var opponent_strength = combatZone.getTotalStrengthForSide(false)
 	
 	if player_strength > opponent_strength:
-		await AnimationsManagerAL.show_floating_text(self, combatZone.global_position, "+1 Point", Color.GREEN)
+		AnimationsManagerAL.show_floating_text(self, combatZone.global_position, "+1 Point", Color.GREEN)
 		var current_points = game_ui.player_point.text.to_int() if game_ui.player_point else 0
-		update_player_points(current_points + 1)
+		game_data.add_player_points(1)
 	elif player_strength < opponent_strength:
-		await AnimationsManagerAL.show_floating_text(self, combatZone.global_position, "-1 Life", Color.RED)
+		AnimationsManagerAL.show_floating_text(self, combatZone.global_position, "-1 Life", Color.RED)
 		damage_player(1)
 	else:
-		await AnimationsManagerAL.show_floating_text(self, combatZone.global_position, "Draw", Color.YELLOW)
+		AnimationsManagerAL.show_floating_text(self, combatZone.global_position, "Draw", Color.YELLOW)
+	resolveStateBasedAction()
 
 func resolveStateBasedAction():
-	for c:Card in getAllCardsInPlay():
-		if c.getDamage() >= c.getPower():
+	var cards_in_play = getAllCardsInPlay()
+	
+	for c:Card in cards_in_play:
+		var damage = c.getDamage()
+		var power = c.getPower()
+		
+		if damage >= power:
 			putInOwnerGraveyard(c)
-			
-func _show_floating_text(text_position: Vector3, text: String, color: Color):
-	"""Show floating text animation at the specified position"""
-	# Create a Label3D for the floating text
-	var floating_label = Label3D.new()
-	floating_label.text = text
-	floating_label.modulate = color
-	floating_label.font_size = 48
-	floating_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	floating_label.global_position = text_position + Vector3(0, 1, 0)  # Start slightly above the position
-	
-	# Add to scene
-	add_child(floating_label)
-	
-	# Create animation tween
-	var tween = create_tween()
-	tween.set_parallel(true)  # Allow multiple properties to animate simultaneously
-	
-	# Animate upward movement and fade out
-	var end_position = text_position + Vector3(0, 2, 0)  # Move up 2 units
-	tween.tween_property(floating_label, "global_position", end_position, 2.0)
-	tween.tween_property(floating_label, "modulate:a", 0.0, 2.0)  # Fade out alpha
-	
-	# Scale animation for emphasis
-	floating_label.scale = Vector3.ZERO
-	tween.tween_property(floating_label, "scale", Vector3.ONE, 0.3)
-	
-	# Wait for animation to complete then clean up
-	await tween.finished
-	floating_label.queue_free()
-			
+	if game_data.player_life.getValue() <= 0:
+		print("Player lose")
+		get_tree().change_scene_to_file("res://MainMenu/scenes/MainMenu.tscn")
+	if game_data.player_points.getValue() >= 6:
+		print("Player win")
+		get_tree().change_scene_to_file("res://MainMenu/scenes/MainMenu.tscn")
+
 func createOpposingToken():
 	if not game_data:
 		return
 		
 	var danger_level = game_data.danger_level.getValue()
 	var increment_counter = 0
-	
-	print("Creating opposing tokens with danger level: ", danger_level)
 	
 	while increment_counter < danger_level:
 		# Roll a random value from 1 to dangerLevel/2 (rounded up)
@@ -319,8 +300,6 @@ func createOpposingToken():
 		
 		# Add the rolled value to the counter
 		increment_counter += rolled_value
-		
-		print("Rolled: ", rolled_value, " (Counter: ", increment_counter, "/", danger_level, ")")
 		
 		# Create a token with the rolled value as power
 		var card = CARD.instantiate()
@@ -360,6 +339,7 @@ func getAllCardsInPlay() -> Array[Card]:
 	var cards:Array[Card] = player_base.getCards()
 	for cz:CombatZone in combatZones:
 		cz.allySpots.filter(func(c:CombatantFightingSpot): return c.getCard() != null).map(func(c:CombatantFightingSpot): cards.push_back(c.getCard()))
+		cz.ennemySpots.filter(func(c:CombatantFightingSpot): return c.getCard() != null).map(func(c:CombatantFightingSpot): cards.push_back(c.getCard()))
 	return cards 
 
 func putInOwnerGraveyard(card: Card):
@@ -435,8 +415,3 @@ func restore_shield(amount: float):
 func is_game_over() -> bool:
 	"""Check if the game is over (player defeated)"""
 	return game_data and game_data.is_player_defeated()
-
-func update_player_points(points: int):
-	"""Update player points through UI"""
-	if game_ui:
-		game_ui.update_player_points(points)

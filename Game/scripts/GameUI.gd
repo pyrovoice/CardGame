@@ -38,25 +38,21 @@ func _on_player_life_changed(new_value: float, old_value: float):
 	"""Update player life display"""
 	if player_life_label:
 		player_life_label.text = "Life: " + str(int(new_value))
-	print("Player Life: ", old_value, " -> ", new_value)
 
 func _on_player_shield_changed(new_value: float, old_value: float):
 	"""Update player shield display"""
 	if player_shield_label:
 		player_shield_label.text = "Shield: " + str(int(new_value))
-	print("Player Shield: ", old_value, " -> ", new_value)
 
 func _on_danger_level_changed(new_value: float, old_value: float):
 	"""Update danger level display"""
 	if danger_level_label:
 		danger_level_label.text = "Danger: " + str(int(new_value))
-	print("Danger Level: ", old_value, " -> ", new_value)
 
 func _on_turn_changed(new_value: float, old_value: float):
 	"""Update turn display"""
 	if turn_label:
 		turn_label.text = "Turn: " + str(int(new_value))
-	print("Turn: ", old_value, " -> ", new_value)
 
 func update_player_points(points: int):
 	"""Update player points display (not managed by GameData)"""

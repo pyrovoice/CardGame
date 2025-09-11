@@ -7,7 +7,11 @@ signal onCardEnteredOrLeft
 var is_highlighted: bool = false
 
 func _ready():
-	child_order_changed.connect(func(): onCardEnteredOrLeft.emit())
+	child_order_changed.connect(func(): 
+		# Only emit signal if we're not being destroyed
+		if is_inside_tree() and not is_queued_for_deletion():
+			onCardEnteredOrLeft.emit()
+	)
 	
 func setCard(c: Card, keepPos = true):
 	if getCard() != null:
@@ -27,11 +31,14 @@ func getCard() -> Card:
 	# Method 1: Try find_children with different parameters
 	var cards = find_children("*", "Card", true, false)
 	if cards.size() > 0:
-		return cards[0]
+		var card = cards[0]
+		# Check if the found card is still valid
+		if is_instance_valid(card):
+			return card
 	
 	# Method 2: Check direct children for Card type
 	for child in get_children():
-		if child is Card:
+		if is_instance_valid(child) and child is Card:
 			return child
 	
 	return null

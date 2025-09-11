@@ -4,6 +4,7 @@ class_name GameData
 # Player stats using SignalFloat
 var player_life: SignalFloat
 var player_shield: SignalFloat
+var player_points: SignalFloat
 
 # Game state using SignalFloat
 var danger_level: SignalFloat
@@ -13,6 +14,7 @@ func _init():
 	# Initialize SignalFloat values
 	player_life = SignalFloat.new(3.0)
 	player_shield = SignalFloat.new(3.0)
+	player_points = SignalFloat.new(0.0)
 	danger_level = SignalFloat.new(5.0)
 	current_turn = SignalFloat.new(1.0)
 
@@ -42,6 +44,14 @@ func restore_shield(amount: float):
 	"""Restore the player's shield"""
 	player_shield.value += amount
 
+func add_player_points(amount: float = 1):
+	"""Add points to the player's score"""
+	player_points.value += amount
+
+func subtract_player_points(amount: float):
+	"""Subtract points from the player's score"""
+	player_points.value = max(0, player_points.value - amount)
+
 func start_new_turn():
 	"""Start a new turn and increase danger level"""
 	current_turn.value += 1
@@ -56,6 +66,7 @@ func get_game_state() -> Dictionary:
 	return {
 		"player_life": player_life.value,
 		"player_shield": player_shield.value,
+		"player_points": player_points.value,
 		"danger_level": danger_level.value,
 		"current_turn": current_turn.value
 	}
@@ -64,5 +75,6 @@ func reset_game():
 	"""Reset the game to initial state"""
 	player_life.value = 3
 	player_shield.value = 3
+	player_points.value = 0
 	danger_level.value = 5
 	current_turn.value = 1
