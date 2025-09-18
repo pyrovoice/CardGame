@@ -34,3 +34,6 @@ Ideas to justify pull and push:
 Questions:
 - How much can a player prepare before starting scoring? What are ways to prevent the player from just farming resources before winning in one swoop?
 - How is the opponent's cards decided? First draft: Start turn by drawing up to its danger level, then play revealed stuff and keep other hidden, then player can interact with played or stuff in hand, then combat phase where opponent plays the rest, then resolve and end turn
+
+Other important stuff:
+Find a way to have a Sphere mask transition: https://www.reddit.com/r/unrealengine/comments/lrd086/landscape_transition_effect_using_sphere_masks/ or https://www.reddit.com/r/godot/comments/1nidl3l/worldmerging_shader/ or https://github.com/lukky-nl/Stencil-Buffer-Holographic-Display

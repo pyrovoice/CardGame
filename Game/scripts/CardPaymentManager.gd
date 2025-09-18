@@ -42,7 +42,7 @@ func canPayCardData(card_data: CardData) -> bool:
 	
 	return true
 
-func tryPayCard(card: Card) -> bool:
+func tryPayCard(card: Card, selected_additional_cards: Array[Card] = []) -> bool:
 	"""Attempt to pay for a card's cost (gold + additional costs), returns true if successful"""
 	if not card or not card.cardData or not current_game:
 		return false
@@ -63,7 +63,7 @@ func tryPayCard(card: Card) -> bool:
 	
 	# Pay additional costs
 	if card.cardData.hasAdditionalCosts():
-		if not payAdditionalCosts(card.cardData.getAdditionalCosts()):
+		if not await payAdditionalCosts(card.cardData.getAdditionalCosts(), selected_additional_cards):
 			print("Failed to pay additional costs!")
 			# Refund the gold since additional costs failed
 			current_game.game_data.add_gold(gold_cost)
@@ -131,47 +131,70 @@ func canSacrificePermanents(cost_data: Dictionary) -> bool:
 	print("    Can sacrifice required cards: ", can_sacrifice, " (", valid_cards.size(), " >= ", required_count, ")")
 	return can_sacrifice
 
-func payAdditionalCosts(additional_costs: Array[Dictionary]) -> bool:
-	"""Actually pay all additional costs"""
+func payAdditionalCosts(additional_costs: Array[Dictionary], selected_cards: Array[Card] = []) -> bool:
+	"""Actually pay all additional costs using selected cards"""
 	for cost_data in additional_costs:
-		if not paySingleAdditionalCost(cost_data):
+		if not await paySingleAdditionalCost(cost_data, selected_cards):
 			return false
 	return true
 
-func paySingleAdditionalCost(cost_data: Dictionary) -> bool:
-	"""Pay a single additional cost"""
+func paySingleAdditionalCost(cost_data: Dictionary, selected_cards: Array[Card] = []) -> bool:
+	"""Pay a single additional cost using selected cards"""
 	var cost_type = cost_data.get("cost_type", "")
 	
 	match cost_type:
 		"SacrificePermanent":
-			return sacrificePermanents(cost_data)
+			return await sacrificePermanents(cost_data, selected_cards)
 		_:
 			print("Unknown additional cost type: ", cost_type)
 			return false
 
-func sacrificePermanents(cost_data: Dictionary) -> bool:
-	"""Sacrifice the required permanents"""
+func sacrificePermanents(cost_data: Dictionary, selected_cards: Array[Card] = []) -> bool:
+	"""Sacrifice the required permanents using selected cards or auto-selecting if none provided"""
 	if not current_game:
 		return false
 		
 	var required_count = cost_data.get("count", 1)
 	var valid_card_filter = cost_data.get("valid_card", "Card")
 	
-	# Get all cards the player controls that match the filter
-	var available_cards = getPlayerControlledCards()
-	var valid_cards = filterCardsByValidCard(available_cards, valid_card_filter)
+	var cards_to_sacrifice: Array[Card] = []
 	
-	if valid_cards.size() < required_count:
-		print("Not enough valid cards to sacrifice! Need: ", required_count, ", Have: ", valid_cards.size())
-		return false
+	if selected_cards.is_empty():
+		# Auto-select cards (fallback behavior)
+		print("No cards provided for sacrifice, auto-selecting...")
+		var available_cards = getPlayerControlledCards()
+		var valid_cards = filterCardsByValidCard(available_cards, valid_card_filter)
+		
+		if valid_cards.size() < required_count:
+			print("Not enough valid cards to sacrifice! Need: ", required_count, ", Have: ", valid_cards.size())
+			return false
+		
+		# Take the first N valid cards
+		for i in range(required_count):
+			cards_to_sacrifice.append(valid_cards[i])
+	else:
+		# Use player-selected cards
+		print("Using player-selected cards for sacrifice...")
+		
+		# Validate that the selected cards are valid for this sacrifice
+		var valid_selected_cards = filterCardsByValidCard(selected_cards, valid_card_filter)
+		
+		if valid_selected_cards.size() < required_count:
+			print("Not enough valid selected cards! Need: ", required_count, ", Have: ", valid_selected_cards.size())
+			return false
+		
+		# Use the first N valid selected cards
+		for i in range(required_count):
+			cards_to_sacrifice.append(valid_selected_cards[i])
 	
-	# For now, automatically sacrifice the first N valid cards
-	# TODO: In a full implementation, you'd want to let the player choose which cards to sacrifice
-	print("Sacrificing ", required_count, " cards matching '", valid_card_filter, "':")
-	for i in range(required_count):
-		var card_to_sacrifice = valid_cards[i]
-		print("  - Sacrificing: ", card_to_sacrifice.cardData.cardName)
-		current_game.putInOwnerGraveyard(card_to_sacrifice)
+	# Perform the sacrifice
+	if cards_to_sacrifice.size() > 0:
+		print("Sacrificing ", cards_to_sacrifice.size(), " cards matching '", valid_card_filter, "':")
+		for card_to_sacrifice in cards_to_sacrifice:
+			print("  - Sacrificing: ", card_to_sacrifice.cardData.cardName)
+		
+		# Use the game's putInOwnerGraveyard function which handles animations
+		await current_game.putInOwnerGraveyard(cards_to_sacrifice)
 	
 	return true
 
@@ -193,16 +216,13 @@ func isCardDataCastable(card_data: CardData) -> bool:
 
 func getPlayerControlledCards() -> Array[Card]:
 	"""Get all cards the player currently controls (in play)"""
-	print("      Getting player controlled cards...")
 	if not current_game:
-		print("      ERROR: current_game is null")
 		return []
 		
 	var controlled_cards: Array[Card] = []
 	
 	# Add cards from player base
 	var base_cards = current_game.player_base.getCards()
-	print("      Cards in player base: ", base_cards.size())
 	controlled_cards.append_array(base_cards)
 	
 	# Add cards from combat zones (ally side only)
@@ -210,10 +230,8 @@ func getPlayerControlledCards() -> Array[Card]:
 		for ally_spot in combat_zone.allySpots:
 			var card = ally_spot.getCard()
 			if card != null:
-				print("      Card in combat zone: ", card.cardData.cardName)
 				controlled_cards.append(card)
 	
-	print("      Total controlled cards: ", controlled_cards.size())
 	return controlled_cards
 
 func filterCardsByValidCard(cards: Array[Card], valid_card_filter: String) -> Array[Card]:

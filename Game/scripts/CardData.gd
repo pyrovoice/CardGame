@@ -2,7 +2,7 @@ extends Resource
 class_name CardData
 
 # Define the card types
-enum CardType { CREATURE, SPELL, PERMANENT, BOSS }
+enum CardType { CREATURE, SPELL, PERMANENT, BOSS, TOKEN }
 	
 var cardName: String
 var goldCost: int

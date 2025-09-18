@@ -60,10 +60,7 @@ func animate_card_to_position(card: Card, target_position: Vector3):
 	tween.set_trans(Tween.TRANS_QUART)
 	tween.tween_property(card.card_representation, "position", Vector3.ZERO, 0.3)
 	
-	# Wait for animation to complete
-	await tween.finished
-	
-	return true
+	return tween
 
 func animate_combat_strike(attacker_card: Card, defender_card: Card):
 	"""Animate the opponent card moving forward to strike the player's card"""
@@ -151,7 +148,7 @@ func animate_card_popup(card: Card):
 	pos.z = lerp(pos.z, -0.6 + card.position.z, 0.4)
 	card.card_representation.position = pos
 	card.makeBig()
-	card.set_glow_effect(true)
+	# Removed glow effect - using outline color system instead
 
 func animate_card_dragged(card: Card, target_pos: Vector3):
 	"""Animate card being dragged to a position"""

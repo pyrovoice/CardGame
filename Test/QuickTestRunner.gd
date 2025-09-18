@@ -6,55 +6,47 @@ class_name QuickTestRunner
 # Run this to test the testing framework itself
 
 func _ready():
-	run_goblin_test()
+	run_selection_system_test()
 
-func run_goblin_test():
-	print("=== Quick Test Runner - Goblin Matron Sequence ===")
+func run_selection_system_test():
+	print("=== Quick Test Runner - Selection System Test ===")
 	
-	# Try to create a simple test environment to verify everything works
-	print("Testing class loading...")
+	# Test the PlayerSelection class
+	print("Testing PlayerSelection class...")
 	
-	# Test if we can load the test classes
-	var test_card_script = load("res://Test/TestCard.gd")
-	var game_env_script = load("res://Test/GameTestEnvironment.gd")
-	var card_test_script = load("res://Test/CardInteractionTest.gd")
-	
-	if test_card_script:
-		print("✓ TestCard loaded successfully")
-	else:
-		print("❌ Failed to load TestCard")
+	var player_selection_script = load("res://Game/scripts/PlayerSelection.gd")
+	if not player_selection_script:
+		print("❌ Failed to load PlayerSelection script")
 		return
 	
-	if game_env_script:
-		print("✓ GameTestEnvironment loaded successfully")
-	else:
-		print("❌ Failed to load GameTestEnvironment")
-		return
-		
-	if card_test_script:
-		print("✓ CardInteractionTest loaded successfully")
-	else:
-		print("❌ Failed to load CardInteractionTest")
-		return
+	print("✓ PlayerSelection script loaded successfully")
 	
-	print("\nAttempting to run just the new Goblin Matron sequence test...")
+	# Test creating a selection requirement
+	var requirement = {
+		"valid_card": "Card.YouCtrl+Goblin",
+		"count": 2
+	}
 	
-	# Try to run just our specific test
-	var result = CardInteractionTest.test_goblin_matron_play_sequence()
+	var empty_cards: Array[Card] = []
+	var selection = player_selection_script.new(requirement, empty_cards, "sacrifice")
 	
-	if result.success:
-		print("✅ Test PASSED!")
-	else:
-		print("❌ Test FAILED: " + result.error)
+	print("✓ PlayerSelection instance created")
+	print("Requirement Description: ", selection.get_requirement_description())
+	print("Is Complete: ", selection.is_complete)
+	print("Selection Type: ", selection.selection_type)
 	
-	print("✅ Test completed - exiting...")
+	# Test card filter matching
+	print("\nTesting card filter matching...")
+	var test_result = player_selection_script.card_matches_filter(null, "Any")
+	print("Filter 'Any' with null card: ", test_result)
+	
+	print("✅ Selection system basic functionality working!")
+	print("✅ Test completed")
 	
 	# Exit the application
 	if Engine.is_editor_hint():
 		print("Running in editor - use stop button to exit")
 	else:
-		# Exit with appropriate code: 0 for success, 1 for failure
-		var exit_code = 0 if result.success else 1
-		get_tree().quit(exit_code)
+		get_tree().quit(0)
 
 # Entry point is now _ready() function

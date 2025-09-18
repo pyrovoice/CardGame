@@ -48,9 +48,8 @@ func execute_token_creation(parameters: Dictionary, source_card: Card, game_cont
 	# Create the modified number of tokens
 	var tokens_to_create = effect_context.get("tokens_to_create", 1)
 	for i in range(tokens_to_create):
-		var card = game_context.createCardFromData(token_data)
-		card.global_position = effect_context.get("source_card", source_card).global_position
-		game_context.moveCardToPlayerBase(card)
+		var card = await game_context.createToken(token_data)
+		# Position and placement is handled by executeCardEnters in createToken()
 
 func execute_draw_card(parameters: Dictionary, source_card: Card, game_context: Game):
 	"""Execute draw card effect"""

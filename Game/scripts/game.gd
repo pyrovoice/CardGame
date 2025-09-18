@@ -4,7 +4,7 @@ class_name Game
 @onready var player_control: PlayerControl = $playerControl
 @onready var player_hand: Node3D = $Camera3D/PlayerHand
 @onready var deck: Deck = $"Deck"
-@onready var combatZones: Array = [$combatZone, $combatZone2, $combatZone3]
+@onready var combatZones: Array[CombatZone] = [$combatZone, $combatZone2, $combatZone3]
 @onready var game_ui: GameUI = $UI
 @onready var player_base: PlayerBase = $playerBase
 const CARD = preload("res://Game/scenes/Card.tscn")
@@ -14,6 +14,7 @@ var playerControlLock:PlayerControlLock = PlayerControlLock.new()
 @onready var graveyard: Graveyard = $graveyard
 @onready var extra_deck: CardContainer = $extraDeck
 @onready var draw: Button = $UI/draw
+@onready var selection_manager: SelectionManager = $SelectionManager
 
 # Game data and state management
 var game_data: GameData
@@ -34,15 +35,27 @@ func _ready() -> void:
 	# Set up payment manager context
 	CardPaymentManagerAL.set_game_context(self)
 	
+	# Initialize selection manager (no longer need to connect callbacks)
+	# selection_manager.selection_completed.connect(_on_selection_completed)
+	selection_manager.selection_cancelled.connect(_on_selection_cancelled)
+	
 	player_control.tryMoveCard.connect(tryMoveCard)
 	draw.pressed.connect(onTurnStart)
 	CardLoader.load_all_cards()
+	
+	# Add test buttons for selection system
+	add_selection_test_buttons()
+	
 	
 	# Test additional cost parsing for Goblin Boss
 	test_additional_costs()
 	
 	populate_deck()
 	createOpposingToken()
+	
+	drawCard()
+	drawCard()
+	drawCard()
 	drawCard()
 	drawCard()
 	drawCard()
@@ -54,6 +67,7 @@ func populate_deck():
 	for card_data in CardLoader.cardData:
 		# Boss cards go to extra deck, others go to regular deck
 		if card_data.hasType(CardData.CardType.BOSS):
+			extra_deck.add_card(card_data)
 			extra_deck.add_card(card_data)
 		else:
 			deck.add_card(card_data)
@@ -75,7 +89,7 @@ func tryMoveCard(card: Card, target_location: Node3D) -> void:
 	var _target_zone = _getTargetZone(target_location)
 	
 	match source_zone:
-		GameZone.e.HAND:
+		GameZone.e.HAND, GameZone.e.EXTRA_DECK:
 			# Playing from hand - use the full play logic
 			tryPlayCard(card, target_location)
 			arrange_cards_fan()
@@ -103,14 +117,29 @@ func tryPlayCard(card: Card, target_location: Node3D) -> void:
 		return
 	
 	var source_zone = getCardZone(card)
-	
+	var selected_cards: Array[Card] = []
 	# Validate the play attempt
 	if not _canPlayCard(card, source_zone, target_location):
 		return
 	
 	# Pay costs if playing from hand or extra deck
 	if source_zone == GameZone.e.HAND or source_zone == GameZone.e.EXTRA_DECK:
-		if not CardPaymentManagerAL.tryPayCard(card):
+		var payment_successful = false
+		
+		# Check if card has additional costs that require player selection
+		if card.cardData.hasAdditionalCosts():
+			var additional_costs = card.cardData.getAdditionalCosts()
+			if _requiresPlayerSelection(additional_costs):
+				print("Card requires player selection for additional costs - starting selection process")
+				selected_cards = await _startAdditionalCostSelection(card, additional_costs)
+				
+				if selected_cards.is_empty():
+					print("❌ Selection was cancelled or failed")
+					return
+		payment_successful = await CardPaymentManagerAL.tryPayCard(card, selected_cards)
+		
+		if not payment_successful:
+			print("❌ Failed to pay for card")
 			return
 	
 	# Determine target zone and execute the play
@@ -159,23 +188,17 @@ func _getTargetZone(target_location: Node3D) -> GameZone.e:
 
 func _executeCardPlay(card: Card, source_zone: GameZone.e, _target_zone: GameZone.e, _target_location: Node3D):
 	"""Execute the card play to battlefield (PlayerBase) and trigger appropriate game actions"""
+	# If playing from extra deck, remove the card from the extra deck data structure
+	if source_zone == GameZone.e.EXTRA_DECK:
+		if card.cardData:
+			extra_deck.remove_card(card.cardData)
+	
 	# Trigger CARD_PLAYED action first (before the card moves)
 	var played_action = GameAction.new(TriggerType.Type.CARD_PLAYED, card, source_zone, GameZone.e.PLAYER_BASE)
 	AbilityManagerAL.triggerGameAction(self, played_action)
 	
-	# Move the card to player base
-	var play_successful = await moveCardToPlayerBase(card)
-	
-	if not play_successful:
-		print("❌ Failed to play card to player base")
-		return
-	
-	# Trigger CARD_ENTERS action after the card has moved to battlefield
-	var enters_action = GameAction.new(TriggerType.Type.CARD_ENTERS, card, source_zone, GameZone.e.PLAYER_BASE)
-	AbilityManagerAL.triggerGameAction(self, enters_action)
-	
-	# Resolve state-based actions after card play
-	resolveStateBasedAction()
+	# Use the shared card enters logic
+	await executeCardEnters(card, source_zone, GameZone.e.PLAYER_BASE)
 
 func executeCardAttacks(card: Card, combat_spot: CombatantFightingSpot):
 	"""Execute card attack - move card from PlayerBase to CombatZone and trigger attack"""
@@ -219,7 +242,6 @@ func moveCardToPlayerBase(card: Card) -> bool:
 	var global_target = player_base.global_position + target_position
 	card.reparent(player_base)
 	await AnimationsManagerAL.animate_card_to_position(card, global_target + Vector3(0, 0.1, 0))
-	resolveStateBasedAction()
 	return true
 
 func drawCard():
@@ -295,7 +317,7 @@ func resolveCombatInZone(combatZone: CombatZone):
 	
 	if player_strength > opponent_strength:
 		AnimationsManagerAL.show_floating_text(self, combatZone.global_position, "+1 Point", Color.GREEN)
-		var current_points = game_ui.player_point.text.to_int() if game_ui.player_point else 0
+		var _current_points = game_ui.player_point.text.to_int() if game_ui.player_point else 0
 		game_data.add_player_points(1)
 	elif player_strength < opponent_strength:
 		AnimationsManagerAL.show_floating_text(self, combatZone.global_position, "-1 Life", Color.RED)
@@ -379,17 +401,50 @@ func getAllCardsInPlay() -> Array[Card]:
 		cz.ennemySpots.filter(func(c:CombatantFightingSpot): return c.getCard() != null).map(func(c:CombatantFightingSpot): cards.push_back(c.getCard()))
 	return cards 
 
-func putInOwnerGraveyard(card: Card):
-	await card.animatePlayedTo(graveyard.global_position)
-	graveyard.add_card(card.cardData)
-	card.queue_free()
+func putInOwnerGraveyard(cards):
+	"""Move cards to graveyard with parallel animations - accepts both single Card and Array[Card]"""
+	var cards_array: Array[Card] = []
+	
+	# Handle both single cards and arrays
+	if cards is Card:
+		cards_array = [cards]
+	elif cards is Array:
+		cards_array = cards
+	else:
+		print("❌ putInOwnerGraveyard: Invalid input type, expected Card or Array[Card]")
+		return
+	
+	if cards_array.is_empty():
+		return
+	
+	# Start all animations simultaneously and collect their tweens
+	var tweens = []
+	for card in cards_array:
+		if card and is_instance_valid(card):
+			card.reparent(self)
+			var tween = await card.animatePlayedTo(graveyard.global_position)
+			if tween:
+				tweens.append(tween)
+	
+	# Wait for all animations to complete in parallel
+	if tweens.size() > 0:
+		# Wait for all tweens to finish
+		for tween in tweens:
+			if tween and tween.is_valid():
+				await tween.finished
+	
+	# Add cards to graveyard and clean up after all animations complete
+	for card in cards_array:
+		if card and is_instance_valid(card):
+			graveyard.add_card(card.cardData)
+			card.queue_free()
 
 static var objectCount = 0
 static func getObjectCountAndIncrement():
 	objectCount +=1
 	return objectCount-1
 	
-func createCardFromData(cardData: CardData):
+func createCardFromData(cardData: CardData, card_type: CardData.CardType = CardData.CardType.CREATURE):
 	if cardData == null:
 		push_warning("Tried to draw from empty deck.")
 		return null
@@ -404,7 +459,47 @@ func createCardFromData(cardData: CardData):
 	add_child(card_instance)
 	card_instance.setData(cardData)
 	card_instance.name = cardData.cardName + "_" + str(getObjectCountAndIncrement())
+	
+	# Set the card type for tracking purposes
+	match card_type:
+		CardData.CardType.TOKEN:
+			card_instance.isToken = true
+		_:
+			card_instance.isToken = false
+	
 	return card_instance
+
+func createToken(cardData: CardData) -> Card:
+	"""Create a token card and execute its enters-the-battlefield effects"""
+	if cardData == null:
+		push_warning("Tried to create token with null cardData.")
+		return null
+	
+	# Create the card instance as a token
+	var token_card = createCardFromData(cardData, CardData.CardType.TOKEN)
+	if not token_card:
+		return null
+	
+	# Execute the card enters logic for the token
+	await executeCardEnters(token_card, GameZone.e.UNKNOWN, GameZone.e.PLAYER_BASE)
+	
+	return token_card
+
+func executeCardEnters(card: Card, source_zone: GameZone.e, target_zone: GameZone.e):
+	"""Execute the card entering the battlefield - handles movement and triggers"""
+	# Move the card to player base
+	var play_successful = await moveCardToPlayerBase(card)
+	
+	if not play_successful:
+		print("❌ Failed to move card to player base")
+		return
+	
+	# Trigger CARD_ENTERS action after the card has moved to battlefield
+	var enters_action = GameAction.new(TriggerType.Type.CARD_ENTERS, card, source_zone, target_zone)
+	AbilityManagerAL.triggerGameAction(self, enters_action)
+	
+	# Resolve state-based actions after card enters
+	resolveStateBasedAction()
 
 func getCardZone(card: Card) -> GameZone.e:
 	"""Determine what zone a card is currently in based on its parent"""
@@ -425,11 +520,11 @@ func getCardZone(card: Card) -> GameZone.e:
 		return GameZone.e.GRAVEYARD
 	elif parent_name == "Deck" or parent.get_script() != null and parent.get_script().get_global_name() == "Deck":
 		return GameZone.e.DECK
-	elif parent_name == "extraDeck" or parent.get_script() != null and parent.get_script().get_global_name() == "CardContainer":
+	elif parent_name == "extraDeck" or parent_name == "extra_deck_display" or parent.get_script() != null and parent.get_script().get_global_name() == "CardContainer":
 		return GameZone.e.EXTRA_DECK
 		
 		# Default fallback
-	return GameZone.e.DECK
+	return GameZone.e.UNKNOWN
 
 # Game Data Access Functions
 func get_game_data() -> GameData:
@@ -474,6 +569,9 @@ func highlightCastableCards():
 	
 	# Check extra deck cards and display castable ones
 	_displayCastableExtraDeckCards()
+	
+	# Highlight extra deck display cards based on castability
+	_highlightExtraDeckDisplayCards()
 
 func _highlightHandCards():
 	"""Toggle highlight on cards in hand based on castability"""
@@ -481,7 +579,18 @@ func _highlightHandCards():
 	for card: Card in hand_cards:
 		if card is Card:
 			var is_castable = CardPaymentManagerAL.isCardCastable(card)
-			card.highlight(is_castable)
+			card.set_selectable(is_castable)  # Use selectable state instead of hover highlight
+
+func _highlightExtraDeckDisplayCards():
+	"""Toggle highlight on extra deck display cards based on castability"""
+	if not extra_deck_display:
+		return
+		
+	var display_cards = extra_deck_display.get_children()
+	for card: Card in display_cards:
+		if card is Card:
+			var is_castable = CardPaymentManagerAL.isCardCastable(card)
+			card.set_selectable(is_castable)  # This will show blue outline for castable cards
 
 func _displayCastableExtraDeckCards():
 	"""Display castable extra deck cards to the right of the hand"""
@@ -494,14 +603,6 @@ func _displayCastableExtraDeckCards():
 	print("Extra deck has ", extra_deck.cards.size(), " cards")
 	
 	for card_data: CardData in extra_deck.cards:
-		print("Checking card: ", card_data.cardName)
-		print("  Gold cost: ", card_data.goldCost)
-		print("  Player gold: ", game_data.player_gold.value)
-		print("  Has gold: ", game_data.has_gold(card_data.goldCost))
-		print("  Has additional costs: ", card_data.hasAdditionalCosts())
-		if card_data.hasAdditionalCosts():
-			print("  Additional costs: ", card_data.getAdditionalCosts())
-		
 		var is_castable = CardPaymentManagerAL.isCardDataCastable(card_data)
 		print("  Is castable: ", is_castable)
 		
@@ -539,7 +640,7 @@ func _arrangeExtraDeckCards(castable_cards: Array[CardData]):
 	
 	for i in range(castable_cards.size()):
 		var card_data = castable_cards[i]
-		var card_instance = createCardFromData(card_data)
+		var card_instance = createCardFromData(card_data, CardData.CardType.BOSS)
 		
 		if card_instance:
 			# Add to extra deck display
@@ -553,8 +654,9 @@ func _arrangeExtraDeckCards(castable_cards: Array[CardData]):
 			# Make sure it's visible and properly sized
 			card_instance.makeSmall()
 			
-			# Add some visual indication that it's from extra deck (e.g., glow effect)
-			card_instance.set_glow_effect(true, Color.GOLD, 0.5)
+			# Add some visual indication that it's from extra deck (e.g., gold outline)
+			# Note: This will be overridden by selection/hover states as they have higher priority
+			card_instance.set_outline_color(Color.GOLD)
 
 func test_additional_costs():
 	"""Test function to verify additional cost parsing and checking"""
@@ -594,3 +696,64 @@ func test_additional_costs():
 			print("     - ", card.cardData.cardName, " (", card.cardData.subtypes, ")")
 	
 	print("===")
+
+# Handle card clicks during selection (called from input system)
+func handle_card_click_during_selection(card: Card):
+	if selection_manager and selection_manager.is_selecting():
+		selection_manager.handle_card_click(card)
+
+func _on_selection_cancelled():
+	print("Selection was cancelled")
+
+# Check if a card matches the selection requirement
+func _card_matches_requirement(card: Card, requirement: Dictionary) -> bool:
+	var valid_card_filter = requirement.get("valid_card", "Any")
+	var player_selection_script = load("res://Game/scripts/PlayerSelection.gd")
+	return player_selection_script.card_matches_filter(card, valid_card_filter)
+
+func _requiresPlayerSelection(additional_costs: Array[Dictionary]) -> bool:
+	"""Check if any additional costs require player selection (like sacrifice)"""
+	for cost_data in additional_costs:
+		var cost_type = cost_data.get("cost_type", "")
+		if cost_type == "SacrificePermanent":
+			return true  # Sacrifice always requires player selection
+		# Add other cost types that require selection here
+	return false
+
+func _startAdditionalCostSelection(card: Card, additional_costs: Array[Dictionary]) -> Array[Card]:
+	"""Start the selection process for paying additional costs and return selected cards"""
+	print("Starting additional cost selection for: ", card.cardData.cardName)
+	
+	# For now, handle only the first cost that requires selection
+	# TODO: Handle multiple costs in sequence
+	for cost_data in additional_costs:
+		var cost_type = cost_data.get("cost_type", "")
+		if cost_type == "SacrificePermanent":
+			var required_count = cost_data.get("count", 1)
+			var valid_card_filter = cost_data.get("valid_card", "Card")
+			
+			print("Need to sacrifice ", required_count, " cards matching: ", valid_card_filter)
+			
+			# Create selection requirement
+			var requirement = {
+				"valid_card": valid_card_filter,
+				"count": required_count
+			}
+			
+			# Find all possible cards based on the requirement
+			var possible_cards: Array[Card] = []
+			
+			# Get all cards in play (combat zones and player base)
+			for check_card in getAllCardsInPlay():
+				if _card_matches_requirement(check_card, requirement):
+					possible_cards.append(check_card)
+			
+			# Start the selection process and await completion
+			if possible_cards.size() > 0:
+				var selected_cards = await selection_manager.start_selection_and_wait(requirement, possible_cards, "sacrifice_for_" + card.cardData.cardName, self)
+				return selected_cards
+			else:
+				print("No valid cards found for selection: ", requirement)
+				return []
+	
+	return []

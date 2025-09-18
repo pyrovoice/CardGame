@@ -1,0 +1,36 @@
+[gd_scene load_steps=5 format=3 uid="uid://bf6jcptwita0q"]
+
+[ext_resource type="Shader" uid="uid://dak5xq5r7n3kn" path="res://Assets/shaders/cameraOutline.gdshader" id="1_jdl25"]
+
+[sub_resource type="Environment" id="Environment_bp42m"]
+
+[sub_resource type="ViewportTexture" id="ViewportTexture_pssad"]
+viewport_path = NodePath("SubViewport")
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_ije6y"]
+resource_local_to_scene = true
+shader = ExtResource("1_jdl25")
+shader_parameter/lineWeight = 3.0
+shader_parameter/outlineColor = Color(3, 0.8, 0, 0.8)
+shader_parameter/stencilMask = SubResource("ViewportTexture_pssad")
+
+[node name="Node3D" type="Node3D"]
+
+[node name="SubViewport" type="SubViewport" parent="."]
+disable_3d = true
+transparent_bg = true
+gui_disable_input = true
+
+[node name="Camera3D" type="Camera3D" parent="SubViewport"]
+transform = Transform3D(1, 0, 0, 0, 0.825409, 0.564535, 0, -0.564535, 0.825409, 0, 1.05872, 1.38485)
+cull_mask = 1047584
+environment = SubResource("Environment_bp42m")
+
+[node name="ColorRect" type="ColorRect" parent="."]
+material = SubResource("ShaderMaterial_ije6y")
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2

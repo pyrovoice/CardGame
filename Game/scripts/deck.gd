@@ -25,7 +25,7 @@ func shuffle():
 func draw_card_from_top() -> Card:
 	var card_data: CardData = cards.pop_front()
 	update_size()  # Update size after removing card
-	return (get_parent() as Game).createCardFromData(card_data)
+	return (get_parent() as Game).createCardFromData(card_data, CardData.CardType.CREATURE)
 	
 # Peek at the top N card data (does not remove or instantiate)
 func get_cards_from_top(n: int) -> Array:

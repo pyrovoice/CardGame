@@ -123,6 +123,15 @@ func _input(event):
 	# The CardPopupManager will handle hiding itself
 	if event is InputEventMouseButton && event.button_index == MOUSE_BUTTON_LEFT:
 		if event.pressed:
+			# Check if we're in selection mode first
+			var game_node = get_parent() as Game
+			if game_node and game_node.selection_manager and game_node.selection_manager.is_selecting():
+				var clicked_card: Card = getObjectUnderMouse(Card)
+				if clicked_card:
+					game_node.handle_card_click_during_selection(clicked_card)
+				return  # Don't handle normal dragging during selection
+			
+			# Normal card dragging logic
 			if cardInHandUnderMouse:
 				dragged_card = cardInHandUnderMouse
 			else:
