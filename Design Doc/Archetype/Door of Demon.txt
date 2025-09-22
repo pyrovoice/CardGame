@@ -1,0 +1,20 @@
+Archetype: Midrange
+Gimmick: A door with 4 locks. Each lock represents a game action. When all locks are unlocked, the door opens and lets out a demon. Each opening makes the next demon stronger, then the door locks again with 4 new randomized locks. The 4rth opening creates a very strong demon
+
+Locks: - Sacrifice a creature
+- Destroy a creature by spell
+- Destroy a creature by Combat
+- Draw X cards in a turn
+- Win combat at a location
+- Silence a creature
+- Boost a creature
+- Control no creatures
+- Control X or more creatures
+- Have X cards in the graveyard
+
+
+Cards: - Pick a new lock to switch an existing with
+- Unlock a random lock
+- 
+
+Boss: Should be pretty polyvalent to help meet the conditions

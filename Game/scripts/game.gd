@@ -43,13 +43,6 @@ func _ready() -> void:
 	draw.pressed.connect(onTurnStart)
 	CardLoader.load_all_cards()
 	
-	# Add test buttons for selection system
-	add_selection_test_buttons()
-	
-	
-	# Test additional cost parsing for Goblin Boss
-	test_additional_costs()
-	
 	populate_deck()
 	createOpposingToken()
 	

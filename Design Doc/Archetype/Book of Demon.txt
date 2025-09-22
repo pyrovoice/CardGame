@@ -1,0 +1,17 @@
+Archetype: Control
+Gimmick: Game actions write a book, every new action adding a page. When the book is full, it can be cast for a powerfull effect.
+
+Actions: Conquer location
+Destroy creature in Battle
+Destroy creature by spell
+Lose all creatures during a turn
+Control more than X creatures
+Silence a creature
+Destroy a non-creature permanent
+Reach turn X
+Lose all shield
+Lose a life
+Cast from extra deck
+Card created card
+
+Cards: Add a page marker to the book, which upon casting will complete a random empty chapter

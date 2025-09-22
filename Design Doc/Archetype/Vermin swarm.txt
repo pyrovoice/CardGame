@@ -1,0 +1,47 @@
+Archetype: Tokens
+Create a bunch of small creatures, can combine into bigger things
+Rat, Flies, Locust...
+Starts with "Bog Witches" that create vermin on various conditions
+Put Vermin on cards in the opponent's deck
+Lore: Bog Witches summon disgusting gods of flies
+Go wide strategy
+gimmick: Vermins of the same type blend together in a swarm ("Locust swarm, rat swarm...) when attacking, which unblend at the end? Possibility to do powerfull fights without loosing resource
+Main1: Create the insects, use Evanescent deaths from last turn
+Combat: Swarm fights
+Main 2: Sacrifice insects for effects and bosses
+End: Insects still alive dies with Evanescent, giving charges
+Weakness: Individual creatures are super weak, only good when swarming
+
+Evanescent: Dies after participating to battle
+
+Hero Power:
+Fly Lord: Get a charge whenever an ally dies (non-sacrifice)
+Spend charge to sacrifice up to X creature and draw that many
+Spend charge and sacrifice up to X creature to deal that many damage
+
+Bosses conditions: 
+- Can be played if X vermin died this turn/get bonus equal to how many died at random
+- Evanescent creatures have Double Life
+- Evanescent creatures have +1 might
+- Something that combines and split when attacking, creatures a bunch of tokens then reforming
+- "Mother" type that creates vermin every Turn
+- A "permanent" swarm that can split its body to different battlefield, and gets extra bodies whenever Evanescent creature dies
+
+Cards:
+- Lay eggs: every vermin dying this turn creates an egg reforming in two turns
+- Bog Witch: On attack, create 2 1 power flies in front and moves back. Sacrifice 2 flies: Reduce threat by one next turn OR remove a card from played pool next turn
+- Bog Witch: On Enter and dies, create a Fly. Exile from Grave, spend X charges: Create a random Fly archetype card in hand
+- Coven: On entering, draft and play a random "Big Fly" unit. Repeat whenever a Witch enters, once per turn
+- Engulfe in Swarm: Destroy target creature that has power less than a swarm in the same location
+- Lure in the woods: Pull a creature to a location. If it dies this turn while a witch in same location, X
+- 
+
+Tokens:
+- Fly: Evanescent, can join swarms
+
+Big Flies:
+- Big Fly unit 1: Evanescent, Whenever it deals damage to a creature gain that many charges and the opponent loses that many power next turn
+- Big Fly unit 2: Activate: Explode dealing damage to the unit in same location and create 3 flies there
+- Draw Fly: When Evanescent, if it dealt damage this turn, draw a card
+- Gold Fly: When Evanescent, if it dealt damage this turn, get a gold
+- Dempen Fly: When dealing damage, also give Weak X with X being the damage dealt

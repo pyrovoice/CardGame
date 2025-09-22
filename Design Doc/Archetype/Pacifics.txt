@@ -1,0 +1,8 @@
+Archetype: Control
+Gimmicks: Creatures do not deal damage, instead creating nightmare in the opponent's deck and making them mill. 
+Can target specific cards to be destroyed (but not the specific instance of the card) and manipulate the opposing's deck that way
+
+
+Nightmare creatures are then played for free when a card is milled with a nightmare on it
+
+Boss: - The opponent must have an empty card pool. On play, lock that card pool (it does not replenish)
