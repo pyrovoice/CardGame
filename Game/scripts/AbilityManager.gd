@@ -28,7 +28,7 @@ func execute_token_creation(parameters: Dictionary, source_card: Card, game_cont
 		return
 	
 	# Load the token data from the tokensData array
-	var token_data = CardLoader.load_token_by_name(token_script)
+	var token_data = CardLoaderAL.load_token_by_name(token_script)
 	if not token_data:
 		print("❌ Failed to load token: " + token_script)
 		return
@@ -347,6 +347,94 @@ func executeAbility(triggeringCard: Card, ability: Dictionary, game_context: Gam
 			execute_draw_card(effect_parameters, triggeringCard, game_context)
 		_:
 			print("❌ Unknown effect: ", effect_name)
+
+func executeSpellEffects(card: Card, game_context: Game):
+	"""Execute spell effects - handle targeting and effect resolution"""
+	if not card.cardData.hasType(CardData.CardType.SPELL):
+		print("❌ Tried to execute spell effects on non-spell card: ", card.cardData.cardName)
+		return
+	
+	print("✨ Casting spell: ", card.cardData.cardName)
+	
+	# Get spell effects from the card's abilities
+	var spell_effects = []
+	for ability in card.cardData.abilities:
+		if ability.get("type") == "SpellEffect":
+			spell_effects.append(ability)
+	
+	if spell_effects.is_empty():
+		print("⚠️ Spell has no effects to execute: ", card.cardData.cardName)
+		return
+	
+	# Execute each spell effect
+	for effect in spell_effects:
+		await executeSpellEffect(card, effect, game_context)
+	
+	print("✨ Finished casting spell: ", card.cardData.cardName)
+
+func executeSpellEffect(card: Card, effect: Dictionary, game_context: Game):
+	"""Execute a single spell effect"""
+	var effect_type = effect.get("effect_type", "")
+	var parameters = effect.get("parameters", {})
+	
+	match effect_type:
+		"DealDamage":
+			await executeSpellDamage(card, parameters, game_context)
+		_:
+			print("❌ Unknown spell effect type: ", effect_type)
+
+func executeSpellDamage(card: Card, parameters: Dictionary, game_context: Game):
+	"""Execute spell damage effect with targeting"""
+	var damage_amount = parameters.get("NumDamage", 1)
+	var valid_targets = parameters.get("ValidTargets", "Any")
+	
+	print("⚡ ", card.cardData.cardName, " needs to deal ", damage_amount, " damage to target (", valid_targets, ")")
+	
+	# Get all possible targets based on ValidTargets
+	var possible_targets: Array[Card] = []
+	
+	match valid_targets:
+		"Any":
+			# Can target any card in play or the player
+			possible_targets = game_context.getAllCardsInPlay()
+			# Note: We'll need to handle player targeting separately
+		"Creature":
+			# Can only target creatures
+			for target_card in game_context.getAllCardsInPlay():
+				if target_card.cardData.hasType(CardData.CardType.CREATURE):
+					possible_targets.append(target_card)
+		_:
+			print("❌ Unknown target type: ", valid_targets)
+			return
+	
+	if possible_targets.is_empty():
+		print("⚠️ No valid targets for ", card.cardData.cardName)
+		return
+	
+	# Start target selection
+	var requirement = {
+		"valid_card": "Any",  # We've already filtered the possible_targets
+		"count": 1
+	}
+	
+	print("🎯 Starting target selection for ", card.cardData.cardName)
+	var selected_targets = await game_context.start_selection_with_casting_card(requirement, possible_targets, "spell_target_" + card.cardData.cardName, card)
+	
+	if selected_targets.is_empty():
+		print("❌ No target selected for ", card.cardData.cardName)
+		return
+	
+	var target = selected_targets[0]
+	print("⚡ ", card.cardData.cardName, " deals ", damage_amount, " damage to ", target.cardData.cardName)
+	
+	# Apply damage
+	target.receiveDamage(damage_amount)
+	
+	# Show damage animation
+	AnimationsManagerAL.show_floating_text(game_context, target.global_position, "-" + str(damage_amount), Color.RED)
+	
+	# Resolve state-based actions after damage
+	game_context.resolveStateBasedAction()
 
 func isValidCardCondition(condition: String, triggerSource: Card, abilityOwner: Card) -> bool:
 	"""Check if the trigger source meets the ValidCard condition"""

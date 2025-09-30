@@ -1,10 +1,16 @@
-extends RefCounted
+extends Node
 class_name CardLoader
 
-static var cardData: Array[CardData] = []
-static var tokensData: Array[CardData] = []
+var cardData: Array[CardData] = []
+var extraDeckCardData: Array[CardData] = []
+var tokensData: Array[CardData] = []
+var opponentCards: Array[CardData] = []
+
+func _ready():
+	load_all_cards()
+	
 # Parse card data from text content (can be from file or string)
-static func parse_card_data(card_text: String) -> CardData:
+func parse_card_data(card_text: String) -> CardData:
 	var card_data = CardData.new()
 	var properties = {}
 	
@@ -72,7 +78,7 @@ static func parse_card_data(card_text: String) -> CardData:
 	return card_data
 
 # Parse spell effects from card properties
-static func parse_spell_effects(properties: Dictionary) -> Array[Dictionary]:
+func parse_spell_effects(properties: Dictionary) -> Array[Dictionary]:
 	var spell_effects: Array[Dictionary] = []
 	
 	# Look for E: lines (Effect lines for spells)
@@ -86,7 +92,7 @@ static func parse_spell_effects(properties: Dictionary) -> Array[Dictionary]:
 	return spell_effects
 
 # Parse a single spell effect line
-static func parse_single_spell_effect(effect_text: String) -> Dictionary:
+func parse_single_spell_effect(effect_text: String) -> Dictionary:
 	var effect_data = {
 		"type": "SpellEffect",
 		"effect_type": "",
@@ -117,7 +123,7 @@ static func parse_single_spell_effect(effect_text: String) -> Dictionary:
 	return effect_data
 
 # Parse abilities from card properties
-static func parse_abilities(properties: Dictionary) -> Array[Dictionary]:
+func parse_abilities(properties: Dictionary) -> Array[Dictionary]:
 	var abilities: Array[Dictionary] = []
 	var svar_effects: Dictionary = {}
 	
@@ -147,7 +153,7 @@ static func parse_abilities(properties: Dictionary) -> Array[Dictionary]:
 	return abilities
 
 # Parse a single triggered ability
-static func parse_triggered_ability(trigger_text: String, svar_effects: Dictionary) -> Dictionary:
+func parse_triggered_ability(trigger_text: String, svar_effects: Dictionary) -> Dictionary:
 	var ability_data = {
 		"type": "TriggeredAbility",
 		"trigger_type": "CHANGES_ZONE",  # Default
@@ -206,7 +212,7 @@ static func parse_triggered_ability(trigger_text: String, svar_effects: Dictiona
 	return ability_data
 
 # Parse a single replacement effect
-static func parse_replacement_effect(replacement_text: String, svar_effects: Dictionary) -> Dictionary:
+func parse_replacement_effect(replacement_text: String, svar_effects: Dictionary) -> Dictionary:
 	var ability_data = {
 		"type": "ReplacementEffect",
 		"event_type": "",  # What event this replaces (e.g., "CreateToken")
@@ -240,7 +246,7 @@ static func parse_replacement_effect(replacement_text: String, svar_effects: Dic
 	return ability_data
 
 # Parse effect parameters from SVar text
-static func parse_effect_parameters(effect_text: String) -> Dictionary:
+func parse_effect_parameters(effect_text: String) -> Dictionary:
 	var parameters: Dictionary = {}
 	var parts = effect_text.split(" | ")
 	
@@ -263,7 +269,7 @@ static func parse_effect_parameters(effect_text: String) -> Dictionary:
 	return parameters
 
 # Parse additional costs from card properties
-static func parse_additional_costs(properties: Dictionary) -> Array[Dictionary]:
+func parse_additional_costs(properties: Dictionary) -> Array[Dictionary]:
 	var additional_costs: Array[Dictionary] = []
 	
 	# Look for AC$ lines (Additional Cost)
@@ -277,7 +283,7 @@ static func parse_additional_costs(properties: Dictionary) -> Array[Dictionary]:
 	return additional_costs
 
 # Parse a single additional cost line
-static func parse_single_additional_cost(cost_text: String) -> Dictionary:
+func parse_single_additional_cost(cost_text: String) -> Dictionary:
 	var cost_data: Dictionary = {}
 	var parts = cost_text.split(" | ")
 	
@@ -302,7 +308,7 @@ static func parse_single_additional_cost(cost_text: String) -> Dictionary:
 	return cost_data
 
 # Load a card from a text file
-static func load_card_art(card_name: String) -> Texture2D:
+func load_card_art(card_name: String) -> Texture2D:
 	"""Load card art texture for the given card name"""
 	var art_path = "res://Assets/CardArts/" + card_name + ".png"
 	
@@ -314,7 +320,8 @@ static func load_card_art(card_name: String) -> Texture2D:
 	
 	return null
 
-static func load_card_from_file(file_path: String) -> CardData:
+
+func load_card_from_file(file_path: String) -> CardData:
 	var file = FileAccess.open(file_path, FileAccess.READ)
 	if not file:
 		push_error("Could not open file: " + file_path)
@@ -329,10 +336,41 @@ static func load_card_from_file(file_path: String) -> CardData:
 	if card_data and card_data.cardName:
 		card_data.cardArt = load_card_art(card_data.cardName)
 	
+	if card_data.hasType(CardData.CardType.BOSS):
+		extraDeckCardData.push_back(card_data)
+	else:
+		cardData.push_back(card_data)
+	return card_data
+
+func load_opponent_card_from_file(file_path: String) -> CardData:
+	var file = FileAccess.open(file_path, FileAccess.READ)
+	if not file:
+		push_error("Could not open file: " + file_path)
+		return null
+	
+	var file_content = file.get_as_text()
+	file.close()
+	
+	var card_data = parse_card_data(file_content)
+	
+	# Set opponent controller properties
+	if card_data:
+		card_data.playerControlled = false
+		card_data.playerOwned = false
+	
+	# Extract card name from file path to load corresponding art
+	if card_data and card_data.cardName:
+		card_data.cardArt = load_card_art(card_data.cardName)
+	
 	return card_data
 
 # Load all cards from the Cards/Cards directory
-static func load_all_cards():
+func load_all_cards():
+	if cardData.size() > 0:
+		cardData = []
+		extraDeckCardData = []
+		tokensData = []
+		opponentCards = []
 	# Load regular cards
 	var dir = DirAccess.open("res://Cards/Cards/")
 	
@@ -345,9 +383,7 @@ static func load_all_cards():
 		while file_name != "":
 			# Load card files, but skip directories
 			if file_name.ends_with(".txt") and not dir.current_is_dir():
-				var card_data = load_card_from_file("res://Cards/Cards/" + file_name)
-				if card_data:
-					cardData.append(card_data)
+				load_card_from_file("res://Cards/Cards/" + file_name)
 			file_name = dir.get_next()
 	
 	# Load tokens
@@ -366,26 +402,91 @@ static func load_all_cards():
 				if token_data:
 					tokensData.push_back(token_data)
 			token_file_name = token_dir.get_next()
+	
+	# Load opponent cards
+	var opponent_dir = DirAccess.open("res://Cards/OpponentCards/")
+	
+	if not opponent_dir:
+		push_error("Could not open Cards/OpponentCards directory")
+	else:
+		opponent_dir.list_dir_begin()
+		var opponent_file_name = opponent_dir.get_next()
+		
+		while opponent_file_name != "":
+			# Load opponent card files, but skip directories
+			if opponent_file_name.ends_with(".txt") and not opponent_dir.current_is_dir():
+				var opponent_card = load_opponent_card_from_file("res://Cards/OpponentCards/" + opponent_file_name)
+				if opponent_card:
+					opponentCards.push_back(opponent_card)
+			opponent_file_name = opponent_dir.get_next()
+		
+		print("Loaded ", opponentCards.size(), " opponent cards")
 
 # Load a specific card by name
-static func load_card_by_name(card_name: String) -> CardData:
-	if !cardData || cardData.size() == 0:
-		load_all_cards()
+func load_card_by_name(card_name: String) -> CardData:
 	var filter = cardData.filter(func(c:CardData): return c.cardName == card_name)
 	if filter.size() >= 1:
 		return filter[0]
 	return null
 
 # Load a specific token by name
-static func load_token_by_name(token_name: String) -> CardData:
-	if !tokensData || tokensData.size() == 0:
-		load_all_cards()
+func load_token_by_name(token_name: String) -> CardData:
 	var filter = tokensData.filter(func(c:CardData): return c.cardName.contains(token_name))
 	if filter.size() >= 1:
 		return filter[0]
 	return null
 
-static func getRandomCard() -> CardData:
-	if !cardData || cardData.size() == 0:
-		load_all_cards()
+# Load a specific opponent card by name
+func load_opponent_card_by_name(opponent_name: String) -> CardData:
+	var filter = opponentCards.filter(func(c:CardData): return c.cardName == opponent_name)
+	if filter.size() >= 1:
+		return filter[0]
+	return null
+
+# Get a random opponent card
+func getRandomOpponentCard() -> CardData:
+	if opponentCards.size() > 0:
+		return opponentCards[randi_range(0, opponentCards.size() - 1)]
+	return null
+
+func getRandomCard() -> CardData:
 	return cardData[randi_range(0, cardData.size() - 1)]
+
+# Custom deep copy method for CardData objects to replace broken duplicate() method
+func duplicateCardScript(original: CardData) -> CardData:
+	if not original:
+		return null
+	
+	var copy = CardData.new()
+	
+	# Copy simple properties
+	copy.cardName = original.cardName
+	copy.goldCost = original.goldCost
+	copy.power = original.power
+	copy.text_box = original.text_box
+	copy.cardArt = original.cardArt
+	copy.playerControlled = original.playerControlled
+	copy.playerOwned = original.playerOwned
+	
+	# Deep copy arrays by manually copying each element
+	copy.types = []
+	for card_type in original.types:
+		copy.types.append(card_type)
+	
+	copy.subtypes = []
+	for subtype in original.subtypes:
+		copy.subtypes.append(subtype)
+	
+	copy.abilities = []
+	for ability in original.abilities:
+		copy.abilities.append(ability)
+	
+	copy.additionalCosts = []
+	for additional_cost in original.additionalCosts:
+		# Deep copy dictionaries manually
+		var cost_copy = {}
+		for key in additional_cost:
+			cost_copy[key] = additional_cost[key]
+		copy.additionalCosts.append(cost_copy)
+	
+	return copy

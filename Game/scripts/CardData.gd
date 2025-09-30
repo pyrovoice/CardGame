@@ -1,5 +1,4 @@
-extends Resource
-class_name CardData
+class_name CardData extends Resource
 
 # Define the card types
 enum CardType { CREATURE, SPELL, PERMANENT, BOSS, TOKEN }
@@ -17,23 +16,10 @@ var text_box: String
 var abilities: Array[Dictionary] = []
 # Card artwork texture
 var cardArt: Texture2D
+# Controller and ownership properties
+var playerControlled: bool  # Whether this card is controlled by the player
+var playerOwned: bool       # Whether this card is owned by the player
 
-func _init(
-	_cardName: String = "",
-	_goldCost: int = 0,
-	_types: Array[CardType] = [CardType.CREATURE],
-	_power: int = 0,
-	_text_box: String = "",
-	_subtypes: Array = [],
-	_additionalCosts: Array[Dictionary] = []
-) -> void:
-	self.cardName = _cardName
-	self.goldCost = _goldCost
-	self.additionalCosts = _additionalCosts.duplicate()
-	self.types = _types.duplicate()
-	self.power = _power
-	self.text_box = _text_box
-	self.subtypes = _subtypes.duplicate()
 	
 func describe() -> String:
 	var subtypes_str = ""

@@ -11,6 +11,10 @@ func add_card(card_data: CardData):
 	cards.append(card_data)
 	update_size()
 
+func add_cards(card_data: Array[CardData]):
+	cards.append_array(card_data)
+	update_size()
+	
 # Remove a card from this container
 func remove_card(card_data: CardData) -> bool:
 	var index = cards.find(card_data)

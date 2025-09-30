@@ -14,6 +14,7 @@ var is_small: bool
 var is_highlighted: bool = false
 var is_selectable: bool = false
 var is_selected: bool = false
+var is_drag_outside_hand: bool = false
 
 enum CardControlState{
 	FREE,
@@ -46,7 +47,6 @@ func _ready():
 		
 		# Apply the unique material to this card
 		card_2d_display.set_surface_override_material(0, material)
-	makeSmall()
 
 func setData(_cardData):
 	if !_cardData:
@@ -76,18 +76,6 @@ func updateDisplay():
 			card_2d_full.show()
 			card_2d_full.set_card(self)
 
-func popUp():
-	"""Delegate popup animation to AnimationsManager"""
-	AnimationsManagerAL.animate_card_popup(self)
-
-func dragged(pos: Vector3):
-	"""Delegate dragged animation to AnimationsManager"""
-	AnimationsManagerAL.animate_card_dragged(self, pos)
-	
-func animatePlayedTo(targetPos: Vector3):
-	"""Delegate card movement animation to AnimationsManager"""
-	return await AnimationsManagerAL.animate_card_to_position(self, targetPos)
-	
 func describe() -> String:
 	return objectID + cardData.describe()
 
@@ -157,17 +145,19 @@ func highlight(_enabled: bool):
 
 func update_highlight_display():
 	"""Update the visual highlight based on selection states only"""
-	var should_show_highlight = is_selectable or is_selected
+	var should_show_highlight = is_selectable or is_selected or is_drag_outside_hand
 	
 	if highlight_mesh:
 		is_highlighted = should_show_highlight
 		highlight_mesh.visible = should_show_highlight
 		
 		if should_show_highlight:
-			# Set outline color based on priority: selected > selectable
+			# Set outline color based on priority: selected > drag outside hand > selectable
 			var outline_color: Color
 			if is_selected:
 				outline_color = Color.GREEN
+			elif is_drag_outside_hand:
+				outline_color = Color.RED
 			elif is_selectable:
 				outline_color = Color.BLUE
 			else:
@@ -194,7 +184,6 @@ func set_outline_color(color: Color):
 	
 	# Set the outline color
 	material.albedo_color = color
-	print("[Card ", objectID, "] Set outline color to: ", color)
 
 func set_selectable(selectable: bool):
 	"""Mark this card as selectable during player selection"""
@@ -204,6 +193,11 @@ func set_selectable(selectable: bool):
 func set_selected(selected: bool):
 	"""Mark this card as selected during player selection"""
 	is_selected = selected
+	update_highlight_display()
+
+func set_drag_outside_hand(drag_outside: bool):
+	"""Mark this card as being dragged outside the hand area"""
+	is_drag_outside_hand = drag_outside
 	update_highlight_display()
 
 func controlled_by_current_player() -> bool:
@@ -227,49 +221,3 @@ func update_highlight_mesh_size(card_height: float):
 	
 	# Option 1: Simple scaling (recommended)
 	highlight_mesh.scale = Vector3(1.0, scale_factor, 1.0)
-	
-	# Option 2: Rebuild the mesh (uncomment if you need precise control)
-	# rebuild_highlight_mesh(card_height)
-
-# Advanced: Rebuild the highlight mesh for precise outline control
-func rebuild_highlight_mesh(card_height: float):
-	if not highlight_mesh:
-		return
-	
-	# Create new outline mesh with custom dimensions
-	var array_mesh = ArrayMesh.new()
-	var arrays = []
-	arrays.resize(Mesh.ARRAY_MAX)
-	
-	# Define outline vertices based on card dimensions
-	var card_width = 0.6  # Assuming standard card width
-	var vertices = PackedVector3Array()
-	var uvs = PackedVector2Array()
-	var indices = PackedInt32Array()
-	
-	# Create outline quad vertices
-	vertices.push_back(Vector3(-card_width/2, -card_height/2, 0.001))  # Bottom left
-	vertices.push_back(Vector3(card_width/2, -card_height/2, 0.001))   # Bottom right  
-	vertices.push_back(Vector3(card_width/2, card_height/2, 0.001))    # Top right
-	vertices.push_back(Vector3(-card_width/2, card_height/2, 0.001))   # Top left
-	
-	# UV coordinates
-	uvs.push_back(Vector2(0, 0))
-	uvs.push_back(Vector2(1, 0))
-	uvs.push_back(Vector2(1, 1))
-	uvs.push_back(Vector2(0, 1))
-	
-	# Indices for two triangles
-	indices.push_back(0)
-	indices.push_back(1)
-	indices.push_back(2)
-	indices.push_back(0)
-	indices.push_back(2)
-	indices.push_back(3)
-	
-	arrays[Mesh.ARRAY_VERTEX] = vertices
-	arrays[Mesh.ARRAY_TEX_UV] = uvs
-	arrays[Mesh.ARRAY_INDEX] = indices
-	
-	array_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
-	highlight_mesh.mesh = array_mesh

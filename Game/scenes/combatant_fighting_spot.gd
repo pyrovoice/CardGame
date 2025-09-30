@@ -13,19 +13,15 @@ func _ready():
 			onCardEnteredOrLeft.emit()
 	)
 	
-func setCard(c: Card, keepPos = true):
+func setCard(c: Card):
 	if getCard() != null:
 		print("Cannot assign %s to %s, already full"%[c.name, name])
 		return
 	if !c.cardData:
 		print("Cannot assign %s to %s, cardData not set"%[c.name, name])
 		return
-	if c.get_parent() != null:
-		c.reparent(self, keepPos)
-	else:
-		add_child(c)
 	# Use global_position instead of position for correct positioning
-	AnimationsManagerAL.animate_card_to_position(c, self.global_position + Vector3(0, 0.1, 0))
+	AnimationsManagerAL.animate_card_to_position(c, self.global_position, self)
 
 func getCard() -> Card:
 	# Method 1: Try find_children with different parameters

@@ -6,7 +6,8 @@ class_name GameUI
 @onready var danger_level_label: Label = $DangerLevel
 @onready var turn_label: Label = $Turn
 @onready var player_point: Label = $PlayerPoint
-@onready var player_gold_label: Label = $PlayerGold
+@onready var opponent_gold: Label = $TextureRect2/OpponentGold
+@onready var player_gold: Label = $TextureRect/PlayerGold
 
 var game_data: GameData
 
@@ -15,17 +16,17 @@ func _ready():
 	pass
 
 func setup_game_data(data: GameData):
-	"""Connect to GameData SignalFloat signals"""
+	"""Connect to GameData SignalInt signals"""
 	game_data = data
 	
-	# Connect to SignalFloat value_changed signals
+	# Connect to SignalInt value_changed signals
 	game_data.player_life.value_changed.connect(_on_player_life_changed)
 	game_data.player_shield.value_changed.connect(_on_player_shield_changed)
 	game_data.player_points.value_changed.connect(_on_player_points_changed)
 	game_data.player_gold.value_changed.connect(_on_player_gold_changed)
 	game_data.danger_level.value_changed.connect(_on_danger_level_changed)
 	game_data.current_turn.value_changed.connect(_on_turn_changed)
-	
+	game_data.opponent_gold.value_changed.connect(_on_opponent_gold_changed)
 	# Initial UI update
 	_update_all_ui()
 
@@ -57,10 +58,13 @@ func _on_player_points_changed(new_value: float, old_value: float):
 
 func _on_player_gold_changed(new_value: float, old_value: float):
 	"""Update player gold display"""
-	if player_gold_label:
-		player_gold_label.text = str(int(new_value))
+	if player_gold:
+		player_gold.text = str(int(new_value))
 	print("Player Gold: ", old_value, " -> ", new_value)
-
+func _on_opponent_gold_changed(new_value: float, old_value: float):
+	if opponent_gold:
+		opponent_gold.text = str(int(new_value))
+		
 func _on_danger_level_changed(new_value: float, old_value: float):
 	"""Update danger level display"""
 	if danger_level_label:

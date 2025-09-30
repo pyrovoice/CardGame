@@ -1,24 +1,34 @@
 extends RefCounted
 class_name GameData
 
-# Player stats using SignalFloat
-var player_life: SignalFloat
-var player_shield: SignalFloat
-var player_points: SignalFloat
-var player_gold: SignalFloat
+# Player stats using SignalInt
+var player_life: SignalInt
+var player_shield: SignalInt
+var player_points: SignalInt
+var player_gold: SignalInt
+var opponent_gold: SignalInt
 
-# Game state using SignalFloat
-var danger_level: SignalFloat
-var current_turn: SignalFloat
+# Game state using SignalInt
+var danger_level: SignalInt
+var current_turn: SignalInt
+
+# Deck configurations
+var playerDeckList: DeckList
+var opponentDeckList: DeckList
 
 func _init():
-	# Initialize SignalFloat values
-	player_life = SignalFloat.new(3.0)
-	player_shield = SignalFloat.new(3.0)
-	player_points = SignalFloat.new(0.0)
-	player_gold = SignalFloat.new(3.0)  # Starting gold
-	danger_level = SignalFloat.new(5.0)
-	current_turn = SignalFloat.new(1.0)
+	# Initialize SignalInt values
+	player_life = SignalInt.new(3)
+	player_shield = SignalInt.new(3)
+	player_points = SignalInt.new(0)
+	player_gold = SignalInt.new(3)  # Starting gold
+	opponent_gold = SignalInt.new(0)
+	danger_level = SignalInt.new(5)
+	current_turn = SignalInt.new(1)
+	
+	# Initialize empty deck lists (will be populated in game.gd)
+	playerDeckList = DeckList.new([])
+	opponentDeckList = DeckList.new([])
 
 func increase_danger_level():
 	"""Increase the danger level by 1 each turn"""
@@ -38,36 +48,25 @@ func damage_player(amount: float):
 	if remaining_damage > 0:
 		player_life.value -= remaining_damage
 
-func heal_player(amount: float):
-	"""Heal the player's life"""
-	player_life.value += amount
-
-func restore_shield(amount: float):
-	"""Restore the player's shield"""
-	player_shield.value += amount
-
-func add_player_points(amount: float):
+func add_player_points(amount: int):
 	"""Add points to the player's score"""
 	player_points.value += amount
 
-func subtract_player_points(amount: float):
-	"""Subtract points from the player's score"""
-	player_points.value = max(0, player_points.value - amount)
-
-func add_gold(amount: float):
+func add_gold(amount: int):
 	"""Add gold to the player's resources"""
 	player_gold.value += amount
 
-func spend_gold(amount: float) -> bool:
+func spend_gold(amount: int, playerOwned) -> bool:
 	"""Spend gold if player has enough, returns true if successful"""
-	if player_gold.value >= amount:
-		player_gold.value -= amount
+	var gold = player_gold if playerOwned else opponent_gold
+	if gold.getValue() >= amount:
+		gold.setValue(gold.getValue() - amount)
 		return true
 	return false
 
-func has_gold(amount: float) -> bool:
+func has_gold(amount: int, playerOwned) -> bool:
 	"""Check if player has enough gold"""
-	return player_gold.value >= amount
+	return player_gold.getValue() >= amount if playerOwned else opponent_gold.getValue() >= amount
 
 func start_new_turn():
 	"""Start a new turn and increase danger level"""
@@ -99,3 +98,17 @@ func reset_game():
 	player_gold.value = 3
 	danger_level.value = 5
 	current_turn.value = 1
+
+func setOpponentGold():
+	opponent_gold.setValue(danger_level.getValue())
+
+func debug_player_resources():
+	"""Debug function to print current player resources"""
+	print("=== PLAYER RESOURCES ===")
+	print("Life: ", player_life.value)
+	print("Shield: ", player_shield.value)
+	print("Gold: ", player_gold.value)
+	print("Points: ", player_points.value)
+	print("Turn: ", current_turn.value)
+	print("Danger Level: ", danger_level.value)
+	print("========================")

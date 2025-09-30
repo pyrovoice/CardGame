@@ -10,3 +10,7 @@ script = ExtResource("1_f2aqt")
 
 [node name="deckMesh" type="MeshInstance3D" parent="."]
 mesh = SubResource("BoxMesh_f2aqt")
+
+[node name="cardCount" type="Label3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, -4.37114e-08, -1, 0, 1, -4.37114e-08, 0, 0.103315, 0)
+text = "30"

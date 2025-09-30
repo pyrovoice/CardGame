@@ -3,14 +3,17 @@ class_name PlayerControl
 
 # Reference to the CardPopupManager in the UI
 @onready var card_popup_manager: CardPopupManager = $"../UI/CardPopupManager"
-var previoustween: Tween = null
 
 @onready var player_hand: Node3D = $"../Camera3D/PlayerHand"
 @onready var mouse_intercept_plane: StaticBody3D = $"../Camera3D/mouseInterceptPlane"
 @onready var camera: Camera3D = $"../Camera3D"
 
 signal tryMoveCard(card: Card, target: Node3D)
-signal displayCardPopup(card: Card)
+signal rightClick(card: Card)
+signal leftClick(objectUnderMouse: Node3D)
+signal cardDragStarted(card: Card)
+signal cardDragPositionChanged(card: Card, is_outside_hand: bool)
+signal cardDragEnded(card: Card, is_outside_hand: bool, targetLocation: Node3D)
 
 const HAND_ZONE_CUTTOFF = 530
 
@@ -30,14 +33,8 @@ var currently_highlighted_target: Node3D = null
 
 func _process(_delta):
 	if dragged_card:
-		dragged_card.dragged(getMousePositionHand())
-		# When dragging, highlight the specific target under mouse (if any)
-		updateTargetHighlight()
+		# Update drag state in game for highlighting
 		return
-	else:
-		dragged_card = null
-		# Clear target highlight when not dragging
-		clearTargetHighlight()
 	
 	# First check for cards in hand zone (existing logic)
 	var closest_card: Card = null
@@ -89,28 +86,6 @@ func updateHighlights():
 		
 		currently_highlighted_card = target_card
 
-func updateTargetHighlight():
-	"""Highlight the specific target under mouse when dragging a card"""
-	if not dragged_card:
-		return
-	
-	# Find target under mouse (CombatantFightingSpot or PlayerBase)
-	var target_under_mouse = getObjectUnderMouse(CombatantFightingSpot)
-	if not target_under_mouse:
-		target_under_mouse = getObjectUnderMouse(PlayerBase)
-	
-	# Update highlight state
-	if currently_highlighted_target != target_under_mouse:
-		# Clear previous target highlight
-		if currently_highlighted_target and currently_highlighted_target.has_method("highlight"):
-			currently_highlighted_target.highlight(false)
-		
-		# Add highlight to new target
-		if target_under_mouse and target_under_mouse.has_method("highlight"):
-			target_under_mouse.highlight(true)
-		
-		currently_highlighted_target = target_under_mouse
-
 func clearTargetHighlight():
 	"""Clear the current target highlight"""
 	if currently_highlighted_target and currently_highlighted_target.has_method("highlight"):
@@ -120,38 +95,33 @@ func clearTargetHighlight():
 
 var dragged_card: Card = null
 func _input(event):
-	# The CardPopupManager will handle hiding itself
+	""" LEFT MOUSE BUTTON"""
 	if event is InputEventMouseButton && event.button_index == MOUSE_BUTTON_LEFT:
+		""" CLICK """
 		if event.pressed:
-			# Check if we're in selection mode first
-			var game_node = get_parent() as Game
-			if game_node and game_node.selection_manager and game_node.selection_manager.is_selecting():
-				var clicked_card: Card = getObjectUnderMouse(Card)
-				if clicked_card:
-					game_node.handle_card_click_during_selection(clicked_card)
-				return  # Don't handle normal dragging during selection
-			
 			# Normal card dragging logic
 			if cardInHandUnderMouse:
+				print("Dragging " + cardInHandUnderMouse.name)
 				dragged_card = cardInHandUnderMouse
+				cardDragStarted.emit(dragged_card)
 			else:
 				var clickedCard: Card = getObjectUnderMouse(Card)
 				if clickedCard:
+					print("Dragging " + clickedCard.name)
 					dragged_card = clickedCard
-		else:
-			if !event.pressed && dragged_card && !isMousePointerInHandZone():
-				var target = getObjectUnderMouse(CombatantFightingSpot)
-				if not target:
-					target = getObjectUnderMouse(PlayerBase)
-				tryMoveCard.emit(dragged_card, target)
-				# Reset card state after trying to move it
-				if dragged_card:
-					AnimationsManagerAL.animate_card_to_rest_position(dragged_card)
-			elif !event.pressed && dragged_card:
-				# If released in hand zone, reset the card state
-				AnimationsManagerAL.animate_card_to_rest_position(dragged_card)
+					# Notify game that drag started
+					leftClick.emit(clickedCard)
+		else: 
+			# Mouse released
+			if dragged_card:
+				# Notify game that drag ended (handles auto-casting)
+				cardDragEnded.emit(dragged_card, !isMousePointerInHandZone(), getObjectUnderMouse())
+				
+			
 			dragged_card = null
-	
+			print("Release dragging ")
+			
+	""" RIGHT MOUSE BUTTON"""
 	if event is InputEventMouseButton && event.button_index == MOUSE_BUTTON_RIGHT:
 		if event.pressed:
 			var target_card: Card = null
@@ -162,34 +132,16 @@ func _input(event):
 			else:
 				# Check for cards in play (combat zones)
 				target_card = getCardUnderMouse()
+			rightClick.emit(target_card)
+	if event is InputEventMouseMotion:
+		if dragged_card:
+			var is_outside_hand = !isMousePointerInHandZone()
+			cardDragPositionChanged.emit(dragged_card, is_outside_hand, getMousePositionHand())
 			
-			if target_card:
-				displayCardPopup.emit(target_card)
-				showCardPopup(target_card)
-			
-			# Keep the original debug functionality
-			getObjectUnderMouse()
-
 func getCardUnderMouse() -> Card:
 	"""Get any card under mouse cursor, whether in hand or in play"""
 	# Use the existing getObjectUnderMouse function to find a Card
 	return getObjectUnderMouse(Card) as Card
-
-func showCardPopup(card: Card):
-	if card == null:
-		return
-	
-	# Use the shared popup system with enlarged mode and left-side positioning
-	if card_popup_manager and card_popup_manager.has_method("show_card_popup"):
-		var popup_position = _calculate_game_popup_position()
-		card_popup_manager.show_card_popup(card, popup_position, CardPopupManager.DisplayMode.ENLARGED)
-
-func _calculate_game_popup_position() -> Vector2:
-	"""Calculate the position for card popup in game view (left side of screen)"""
-	var viewport_size = get_viewport().get_visible_rect().size
-	# Use the actual enlarged viewport height for positioning
-	var vertical_center = (viewport_size.y - ENLARGED_CARD_HEIGHT) / 2
-	return Vector2(POPUP_LEFT_MARGIN, vertical_center)
 
 func getMousePositionHand() -> Vector3:
 	var mouse_position = get_viewport().get_mouse_position()

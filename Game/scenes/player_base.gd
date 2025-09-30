@@ -22,25 +22,9 @@ func _ready():
 		highlight_material.flags_unshaded = true
 		highlight_material.flags_do_not_receive_shadows = true
 	
-		# Connect signal to reorganize cards only when they are removed/leave
-	child_order_changed.connect(organize)
 
 func organize():
-	"""Reorganize all cards in the PlayerBase to be placed next to each other"""
-	var cards = getCards()
-	if lastCardCount > cards.size():
-		for i in range(cards.size()):
-			var card = cards[i]
-				
-			var target_position = Vector3(i * CARD_SPACING_X, 0, 0)
-			
-			# Use AnimationsManager for consistent positioning
-			if card.cardControlState == Card.CardControlState.FREE:
-				AnimationsManagerAL.animate_card_to_position(card, global_position + target_position)
-			else:
-				# Direct position setting for cards being dragged or in other states
-				card.position = target_position
-	lastCardCount = cards.size()
+	pass
 
 func getNextEmptyLocation() -> Vector3:
 	"""Returns the next empty location in local coordinates, or Vector3.INF if no space"""

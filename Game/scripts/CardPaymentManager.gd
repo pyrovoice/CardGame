@@ -12,18 +12,15 @@ func set_game_context(game: Game):
 	current_game = game
 
 func canPayCard(card: Card) -> bool:
-	"""Check if player can pay for the card's cost (gold + additional costs)"""
-	if not card or not card.cardData or not current_game:
-		return false
 	
 	# Check gold cost
 	var gold_cost = card.cardData.goldCost
-	if not current_game.game_data.has_gold(gold_cost):
+	if not current_game.game_data.has_gold(gold_cost, card.cardData.playerControlled):
 		return false
 	
 	# Check additional costs
 	if card.cardData.hasAdditionalCosts():
-		return canPayAdditionalCosts(card.cardData.getAdditionalCosts())
+		return canPayAdditionalCosts(card.cardData)
 	
 	return true
 
@@ -33,12 +30,12 @@ func canPayCardData(card_data: CardData) -> bool:
 		return false
 	
 	# Check gold cost
-	if not current_game.game_data.has_gold(card_data.goldCost):
+	if not current_game.game_data.has_gold(card_data.goldCost, card_data.playerControlled):
 		return false
 	
 	# Check additional costs
 	if card_data.hasAdditionalCosts():
-		return canPayAdditionalCosts(card_data.getAdditionalCosts())
+		return canPayAdditionalCosts(card_data)
 	
 	return true
 
@@ -55,7 +52,7 @@ func tryPayCard(card: Card, selected_additional_cards: Array[Card] = []) -> bool
 	print("Trying to pay ", gold_cost, " gold for ", card.cardData.cardName)
 	
 	# Pay gold cost first
-	if not current_game.game_data.spend_gold(gold_cost):
+	if not current_game.game_data.spend_gold(gold_cost, card.cardData.playerControlled):
 		print("Failed to pay gold cost!")
 		return false
 	
@@ -72,63 +69,41 @@ func tryPayCard(card: Card, selected_additional_cards: Array[Card] = []) -> bool
 	
 	return true
 
-func canPayAdditionalCosts(additional_costs: Array[Dictionary]) -> bool:
-	"""Check if player can pay all additional costs"""
-	print("=== Checking Additional Costs ===")
-	print("Number of additional costs: ", additional_costs.size())
-	
+func canPayAdditionalCosts(cardData: CardData) -> bool:
+	var additional_costs = cardData.additionalCosts
 	for i in range(additional_costs.size()):
 		var cost_data = additional_costs[i]
-		print("Cost ", i, ": ", cost_data)
-		var can_pay = canPaySingleAdditionalCost(cost_data)
-		print("Can pay cost ", i, ": ", can_pay)
+		var can_pay = canPaySingleAdditionalCost(cost_data, cardData.playerControlled)
 		if not can_pay:
-			print("=== Additional Costs Check FAILED ===")
 			return false
 	
-	print("=== Additional Costs Check PASSED ===")
 	return true
 
-func canPaySingleAdditionalCost(cost_data: Dictionary) -> bool:
+func canPaySingleAdditionalCost(cost_data: Dictionary, playerSide = true) -> bool:
 	"""Check if player can pay a single additional cost"""
 	var cost_type = cost_data.get("cost_type", "")
-	print("  Checking single cost type: ", cost_type)
 	
 	match cost_type:
 		"SacrificePermanent":
-			return canSacrificePermanents(cost_data)
+			return canSacrificePermanents(cost_data, playerSide)
 		_:
 			print("  Unknown additional cost type: ", cost_type)
 			return false
 
-func canSacrificePermanents(cost_data: Dictionary) -> bool:
+func canSacrificePermanents(cost_data: Dictionary, playerSide = true) -> bool:
 	"""Check if player can sacrifice the required permanents"""
-	print("    Checking sacrifice requirement...")
 	if not current_game:
 		print("    ERROR: current_game is null")
 		return false
 		
 	var required_count = cost_data.get("count", 1)
 	var valid_card_filter = cost_data.get("valid_card", "Card")
-	print("    Required count: ", required_count)
-	print("    Valid card filter: ", valid_card_filter)
 	
 	# Get all cards the player controls that match the filter
-	var available_cards = getPlayerControlledCards()
-	print("    Available cards player controls: ", available_cards.size())
-	for card in available_cards:
-		if card is Card and card.cardData:
-			print("      - ", card.cardData.cardName, " (Types: ", card.cardData.types, ")")
-	
+	var available_cards = current_game.getControllerCards(playerSide)
 	var valid_cards = filterCardsByValidCard(available_cards, valid_card_filter)
-	print("    Valid cards after filtering: ", valid_cards.size())
-	for card in valid_cards:
-		if card is Card and card.cardData:
-			print("      - ", card.cardData.cardName)
-	
 	# Check if we have enough valid cards to sacrifice
 	var can_sacrifice = valid_cards.size() >= required_count
-	print("    Can sacrifice required cards: ", can_sacrifice, " (", valid_cards.size(), " >= ", required_count, ")")
 	return can_sacrifice
 
 func payAdditionalCosts(additional_costs: Array[Dictionary], selected_cards: Array[Card] = []) -> bool:
@@ -162,7 +137,7 @@ func sacrificePermanents(cost_data: Dictionary, selected_cards: Array[Card] = []
 	if selected_cards.is_empty():
 		# Auto-select cards (fallback behavior)
 		print("No cards provided for sacrifice, auto-selecting...")
-		var available_cards = getPlayerControlledCards()
+		var available_cards = current_game.getPlayerControlledCards()
 		var valid_cards = filterCardsByValidCard(available_cards, valid_card_filter)
 		
 		if valid_cards.size() < required_count:
@@ -190,8 +165,12 @@ func sacrificePermanents(cost_data: Dictionary, selected_cards: Array[Card] = []
 	# Perform the sacrifice
 	if cards_to_sacrifice.size() > 0:
 		print("Sacrificing ", cards_to_sacrifice.size(), " cards matching '", valid_card_filter, "':")
+		
+		# Capture card names BEFORE sacrificing to avoid accessing freed objects
+		var card_names = []
 		for card_to_sacrifice in cards_to_sacrifice:
-			print("  - Sacrificing: ", card_to_sacrifice.cardData.cardName)
+			if card_to_sacrifice and card_to_sacrifice.cardData:
+				card_names.append(card_to_sacrifice.cardData.cardName)
 		
 		# Use the game's putInOwnerGraveyard function which handles animations
 		await current_game.putInOwnerGraveyard(cards_to_sacrifice)
@@ -214,25 +193,6 @@ func isCardDataCastable(card_data: CardData) -> bool:
 	# Use the same logic as canPayCardData for consistency
 	return canPayCardData(card_data)
 
-func getPlayerControlledCards() -> Array[Card]:
-	"""Get all cards the player currently controls (in play)"""
-	if not current_game:
-		return []
-		
-	var controlled_cards: Array[Card] = []
-	
-	# Add cards from player base
-	var base_cards = current_game.player_base.getCards()
-	controlled_cards.append_array(base_cards)
-	
-	# Add cards from combat zones (ally side only)
-	for combat_zone in current_game.combatZones:
-		for ally_spot in combat_zone.allySpots:
-			var card = ally_spot.getCard()
-			if card != null:
-				controlled_cards.append(card)
-	
-	return controlled_cards
 
 func filterCardsByValidCard(cards: Array[Card], valid_card_filter: String) -> Array[Card]:
 	"""Filter cards based on ValidCard criteria (e.g., 'Card.YouCtrl+Goblin')"""

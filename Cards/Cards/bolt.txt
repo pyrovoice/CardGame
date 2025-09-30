@@ -1,4 +1,5 @@
 Name:Bolt
 Types:Spell
+ManaCost:1
 E:$ DealDamage | ValidTgts$ Any | NumDmg$ 3 | SpellDescription$ CARDNAME deals 3 damage to any target.
 CardText: CARDNAME deals 3 damage to any target.

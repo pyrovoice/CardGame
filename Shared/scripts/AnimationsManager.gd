@@ -34,31 +34,52 @@ func _cleanup_card_tween(card_id: int):
 	if active_card_tweens.has(card_id):
 		active_card_tweens.erase(card_id)
 
-func animate_card_to_position(card: Card, target_position: Vector3):
-	"""Animate a card moving to a target position"""
+func _create_card_tween(card: Card) -> Tween:
+	"""Wait for existing animations and create a new tween for the card"""
 	if not card:
-		return false
+		return null
 	
 	# Wait for any existing animations to complete
 	await _wait_for_card_animations(card)
 	
-	card.cardControlState = Card.CardControlState.MOVED_BY_GAME
-	var card_representation_pos_before = card.card_representation.global_position
-	card.global_position = target_position
-	card.card_representation.global_position = card_representation_pos_before
-	card.makeSmall()
-	
-	# Reset rotations
-	card.rotation_degrees = Vector3(0, 0, 0)
-	card.card_representation.rotation_degrees = Vector3(0, 0, 0)
-	
-	# Use a proper tween for smooth animation to the target local position
+	# Create tween for smooth animation
 	var tween = card.create_tween()
 	_register_card_tween(card, tween)
 	
-	tween.set_ease(Tween.EASE_OUT)
-	tween.set_trans(Tween.TRANS_QUART)
-	tween.tween_property(card.card_representation, "position", Vector3.ZERO, 0.3)
+	return tween
+
+func animate_card_to_position(card: Card, target_position: Vector3, new_parent: Node3D = null):
+	"""Animate a card moving to a target position with smooth CardRepresentation animation"""
+	if not card:	
+		return false
+	
+	# Store the current global position of CardRepresentation before any reparenting
+	print("AnimateTo: " + card.name)
+	var current_representation_position = card.card_representation.global_position
+	
+	# Handle reparenting if needed
+	if new_parent:
+		card.reparent(new_parent)
+	# Move the card to the destination immediately
+	card.global_position = target_position
+
+	# Wait for existing animations and create new tween
+	var tween = await _create_card_tween(card)
+	if not tween:
+		return false
+	
+	card.cardControlState = Card.CardControlState.MOVED_BY_GAME
+	card.makeSmall()
+	# Reset rotations
+	card.rotation_degrees = Vector3(0, 0, 0)
+	card.card_representation.rotation_degrees = Vector3(0, 0, 0)
+	# Keep CardRepresentation at its current visual position
+	card.card_representation.global_position = current_representation_position
+	 
+	# Configure tween for smooth animation to (0,0,0) which moves CardRepresentation to card's position
+	tween.set_ease(Tween.EASE_IN_OUT)
+	tween.set_trans(Tween.TRANS_CUBIC)
+	tween.tween_property(card.card_representation, "position", Vector3(0, 0.2, 0), 0.6)
 	
 	return tween
 
@@ -67,8 +88,8 @@ func animate_combat_strike(attacker_card: Card, defender_card: Card):
 	if not attacker_card or not defender_card:
 		return
 	
-	# Wait for any existing animations to complete
-	await _wait_for_card_animations(attacker_card)
+	# Wait for existing animations and create new tween
+	var tween = await _create_card_tween(attacker_card)
 	
 	# Store original position
 	var original_position = attacker_card.global_position
@@ -82,10 +103,7 @@ func animate_combat_strike(attacker_card: Card, defender_card: Card):
 	var strike_duration = 0.3
 	var return_duration = 0.2
 	
-	# Create a tween for the strike animation
-	var tween = attacker_card.create_tween()
-	_register_card_tween(attacker_card, tween)
-	
+	# Configure tween for the strike animation
 	tween.set_ease(Tween.EASE_OUT)
 	tween.set_trans(Tween.TRANS_BACK)
 	
@@ -144,6 +162,13 @@ func animate_card_popup(card: Card):
 	if card.cardControlState == Card.CardControlState.MOVED_BY_GAME:
 		return
 	
+	var card_id = card.get_instance_id()
+	if active_card_tweens.has(card_id):
+		var active_tween = active_card_tweens[card_id]
+		if active_tween and active_tween.is_valid():
+			return  
+	print("Popup" + card.name)
+	
 	var pos := card.card_representation.position
 	pos.z = lerp(pos.z, -0.6 + card.position.z, 0.4)
 	card.card_representation.position = pos
@@ -155,25 +180,67 @@ func animate_card_dragged(card: Card, target_pos: Vector3):
 	if card.cardControlState == Card.CardControlState.MOVED_BY_GAME:
 		return
 	
+	# Check if card already has an active tween - if so, don't interfere
+	var card_id = card.get_instance_id()
+	if active_card_tweens.has(card_id):
+		var active_tween = active_card_tweens[card_id]
+		if active_tween and active_tween.is_valid():
+			return  # Don't create popup animation if card is already animating
 	card.cardControlState = Card.CardControlState.MOVED_BY_PLAYER
 	card.card_representation.global_position = card.card_representation.global_position.lerp(target_pos, 0.4)
-	card.card_representation.position.z = 0.1
+	card.card_representation.position.y = 0.1
 
 func animate_card_to_rest_position(card: Card):
 	"""Animate the card representation back to its rest position without blocking"""
 	if !card:
 		return
 	
-	# Wait for any existing animations to complete
-	await _wait_for_card_animations(card)
+	# Check if card already has an active tween - if so, don't interfere
+	var card_id = card.get_instance_id()
+	if active_card_tweens.has(card_id):
+		var active_tween = active_card_tweens[card_id]
+		if active_tween and active_tween.is_valid():
+			return  # Don't create popup animation if card is already animating
 	
-	# Create a tween for smooth animation
-	var tween = card.create_tween()
-	_register_card_tween(card, tween)
+	print("rest: " + card.name)
+	# Wait for existing animations and create new tween
+	var tween = await _create_card_tween(card)
 	
 	# Animate position back to local zero
-	tween.tween_property(card.card_representation, "position", Vector3.ZERO, 0.2)
+	tween.tween_property(card.card_representation, "position", Vector3.ZERO, 0.1)
 	card.makeSmall()
 	
 	# Wait for animation to complete
 	await tween.finished
+
+func move_card_to_casting_position(card: Card):
+	"""Smoothly animate a card to the casting position"""
+	if not card:
+		return
+	print("MoveCast: " + card.name)
+	
+	# Wait for existing animations and create new tween
+	var tween = await _create_card_tween(card)
+	
+	var casting_position = Vector3(3.1, 1.4, 1)
+	tween.tween_property(card.card_representation, "global_position", casting_position, 0.3)
+	
+	# Wait for animation to complete
+	await tween.finished
+
+func move_card_to_cast_preparation_position(card: Card):
+	"""Smoothly animate a card to the cast preparation position (shown immediately when casting starts)"""
+	if not card:
+		return
+	print("MovePrep: " + card.name)
+	
+	# Wait for existing animations and create new tween
+	var tween = await _create_card_tween(card)
+	tween.set_ease(Tween.EASE_IN_OUT)     
+	tween.set_trans(Tween.TRANS_CUBIC)
+	var preparation_position = Vector3(2.5, 1.4, 1)
+	tween.tween_property(card.card_representation, "global_position", preparation_position, 0.6)
+	
+	# Wait for animation to complete
+	await tween.finished
+	print("Finished")
