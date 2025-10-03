@@ -51,7 +51,7 @@ func show_card_popup(card: Card, popup_position: Vector2 = Vector2.ZERO, display
 	add_child(card_in_popup)
 	
 	# Set the card data - the Card2D will handle timing correctly
-	card_in_popup.set_card(card)
+	card_in_popup.set_card(card.cardData)
 	
 	# Scale the card for display mode
 	card_in_popup.scale = card_scale

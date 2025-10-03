@@ -6,15 +6,17 @@ class_name Card
 @onready var sub_viewport: SubViewport = $CardRepresentation/Card2DDisplay/SubViewport
 @onready var card_2d_full: Card2D = $CardRepresentation/Card2DDisplay/SubViewport/Card2D
 @onready var card_2d_small: Card2D_Small = $CardRepresentation/Card2DDisplay/SubViewport/Card2D_Small
+@onready var card_cover: TextureRect = $CardRepresentation/Card2DDisplay/SubViewport/Control/cardCover
 @onready var collision_shape_3d: CollisionShape3D = $CardRepresentation/CollisionShape3D
 @onready var highlight_mesh: MeshInstance3D = $CardRepresentation/Card2DDisplay/outline
 
 # Card size state
-var is_small: bool
+var is_small: bool = false
 var is_highlighted: bool = false
 var is_selectable: bool = false
 var is_selected: bool = false
 var is_drag_outside_hand: bool = false
+var is_facedown: bool = true
 
 enum CardControlState{
 	FREE,
@@ -44,9 +46,10 @@ func _ready():
 		material.flags_transparent = true
 		material.albedo_color = Color.WHITE
 		material.albedo_texture = sub_viewport.get_texture()
-		
 		# Apply the unique material to this card
 		card_2d_display.set_surface_override_material(0, material)
+	
+		
 
 func setData(_cardData):
 	if !_cardData:
@@ -54,6 +57,8 @@ func setData(_cardData):
 		return
 	cardData = _cardData
 	objectID = getNextID()
+	card_2d_small.set_card(self)
+	card_2d_full.set_card(cardData)
 	updateDisplay()
 	
 func updateDisplay():
@@ -61,20 +66,15 @@ func updateDisplay():
 		print("  - ❌ ERROR: No cardData, returning early")
 		return
 	
-	if is_small:
-		if card_2d_full:
-			card_2d_full.hide()
-			
-		if card_2d_small:
-			card_2d_small.show()
-			card_2d_small.set_card(self)
+	card_cover.hide()
+	card_2d_small.hide()
+	card_2d_full.hide()
+	if is_facedown:
+		card_cover.show()
+	elif is_small:
+		card_2d_small.show()
 	else:
-		if card_2d_small:
-			card_2d_small.hide()
-			
-		if card_2d_full:
-			card_2d_full.show()
-			card_2d_full.set_card(self)
+		card_2d_full.show()
 
 func describe() -> String:
 	return objectID + cardData.describe()
@@ -221,3 +221,7 @@ func update_highlight_mesh_size(card_height: float):
 	
 	# Option 1: Simple scaling (recommended)
 	highlight_mesh.scale = Vector3(1.0, scale_factor, 1.0)
+
+func setFlip(facingUp: bool):
+	is_facedown = !facingUp
+	updateDisplay()

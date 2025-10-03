@@ -71,14 +71,8 @@ func _ready() -> void:
 	
 	populate_decks()
 	
-	drawCard()
-	drawCard()
-	drawCard()
-	drawCard()
-	drawCard()
-	drawCard(false)
-	drawCard(false)
-	drawCard(false)
+	await drawCard(5, true)
+	await drawCard(3, false)
 	onTurnStart(true)
 
 func populate_decks():
@@ -91,10 +85,10 @@ func onTurnStart(skipFirstTurn = false):
 	if skipFirstTurn:
 		game_data.start_new_turn()
 		await resolveCombats()
-	drawCard()
+	await drawCard()
 	@warning_ignore("integer_division")
 	for i in range(0, game_data.danger_level.getValue()/3):
-		drawCard(false)
+		await drawCard(false)
 	game_data.setOpponentGold()
 	await opponent_ai.execute_main_phase()
 
@@ -110,7 +104,6 @@ func tryMoveCard(card: Card, target_location: Node3D) -> void:
 		GameZone.e.HAND, GameZone.e.EXTRA_DECK:
 			# Playing from hand - use the full play logic
 			tryPlayCard(card, target_location)
-			arrange_cards_fan()
 		
 		GameZone.e.PLAYER_BASE:
 			# Moving from PlayerBase to combat - this is an attack
@@ -143,7 +136,7 @@ func tryPlayCard(card: Card, target_location: Node3D) -> void:
 	# Only process additional selections if playing from hand or extra deck
 	if source_zone == GameZone.e.HAND or source_zone == GameZone.e.EXTRA_DECK:
 		# Move card to cast preparation position to show casting has started
-		AnimationsManagerAL.move_card_to_cast_preparation_position(card)
+		AnimationsManagerAL.move_card_to_cast_preparation_position(card, card.is_facedown)
 		
 		# Collect all required player selections upfront
 		var selection_data = await _collectAllPlayerSelections(card)
@@ -321,21 +314,22 @@ func moveCardToPlayerBase(card: Card) -> bool:
 	await AnimationsManagerAL.animate_card_to_position(card, global_target, player_base)
 	return true
 
-func drawCard(player = true):
+func drawCard(howMany = 1, player = true):
 	var _deck = deck if player else deck_opponent
 	var _hand = player_hand if player else opponent_hand
-	var card = _deck.draw_card_from_top()
-	if card == null:
-		return
-	card.reparent(_hand, false)
-	card.makeSmall()
-	
+	for i in range(0, howMany):
+		var card = _deck.draw_card_from_top()
+		if card == null:
+			return
+		#Put card in hand, modify other cards placements, place new card in hand
+		card.reparent(_hand, false)
+		arrange_cards_fan(card.cardData.playerControlled)
+		#Animate card from deck to front then pos 0
+		await AnimationsManagerAL.animateDraw(card, _deck.global_position, card.cardData.playerControlled)
+		card.makeSmall()
 	# Trigger card drawn action
-	var action = GameAction.new(TriggerType.Type.CARD_DRAWN, card, GameZone.e.DECK, GameZone.e.HAND)
-	AbilityManagerAL.triggerGameAction(self, action)
-	
-	arrange_cards_fan()
-	arrange_cards_fan(false)
+		var action = GameAction.new(TriggerType.Type.CARD_DRAWN, card, GameZone.e.DECK, GameZone.e.HAND)
+		AbilityManagerAL.triggerGameAction(self, action)
 	# Resolve state-based actions after drawing card
 	resolveStateBasedAction()
 

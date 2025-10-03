@@ -2,7 +2,6 @@ extends Node
 
 ## AnimationsManager - Centralized animation system for the card game
 
-const DRAW_POS = Vector3(0, 2, 1)
 # Dictionary to track active tweens for each card
 var active_card_tweens: Dictionary = {}
 
@@ -229,17 +228,14 @@ func move_card_to_casting_position(card: Card):
 	# Wait for animation to complete
 	await tween.finished
 
-func move_card_to_cast_preparation_position(card: Card, isTurnedOver):
+func move_card_to_cast_preparation_position(card: Card):
 	"""Smoothly animate a card to the cast preparation position (shown immediately when casting starts)"""
 	if not card:
 		return
+	print("MovePrep: " + card.name)
 	
 	# Wait for existing animations and create new tween
 	var tween = await _create_card_tween(card)
-	if isTurnedOver:
-		turn_over(card)
-		tween.tween_property(card.card_representation, "global_position", DRAW_POS, 0.6)
-		tween.tween_interval(0.3)
 	tween.set_ease(Tween.EASE_IN_OUT)     
 	tween.set_trans(Tween.TRANS_CUBIC)
 	var preparation_position = Vector3(2.5, 1.4, 1)
@@ -252,21 +248,20 @@ func move_card_to_cast_preparation_position(card: Card, isTurnedOver):
 func animateDraw(card: Card, from: Vector3, isTurnedOVer):
 	var tween = await _create_card_tween(card)
 	card.card_representation.global_position = from
-	tween.set_ease(Tween.EASE_OUT)     
-	tween.set_trans(Tween.TRANS_CUBIC)
 	if isTurnedOVer:
-		turn_over(card)
-		tween.tween_property(card.card_representation, "global_position", DRAW_POS, 0.6)
-		tween.tween_interval(0.3)
-	tween.tween_property(card.card_representation, "position", Vector3(0, 0, 0), 0.3)
-	await tween.finished
+		get_tree().create_timer(0.3).timeout.connect(turn_over.bind(card))
+	tween.set_ease(Tween.EASE_IN_OUT)     
+	tween.set_trans(Tween.TRANS_CUBIC)
+	var draw_pos = Vector3(0, 1, 0)
+	tween.tween_property(card.card_representation, "global_position", draw_pos, 0.6)
+	tween.tween_interval(0.5)
+	tween.tween_property(card.card_representation, "position", Vector3(0, 0, 0), 0.6)
 	
-func turn_over(card: Card, delay = 0.15):
+func turn_over(card: Card):
 	var t = card.create_tween()
-	t.tween_interval(delay)
-	t.tween_property(card.card_representation, "rotation", Vector3(0, 0, deg_to_rad(90)), 0.15)
+	t.tween_property(card.card_representation, "rotation", Vector3(0, 0, deg_to_rad(90)), 0.1)
 	t.finished.connect(func():
 		card.setFlip(true)
-		card.card_representation.rotation.z = deg_to_rad(-90)
-		card.create_tween().tween_property(card.card_representation, "rotation", Vector3(0, 0, 0), 0.15)
+		card.card_representation.rotation_degrees.z = deg_to_rad(-90)
+		t.tween_property(card.card_representation, "rotation", Vector3(0, 0, 0), 0.1)
 		)

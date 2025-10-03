@@ -181,10 +181,8 @@ func getObjectUnderMouse(target_class = Node3D) -> Node3D:
 	query.collision_mask = 0xFFFFFFFF 
 	var result = space_state.intersect_ray(query)
 	var excludes = []
-	var searchCounter = 0
 	while result:
 		var collider = result.collider
-		searchCounter+=1
 		# Check if the collider or any of its ancestors match the target class
 		var current_node = collider
 		while current_node:
