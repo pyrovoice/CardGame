@@ -226,7 +226,10 @@ func setFlip(facingUp: bool):
 	is_facedown = !facingUp
 	updateDisplay()
 
-func setPositionWithoutMovingRepresentation(newPos):
+func setPositionWithoutMovingRepresentation(newPos: Vector3, isGlobal = false):
 	var representationPosBefore = card_representation.global_position
-	position = newPos
+	if isGlobal:
+		global_position = newPos
+	else:
+		position = newPos
 	card_representation.global_position = representationPosBefore

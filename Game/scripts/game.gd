@@ -82,14 +82,12 @@ func populate_decks():
 
 func onTurnStart(skipFirstTurn = false):
 	# Start a new turn (increases danger level via SignalInt)
-	if skipFirstTurn:
+	if !skipFirstTurn:
 		game_data.start_new_turn()
 		await resolveCombats()
 	await drawCard()
 	@warning_ignore("integer_division")
-	var cardDrawOpponent = game_data.danger_level.getValue()/3
-	for i in range(0, cardDrawOpponent):
-		await drawCard(1, false)
+	await drawCard(game_data.danger_level.getValue()/3, false)
 	game_data.setOpponentGold()
 	await opponent_ai.execute_main_phase()
 
@@ -99,7 +97,6 @@ func tryMoveCard(card: Card, target_location: Node3D) -> void:
 		return
 	
 	var source_zone = getCardZone(card)
-	var _target_zone = _getTargetZone(target_location)
 	
 	match source_zone:
 		GameZone.e.HAND, GameZone.e.EXTRA_DECK:
@@ -137,7 +134,7 @@ func tryPlayCard(card: Card, target_location: Node3D) -> void:
 	# Only process additional selections if playing from hand or extra deck
 	if source_zone == GameZone.e.HAND or source_zone == GameZone.e.EXTRA_DECK:
 		# Move card to cast preparation position to show casting has started
-		AnimationsManagerAL.move_card_to_cast_preparation_position(card, card.is_facedown)
+		AnimationsManagerAL.animate_card_to_cast_preparation_position(card, card.is_facedown)
 		
 		# Collect all required player selections upfront
 		var selection_data = await _collectAllPlayerSelections(card)
@@ -148,17 +145,12 @@ func tryPlayCard(card: Card, target_location: Node3D) -> void:
 			return
 		
 		# Execute the card play with all collected selections
-		await _executeCardPlayWithSelections(card, source_zone, target_location, selection_data)
-	else:
-		# For cards already in play (like attacks), use simplified execution
-		var target_zone = _getTargetZone(target_location)
-		await _executeCardPlay(card, source_zone, target_zone, target_location, [])
+		await tryPayAndSelectsForCardPlay(card, source_zone, target_location, selection_data)
 	
 	# If target was combat location, also execute the attack
 	if target_location is CombatantFightingSpot:
 		await executeCardAttacks(card, target_location as CombatantFightingSpot)
-	arrange_cards_fan(true)
-	arrange_cards_fan(false)
+	arrange_cards_fan(card.cardData.playerControlled)
 
 func _canPlayCard(card: Card, source_zone: GameZone.e, target_location: Node3D) -> bool:
 	"""Check if the card can be played to the target location"""
@@ -181,11 +173,7 @@ func _canPlayCard(card: Card, source_zone: GameZone.e, target_location: Node3D) 
 	
 	return true
 
-func _getTargetZone(target_location: Node3D) -> GameZone.e:
-	"""Determine the game zone for the target location"""
-	return GameUtility._getTargetZone(target_location)
-
-func _executeCardPlay(card: Card, source_zone: GameZone.e, _target_zone: GameZone.e, _target_location: Node3D, spell_targets: Array):
+func _executeCardPlay(card: Card, source_zone: GameZone.e, _target_location: Node3D, spell_targets: Array):
 	"""Execute the card play with pre-selected spell targets"""
 	# If playing from extra deck, remove the card from the extra deck data structure
 	if source_zone == GameZone.e.EXTRA_DECK:
@@ -299,7 +287,8 @@ func isCardPlayable(card: Card) -> bool:
 
 func moveCardToCombatZone(card: Card, zone: CombatantFightingSpot) -> bool:
 	zone.setCard(card)
-	await AnimationsManagerAL.animate_card_to_position(card, zone.global_position + Vector3(0, 0.1, 0))
+	var t = await AnimationsManagerAL.animate_card_to_position(card, zone.global_position + Vector3(0, 0.1, 0))
+	await t.finished
 	return true
 
 func moveCardToPlayerBase(card: Card) -> bool:
@@ -324,12 +313,13 @@ func drawCard(howMany: int = 1, player = true):
 	for c in cards:
 		#Put card in hand, modify other cards placements, place new card in hand
 		#Animate card from deck to front then pos 0
-		var drawAnimationTween = await AnimationsManagerAL.animateDraw(c, _deck.global_position, player)
+		var drawAnimationTween = await AnimationsManagerAL.animateDraw(c, _deck.global_position, player, cards)
 		mtm.addTween(drawAnimationTween)
 		drawAnimationTween.finished.connect(func(): 
 			c.makeSmall()
 			var action = GameAction.new(TriggerType.Type.CARD_DRAWN, c, GameZone.e.DECK, GameZone.e.HAND)
 			AbilityManagerAL.triggerGameAction(self, action))
+		await get_tree().create_timer(0.15).timeout
 	await mtm.waitComplete()
 	# Resolve state-based actions after drawing card
 	resolveStateBasedAction()
@@ -640,7 +630,6 @@ func _arrangeExtraDeckCards(castable_cards: Array[CardData]):
 	
 	for i in range(castable_cards.size()):
 		var card_data = castable_cards[i]
-		print("🃏 Creating visual card for: ", card_data.cardName)
 		var card_instance = createCardFromData(card_data, CardData.CardType.BOSS)
 		
 		if card_instance:
@@ -719,7 +708,7 @@ func start_card_selection(requirement: Dictionary, possible_cards: Array[Card], 
 	if casting_card:
 		current_casting_card = casting_card
 		casting_card_original_parent = casting_card.get_parent()
-		await AnimationsManagerAL.move_card_to_casting_position(casting_card)
+		await AnimationsManagerAL.animate_card_to_casting_position(casting_card)
 	
 	# Start the selection process
 	var selected_cards = await selection_manager.start_selection_and_wait(requirement, possible_cards, selection_type, self, casting_card)
@@ -813,7 +802,7 @@ func _getSpellTargetsIfRequired(card: Card) -> Variant:
 	
 	return selected_targets
 
-func _executeCardPlayWithSelections(card: Card, source_zone: GameZone.e, target_location: Node3D, selection_data: Dictionary):
+func tryPayAndSelectsForCardPlay(card: Card, source_zone: GameZone.e, target_location: Node3D, selection_data: Dictionary):
 	"""Execute card play with all selections already collected"""
 	# Validate that the card is still valid
 	if not card or not is_instance_valid(card) or not card.cardData:
@@ -838,7 +827,6 @@ func _executeCardPlayWithSelections(card: Card, source_zone: GameZone.e, target_
 		return
 	
 	# Determine target zone and execute the play
-	var target_zone = _getTargetZone(target_location)
 	var spell_targets: Array[Card] = selection_data.spell_targets if selection_data.spell_targets != null else []
 	
 	# Validate spell targets are still valid
@@ -849,7 +837,7 @@ func _executeCardPlayWithSelections(card: Card, source_zone: GameZone.e, target_
 		else:
 			print("⚠️ Skipping invalid spell target")
 	
-	await _executeCardPlay(card, source_zone, target_zone, target_location, valid_spell_targets)
+	await _executeCardPlay(card, source_zone, target_location, valid_spell_targets)
 
 func _startAdditionalCostSelection(card: Card, additional_costs: Array[Dictionary]) -> Array[Card]:
 	"""Start the selection process for paying additional costs and return selected cards"""
