@@ -87,8 +87,9 @@ func onTurnStart(skipFirstTurn = false):
 		await resolveCombats()
 	await drawCard()
 	@warning_ignore("integer_division")
-	for i in range(0, game_data.danger_level.getValue()/3):
-		await drawCard(false)
+	var cardDrawOpponent = game_data.danger_level.getValue()/3
+	for i in range(0, cardDrawOpponent):
+		await drawCard(1, false)
 	game_data.setOpponentGold()
 	await opponent_ai.execute_main_phase()
 
@@ -314,33 +315,35 @@ func moveCardToPlayerBase(card: Card) -> bool:
 	await AnimationsManagerAL.animate_card_to_position(card, global_target, player_base)
 	return true
 
-func drawCard(howMany = 1, player = true):
+func drawCard(howMany: int = 1, player = true):
 	var _deck = deck if player else deck_opponent
-	var _hand = player_hand if player else opponent_hand
-	for i in range(0, howMany):
-		var card = _deck.draw_card_from_top()
-		if card == null:
-			return
+	var cards = _deck.draw_card_from_top(howMany)
+	var mtm = MultiTweenManager.createManager()
+	add_child(mtm)
+	arrange_cards_fan(player, cards)
+	for c in cards:
 		#Put card in hand, modify other cards placements, place new card in hand
-		card.reparent(_hand, false)
-		arrange_cards_fan(card.cardData.playerControlled)
 		#Animate card from deck to front then pos 0
-		await AnimationsManagerAL.animateDraw(card, _deck.global_position, card.cardData.playerControlled)
-		card.makeSmall()
-	# Trigger card drawn action
-		var action = GameAction.new(TriggerType.Type.CARD_DRAWN, card, GameZone.e.DECK, GameZone.e.HAND)
-		AbilityManagerAL.triggerGameAction(self, action)
+		var drawAnimationTween = await AnimationsManagerAL.animateDraw(c, _deck.global_position, player)
+		mtm.addTween(drawAnimationTween)
+		drawAnimationTween.finished.connect(func(): 
+			c.makeSmall()
+			var action = GameAction.new(TriggerType.Type.CARD_DRAWN, c, GameZone.e.DECK, GameZone.e.HAND)
+			AbilityManagerAL.triggerGameAction(self, action))
+	await mtm.waitComplete()
 	# Resolve state-based actions after drawing card
 	resolveStateBasedAction()
 
-func arrange_cards_fan(isPlayerHand = true):
+func arrange_cards_fan(isPlayerHand = true, addedCards: Array[Card] = []):
 	var hand = player_hand if isPlayerHand else opponent_hand
+	for c in addedCards:
+		c.reparent(hand)
 	var cards = hand.get_children()
 	var count = cards.size()
 	if count == 0:
 		return
 	
-	var spacing = 0.75       # Horizontal space between cards
+	var spacing = 0.60       # Horizontal space between cards
 	
 	# Clamp count to max 10 if needed
 	count = min(count, 10)
@@ -355,7 +358,9 @@ func arrange_cards_fan(isPlayerHand = true):
 			continue
 		
 		# Position cards spread horizontally
-		card.position = Vector3(start_x + spacing * i, 0, 0)
+		card.setPositionWithoutMovingRepresentation(Vector3(start_x + spacing * i, 0, 0))
+		if addedCards.find(card) == -1:
+			AnimationsManagerAL.animate_card_to_rest_position(card)
 
 func resolveCombats():
 	var lock = playerControlLock.addLock()

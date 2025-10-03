@@ -1,7 +1,7 @@
 [gd_scene load_steps=6 format=3 uid="uid://dnt4p0i1i5qk1"]
 
 [ext_resource type="Script" uid="uid://bwcgfhkw242lc" path="res://Game/scripts/deck.gd" id="1_f2aqt"]
-[ext_resource type="Texture2D" uid="uid://cabtfbnd5bt4i" path="res://Shared/resources/card-back.png" id="2_g5dyr"]
+[ext_resource type="Texture2D" uid="uid://b83fgso4e737m" path="res://Shared/resources/card-back.png" id="2_g5dyr"]
 
 [sub_resource type="BoxMesh" id="BoxMesh_f2aqt"]
 resource_local_to_scene = true
@@ -20,11 +20,10 @@ script = ExtResource("1_f2aqt")
 [node name="deckMesh" type="MeshInstance3D" parent="."]
 mesh = SubResource("BoxMesh_f2aqt")
 
-[node name="cover" type="MeshInstance3D" parent="deckMesh"]
+[node name="cardCount" type="Label3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 0, 0.103315, 0)
+text = "30"
+
+[node name="cover" type="MeshInstance3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.10211909, 0)
 mesh = SubResource("PlaneMesh_5anor")
-skeleton = NodePath("../..")
-
-[node name="cardCount" type="Label3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, -4.37114e-08, -1, 0, 1, -4.37114e-08, 0, 0.103315, 0)
-text = "30"

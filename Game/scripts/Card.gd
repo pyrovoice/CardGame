@@ -225,3 +225,8 @@ func update_highlight_mesh_size(card_height: float):
 func setFlip(facingUp: bool):
 	is_facedown = !facingUp
 	updateDisplay()
+
+func setPositionWithoutMovingRepresentation(newPos):
+	var representationPosBefore = card_representation.global_position
+	position = newPos
+	card_representation.global_position = representationPosBefore

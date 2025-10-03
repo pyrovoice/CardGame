@@ -259,7 +259,7 @@ func animateDraw(card: Card, from: Vector3, isTurnedOVer):
 		tween.tween_property(card.card_representation, "global_position", DRAW_POS, 0.6)
 		tween.tween_interval(0.3)
 	tween.tween_property(card.card_representation, "position", Vector3(0, 0, 0), 0.3)
-	await tween.finished
+	return tween
 	
 func turn_over(card: Card, delay = 0.15):
 	var t = card.create_tween()
