@@ -1,12 +1,14 @@
 [gd_scene load_steps=2 format=3 uid="uid://bpqfm8x4y5qhc"]
 
-[ext_resource type="Script" path="res://MainMenu/scripts/MainMenu.gd" id="1_mainmenu"]
+[ext_resource type="Script" uid="uid://cih46iajyl4c5" path="res://MainMenu/scripts/MainMenu.gd" id="1_mainmenu"]
 
 [node name="MainMenu" type="Control"]
 layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
 script = ExtResource("1_mainmenu")
 
 [node name="Background" type="ColorRect" parent="."]
@@ -14,6 +16,8 @@ layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
 color = Color(0.1, 0.1, 0.15, 1)
 
 [node name="VBoxContainer" type="VBoxContainer" parent="."]
@@ -27,6 +31,8 @@ offset_left = -100.0
 offset_top = -75.0
 offset_right = 100.0
 offset_bottom = 75.0
+grow_horizontal = 2
+grow_vertical = 2
 
 [node name="Title" type="Label" parent="VBoxContainer"]
 layout_mode = 2
@@ -42,6 +48,10 @@ text = "Play Game"
 layout_mode = 2
 text = "Card Album"
 
-[node name="QuitButton" type="Button" parent="VBoxContainer"]
-layout_mode = 2
-text = "Quit"
+[node name="TestButton" type="Button" parent="."]
+layout_mode = 0
+offset_left = 32.0
+offset_top = 524.0
+offset_right = 192.0
+offset_bottom = 618.0
+text = "Run tests"

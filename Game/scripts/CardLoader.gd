@@ -469,19 +469,15 @@ func duplicateCardScript(original: CardData) -> CardData:
 	copy.playerOwned = original.playerOwned
 	
 	# Deep copy arrays by manually copying each element
-	copy.types = []
 	for card_type in original.types:
 		copy.types.append(card_type)
 	
-	copy.subtypes = []
 	for subtype in original.subtypes:
 		copy.subtypes.append(subtype)
 	
-	copy.abilities = []
 	for ability in original.abilities:
 		copy.abilities.append(ability)
 	
-	copy.additionalCosts = []
 	for additional_cost in original.additionalCosts:
 		# Deep copy dictionaries manually
 		var cost_copy = {}
@@ -490,3 +486,18 @@ func duplicateCardScript(original: CardData) -> CardData:
 		copy.additionalCosts.append(cost_copy)
 	
 	return copy
+
+func getCardByName(n: String) -> CardData:
+	var f = cardData.filter(func(c:CardData): return c.cardName.to_lower() == n.to_lower())
+	if f.size() >0:
+		return duplicateCardScript(f[0])
+	f = extraDeckCardData.filter(func(c:CardData): return c.cardName.to_lower() == n.to_lower())
+	if f.size() >0:
+		return duplicateCardScript(f[0])
+	f = tokensData.filter(func(c:CardData): return c.cardName.to_lower() == n.to_lower())
+	if f.size() >0:
+		return duplicateCardScript(f[0])
+	f = opponentCards.filter(func(c:CardData): return c.cardName.to_lower() == n.to_lower())
+	if f.size() >0:
+		return duplicateCardScript(f[0])
+	return null

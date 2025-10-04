@@ -23,7 +23,7 @@ var highlightManager: HighlightManager
 # Game data and state management
 var game_data: GameData
 @onready var graveyard_opponent: Graveyard = $graveyardOpponent
-
+var doStartGame = true
 # Opponent AI system
 var opponent_ai: OpponentAI
 
@@ -68,13 +68,15 @@ func _ready() -> void:
 		if is_outside_hand:
 			tryPlayCard(card, targetLocation))
 	draw.pressed.connect(onTurnStart)
-	
+	if doStartGame:
+		setupGame()
+		
+func setupGame():
 	populate_decks()
-	
 	await drawCard(5, true)
 	await drawCard(3, false)
-	onTurnStart(true)
-
+	await onTurnStart(true)
+	
 func populate_decks():
 	refilLDeck(deck, game_data.playerDeckList.deck_cards.duplicate(true), true)
 	refilLDeck(extra_deck, game_data.playerDeckList.extra_deck_cards.duplicate(true), true)
