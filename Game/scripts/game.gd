@@ -69,7 +69,7 @@ func _ready() -> void:
 	player_control.cardDragEnded.connect(func(card, is_outside_hand, targetLocation): 
 		highlightManager.end_card_drag(card)
 		if is_outside_hand:
-			tryPlayCard(card, targetLocation))
+			tryMoveCard(card, targetLocation))
 	draw.pressed.connect(onTurnStart)
 	
 	populate_decks()

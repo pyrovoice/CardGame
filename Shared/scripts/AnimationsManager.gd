@@ -158,7 +158,6 @@ func animate_card_popup(card: Card):
 		var active_tween = active_card_tweens[card_id]
 		if active_tween and active_tween.is_valid():
 			return  
-	print("Popup" + card.name)
 	
 	var pos := card.card_representation.position
 	pos.z = lerp(pos.z, -0.6 + card.position.z, 0.4)
