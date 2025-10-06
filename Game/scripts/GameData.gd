@@ -7,7 +7,14 @@ var player_shield: SignalInt
 var player_points: SignalInt
 var player_gold: SignalInt
 var opponent_gold: SignalInt
-
+var player_capture_threshold: SignalInt = SignalInt.new(10)
+var opponent_capture_threshold: SignalInt = SignalInt.new(10)
+var playerLocation1CaptureValue: SignalInt = SignalInt.new(0)
+var playerLocation2CaptureValue: SignalInt = SignalInt.new(0)
+var playerLocation3CaptureValue: SignalInt = SignalInt.new(0)
+var opponentLocation1CaptureValue: SignalInt = SignalInt.new(0)
+var opponentLocation2CaptureValue: SignalInt = SignalInt.new(0)
+var opponentLocation3CaptureValue: SignalInt = SignalInt.new(0)
 # Game state using SignalInt
 var danger_level: SignalInt
 var current_turn: SignalInt

@@ -1,7 +1,8 @@
-[gd_scene load_steps=6 format=3 uid="uid://daynfobgnbdrp"]
+[gd_scene load_steps=7 format=3 uid="uid://daynfobgnbdrp"]
 
 [ext_resource type="Script" uid="uid://fqb7xp4n6x0r" path="res://Game/scripts/combat_zone.gd" id="1_wucjk"]
 [ext_resource type="PackedScene" uid="uid://xlhxj0iq2gna" path="res://Game/scenes/combatantFightingSpot.tscn" id="2_ulpi2"]
+[ext_resource type="PackedScene" uid="uid://c1gh53ivxrt74" path="res://Game/scenes/locationFill.tscn" id="3_cu80e"]
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_ulpi2"]
 size = Vector3(2, 0.05, 2)
@@ -24,11 +25,11 @@ shape = SubResource("BoxShape3D_ulpi2")
 mesh = SubResource("QuadMesh_w3xpy")
 
 [node name="OpponentTotalStrength" type="Label3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, -4.37114e-08, 1, 0, -1, -4.37114e-08, 1.39897, 0.01, -0.828396)
+transform = Transform3D(1, 0, 0, 0, -4.37114e-08, 1, 0, -1, -4.37114e-08, -1.3370911, 0.01, -0.828396)
 text = "0"
 
 [node name="AllyTotalStrength" type="Label3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, -4.37114e-08, 1, 0, -1, -4.37114e-08, 1.34905, 0.01, 0.809041)
+transform = Transform3D(1, 0, 0, 0, -4.37114e-08, 1, 0, -1, -4.37114e-08, -1.387011, 0.01, 0.809041)
 text = "0
 "
 
@@ -49,3 +50,10 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.0249671, 0, 0.47551)
 
 [node name="AllySpot3" parent="." instance=ExtResource("2_ulpi2")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.950427, 0, 0.47551)
+
+[node name="LocationFillPlayer" parent="." instance=ExtResource("3_cu80e")]
+transform = Transform3D(-4.371139e-08, 0, 1, 0, 1, 0, -1, 0, -4.371139e-08, 1.3407568, 0.0021105409, 0.51298183)
+
+[node name="LocationFillOpponent" parent="." instance=ExtResource("3_cu80e")]
+transform = Transform3D(-4.371139e-08, 0, 1, 0, 1, 0, -1, 0, -4.371139e-08, 1.3407568, 0.01695007, -0.5535381)
+isPlayer = false

@@ -5,6 +5,8 @@ class_name CombatZone
 @onready var ally_total_strength: Label3D = $AllyTotalStrength
 var ennemySpots: Array[CombatantFightingSpot] = []
 var allySpots: Array[CombatantFightingSpot] = []
+@onready var location_fill_player: Node3D = $LocationFillPlayer
+@onready var location_fill_opponent: Node3D = $LocationFillOpponent
 
 func _ready() -> void:
 	for i in range(1, 4):
