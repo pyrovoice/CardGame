@@ -51,6 +51,13 @@ Hero power: Each hero has several shared power + an archetype power
 Have a target Corruption/Purity that gets higher for the corresponding player whenever they win at a location? Auto-balance the game, makes locations adapt to stronger sides organically
 Deck management: Players have a deck list and the deck is filled with 2 copies of each cards. Then, any time the deck's halfpoint is reached, a copy of all card is added. Possibility to play with probabilities by adding and removing cards to the decks, and also give a gold to the opponent when shuffling to open mill strategies?
 
+Combat:
+	- Creatures are set left to right and front to back. All creatures accumulate their might, and damage is assigned to creatures in order to kill them.
+	- Any spillover might is dealt to the location as purification or corruption. 
+	- Each player has a Conquest target value. When they accumulate enough at a location, that location becomes captured with the benefits that implies
+	- Capturing for each player should mean getting closer to victory, but making the opponent stronger (catchup mechanism)
+	- Capturing in early game should be hard and take several turns, while becoming faster and easier with combat
+	- Each capture increases the needed score to capture a location by that much
 Ideas to justify pull and push: 
 - Locations have a crystal that can be corrupted or fred, the player adds "good" resource while the opponent add "corruption" to it. Possible ressource: Vitality, to restore the crystal. Purification. 
 - Add stuff to the opponent's deck or hand ("Fool, 2c 1p with no effect", here to waste opponent's ressource)
@@ -61,3 +68,5 @@ Questions:
 Other stuff:
 Find a way to have a Sphere mask transition: https://www.reddit.com/r/unrealengine/comments/lrd086/landscape_transition_effect_using_sphere_masks/ or https://www.reddit.com/r/godot/comments/1nidl3l/worldmerging_shader/ or https://github.com/lukky-nl/Stencil-Buffer-Holographic-Display
 Make each location resolved on player choice, with possibility to play in-between each fight? Offers more startegy to the player, less confusion, gameplay possibility of repeating a battle...
+
+- How to manage flying units? Evasive
