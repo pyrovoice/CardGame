@@ -230,7 +230,6 @@ func animate_card_to_cast_preparation_position(card: Card, isTurnedOver):
 	tween.set_trans(Tween.TRANS_CUBIC)
 	var preparation_position = Vector3(2.5, 1.4, 1)
 	tween.tween_property(card.card_representation, "global_position", preparation_position, 0.6)
-	tween.tween_interval(0.6)
 	# Wait for animation to complete
 	await tween.finished
 	print("Finished")

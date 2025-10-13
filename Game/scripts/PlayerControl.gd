@@ -31,36 +31,6 @@ var cardInHandUnderMouse: Card = null
 var currently_highlighted_card: Card = null
 var currently_highlighted_target: Node3D = null
 
-func _process(_delta):
-	if dragged_card:
-		# Update drag state in game for highlighting
-		return
-	
-	# First check for cards in hand zone (existing logic)
-	var closest_card: Card = null
-	if isMousePointerInHandZone():
-		var hover_range = 50
-		var _lift_amount = 1
-		var closest_dist = hover_range + 1  # start bigger than range
-		var cards = player_hand.get_children()
-		var mouse_pos = get_viewport().get_mouse_position()
-		for card: Card in cards:
-			var card_screen_pos = camera.unproject_position(card.global_transform.origin)
-			var dist = mouse_pos.distance_to(card_screen_pos)
-			if dist < hover_range && dist < closest_dist:
-				closest_dist = dist
-				closest_card = card
-		
-	if closest_card && closest_card != cardInHandUnderMouse:
-		AnimationsManagerAL.animate_card_to_rest_position(cardInHandUnderMouse)
-		AnimationsManagerAL.animate_card_popup(closest_card)
-		cardInHandUnderMouse = closest_card
-	elif !closest_card && cardInHandUnderMouse != null:
-		AnimationsManagerAL.animate_card_to_rest_position(cardInHandUnderMouse)
-		cardInHandUnderMouse = null
-
-	# Update highlights based on current mouse position
-	updateHighlights()
 
 func updateHighlights():
 	"""Update which objects should be highlighted based on current state"""
@@ -70,9 +40,6 @@ func updateHighlights():
 	if isMousePointerInHandZone():
 		# In hand zone - highlight card that would be popped up
 		target_card = cardInHandUnderMouse
-	else:
-		# Outside hand zone - highlight card under mouse
-		target_card = getCardUnderMouse()
 	
 	# Update highlight state
 	if currently_highlighted_card != target_card:
@@ -136,6 +103,31 @@ func _input(event):
 		if dragged_card:
 			var is_outside_hand = !isMousePointerInHandZone()
 			cardDragPositionChanged.emit(dragged_card, is_outside_hand, getMousePositionHand())
+		
+		if isMousePointerInHandZone():
+			var hover_range = 50
+			var _lift_amount = 1
+			var closest_dist = hover_range + 1  # start bigger than range
+			var cards = player_hand.get_children()
+			var mouse_pos = get_viewport().get_mouse_position()
+			var closest_card
+			for card: Card in cards:
+				var card_screen_pos = camera.unproject_position(card.global_transform.origin)
+				var dist = mouse_pos.distance_to(card_screen_pos)
+				if dist < hover_range && dist < closest_dist:
+					closest_dist = dist
+					closest_card = card
+			
+			if closest_card && closest_card != cardInHandUnderMouse:
+				AnimationsManagerAL.animate_card_to_rest_position(cardInHandUnderMouse)
+				AnimationsManagerAL.animate_card_popup(closest_card)
+				cardInHandUnderMouse = closest_card
+			elif !closest_card && cardInHandUnderMouse != null:
+				AnimationsManagerAL.animate_card_to_rest_position(cardInHandUnderMouse)
+				cardInHandUnderMouse = null
+
+			# Update highlights based on current mouse position
+			updateHighlights()
 			
 func getCardUnderMouse() -> Card:
 	"""Get any card under mouse cursor, whether in hand or in play"""
@@ -170,26 +162,21 @@ func getObjectUnderMouse(target_class = Node3D) -> Node3D:
 	var mouse_position = get_viewport().get_mouse_position()
 	
 	var ray_origin = camera.project_ray_origin(mouse_position)
-	print(ray_origin)
 	var ray_direction = camera.project_ray_normal(mouse_position)
-	print(ray_direction)
 	var ray_end = ray_origin + ray_direction * 1000.0  # long ray
-	print(ray_end)
 
 	var space_state = camera.get_world_3d().direct_space_state
 	var query = PhysicsRayQueryParameters3D.create(ray_origin, ray_end)
 	query.collide_with_areas = true
 	query.collide_with_bodies = true
-	query.collision_mask = 0xFFFFFFFF & ~(1 << 8)
-	
-	print("Collision mask: ", query.collision_mask, " (excludes layer 8)")
-	print("Layer 8 value: ", 1 << 8, " (256)")
-	print("mouseInterceptPlane collision_layer should be: 256")
+	query.set_collision_mask(pow(2, 1 - 1))
+
 	
 	var result = space_state.intersect_ray(query)
 	var excludes = []
 	while result:
 		var collider = result.collider
+		print(result.collider.name)
 		# Check if the collider or any of its ancestors match the target class
 		var current_node = collider
 		while current_node:
