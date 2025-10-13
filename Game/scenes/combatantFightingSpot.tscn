@@ -3,7 +3,7 @@
 [ext_resource type="Script" uid="uid://c5bukruwhrb4j" path="res://Game/scenes/combatant_fighting_spot.gd" id="1_hrq3r"]
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_2qyxm"]
-size = Vector3(0.2130951, 0.034418944, 0.21877022)
+size = Vector3(0.91152894, 0.1022937, 0.5924085)
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_hrq3r"]
 emission = Color(1, 1, 0, 1)
@@ -25,7 +25,7 @@ disable_receive_shadows = true
 script = ExtResource("1_hrq3r")
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.0045791566, 0.012209473, -0.011460695)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.004167199, 0.04614685, 0.0015429631)
 shape = SubResource("BoxShape3D_2qyxm")
 
 [node name="MeshInstance3D" type="MeshInstance3D" parent="."]

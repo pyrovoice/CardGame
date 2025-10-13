@@ -94,32 +94,24 @@ func clearTargetHighlight():
 	
 
 var dragged_card: Card = null
+var mouseDownButtonPos: Vector2 = Vector2.INF
 func _input(event):
 	""" LEFT MOUSE BUTTON"""
 	if event is InputEventMouseButton && event.button_index == MOUSE_BUTTON_LEFT:
 		""" CLICK """
 		if event.pressed:
-			# Normal card dragging logic
-			if cardInHandUnderMouse:
-				print("Dragging " + cardInHandUnderMouse.name)
-				dragged_card = cardInHandUnderMouse
-				cardDragStarted.emit(dragged_card)
-			else:
-				var clickedCard: Card = getObjectUnderMouse(Card)
-				if clickedCard:
-					print("Dragging " + clickedCard.name)
-					dragged_card = clickedCard
-					# Notify game that drag started
-					leftClick.emit(clickedCard)
+			mouseDownButtonPos = event.position
 		else: 
 			# Mouse released
 			if dragged_card:
 				# Notify game that drag ended (handles auto-casting)
-				cardDragEnded.emit(dragged_card, !isMousePointerInHandZone(), getObjectUnderMouse())
-				
-			
+				cardDragEnded.emit(dragged_card, !isMousePointerInHandZone(), getObjectUnderMouse(CardLocation))
+				print("Release dragging ")
+			elif event.position == mouseDownButtonPos:
+				print("Left click ")
+				leftClick.emit(getObjectUnderMouse())
 			dragged_card = null
-			print("Release dragging ")
+			mouseDownButtonPos = Vector2.INF
 			
 	""" RIGHT MOUSE BUTTON"""
 	if event is InputEventMouseButton && event.button_index == MOUSE_BUTTON_RIGHT:
@@ -134,6 +126,13 @@ func _input(event):
 				target_card = getCardUnderMouse()
 			rightClick.emit(target_card)
 	if event is InputEventMouseMotion:
+		if !dragged_card && mouseDownButtonPos != Vector2.INF:
+			if isMousePointerInHandZone():
+				dragged_card = cardInHandUnderMouse
+			else:
+				dragged_card = getObjectUnderMouse(Card)
+			if dragged_card:
+				cardDragStarted.emit(dragged_card)
 		if dragged_card:
 			var is_outside_hand = !isMousePointerInHandZone()
 			cardDragPositionChanged.emit(dragged_card, is_outside_hand, getMousePositionHand())
@@ -171,14 +170,22 @@ func getObjectUnderMouse(target_class = Node3D) -> Node3D:
 	var mouse_position = get_viewport().get_mouse_position()
 	
 	var ray_origin = camera.project_ray_origin(mouse_position)
+	print(ray_origin)
 	var ray_direction = camera.project_ray_normal(mouse_position)
-	var ray_end = ray_origin + ray_direction * 10.0  # long ray
+	print(ray_direction)
+	var ray_end = ray_origin + ray_direction * 1000.0  # long ray
+	print(ray_end)
 
 	var space_state = camera.get_world_3d().direct_space_state
 	var query = PhysicsRayQueryParameters3D.create(ray_origin, ray_end)
 	query.collide_with_areas = true
 	query.collide_with_bodies = true
-	query.collision_mask = 0xFFFFFFFF & ~(1 << 7)
+	query.collision_mask = 0xFFFFFFFF & ~(1 << 8)
+	
+	print("Collision mask: ", query.collision_mask, " (excludes layer 8)")
+	print("Layer 8 value: ", 1 << 8, " (256)")
+	print("mouseInterceptPlane collision_layer should be: 256")
+	
 	var result = space_state.intersect_ray(query)
 	var excludes = []
 	while result:

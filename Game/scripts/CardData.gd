@@ -20,6 +20,9 @@ var cardArt: Texture2D
 var playerControlled: bool  # Whether this card is controlled by the player
 var playerOwned: bool       # Whether this card is owned by the player
 
+# Movement tracking
+var hasMoved: bool = false  # Track if the card has moved this turn
+
 	
 func describe() -> String:
 	var subtypes_str = ""
@@ -168,3 +171,12 @@ func _formatValidCardDescription(valid_card: String) -> String:
 		result += " you control"
 	
 	return result
+
+# Movement tracking methods
+func reset_movement_tracking():
+	"""Reset movement tracking at the start of turn"""
+	hasMoved = false
+
+func mark_as_moved():
+	"""Mark this card as having moved this turn"""
+	hasMoved = true

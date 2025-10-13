@@ -4,6 +4,12 @@ Gimmick: After fighting or other conditions, raise the cost of the card by +1 th
 Cards:
 - Discard and sacrifice monsters in play: Steal opponent card with cost lower than sacced monster's cost
 - Sacrifice a monster: Draw cards equal to the cost of the sacced monster
+- Raise or Lower card's cost + charges
+- X cost, X equal target: Steal it/ destroy it
+- Steal target creature for the turn. If cost <= X, steal it instead.
 
 Extra:
 - Sacrifice any number and at least one of this archetype: Summoned boss has Might equal to the total cost of sacced monsters
+
+
+Idea: Use a silver then golden outline for level 1 and 2, maybe use Sphere mask transition there? 
