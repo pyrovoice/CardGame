@@ -1,0 +1,2 @@
+extends Label3D
+class_name ResolveFightButton

@@ -1,14 +1,13 @@
 extends Node3D
 class_name Card
 
-@onready var card_representation: Node3D = $CardRepresentation
-@onready var card_2d_display: MeshInstance3D = $CardRepresentation/Card2DDisplay
-@onready var sub_viewport: SubViewport = $CardRepresentation/Card2DDisplay/SubViewport
-@onready var card_2d_full: Card2D = $CardRepresentation/Card2DDisplay/SubViewport/Card2D
-@onready var card_2d_small: Card2D_Small = $CardRepresentation/Card2DDisplay/SubViewport/Card2D_Small
-@onready var card_cover: TextureRect = $CardRepresentation/Card2DDisplay/SubViewport/Control/cardCover
-@onready var collision_shape_3d: CollisionShape3D = $CardRepresentation/CollisionShape3D
-@onready var highlight_mesh: MeshInstance3D = $CardRepresentation/Card2DDisplay/outline
+@onready var card_representation: MeshInstance3D = $CardRepresentation
+@onready var sub_viewport: SubViewport = $CardRepresentation/SubViewport
+@onready var card_2d_full: Card2D = $CardRepresentation/SubViewport/Card2D
+@onready var card_2d_small: Card2D_Small = $CardRepresentation/SubViewport/Card2D_Small
+@onready var card_cover: TextureRect = $CardRepresentation/SubViewport/Control/cardCover
+@onready var collision_shape_3d: CollisionShape3D = $CollisionShape3D
+@onready var highlight_mesh: MeshInstance3D = $CardRepresentation/outline
 
 # Card size state
 var is_small: bool = false
@@ -38,7 +37,7 @@ static func getNextID():
 func _ready():
 	# Initially show the small card, hide the full card (cards start small by default)
 	# Create a unique material for this card instance
-	if sub_viewport and card_2d_display:
+	if sub_viewport and card_representation:
 		# Create a new material instance (not shared)
 		var material = StandardMaterial3D.new()
 		material.flags_unshaded = true
@@ -47,7 +46,7 @@ func _ready():
 		material.albedo_color = Color.WHITE
 		material.albedo_texture = sub_viewport.get_texture()
 		# Apply the unique material to this card
-		card_2d_display.set_surface_override_material(0, material)
+		card_representation.set_surface_override_material(0, material)
 	
 		
 
@@ -86,7 +85,7 @@ func makeSmall():
 	card_2d_full.hide()
 	card_2d_small.show()
 	# Adjust SubViewport size to match small card size
-	(card_2d_display.mesh as PlaneMesh).size.y = 0.55
+	(card_representation.mesh as PlaneMesh).size.y = 0.55
 	(collision_shape_3d.shape as BoxShape3D).size.y = 0.55
 	sub_viewport.size = Vector2i(150, 150)
 	scale = Vector3(1, 1, 1)
@@ -103,7 +102,7 @@ func makeBig():
 	is_small = false
 	
 	# Reset SubViewport size for full card
-	(card_2d_display.mesh as PlaneMesh).size.y = 0.89
+	(card_representation.mesh as PlaneMesh).size.y = 0.89
 	(collision_shape_3d.shape as BoxShape3D).size.y = 0.89
 	sub_viewport.size = Vector2i(198, 267)
 	scale = Vector3(1.5, 1.5, 1.5)

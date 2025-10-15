@@ -7,7 +7,7 @@ var player_shield: SignalInt
 var player_points: SignalInt
 var player_gold: SignalInt
 var opponent_gold: SignalInt
-
+var combatLocationDatas: Array[CombatLocationData] = []
 # Game state using SignalInt
 var danger_level: SignalInt
 var current_turn: SignalInt
@@ -98,6 +98,19 @@ func reset_game():
 	player_gold.value = 3
 	danger_level.value = 5
 	current_turn.value = 1
+	
+	# Reset capture values
+	for c in combatLocationDatas:
+		c.player_capture_current.setValue(0)
+		c.opponent_capture_current.setValue(0)
+		c.player_capture_threshold.setValue(10)
+		c.opponent_capture_threshold.setValue(10)
+	reset_combat_resolution_flags()
+
+func reset_combat_resolution_flags():
+	"""Reset all combat resolution flags at start of turn"""
+	for c in combatLocationDatas:
+		c.isCombatResolved.setValue(false)
 
 func setOpponentGold():
 	opponent_gold.setValue(danger_level.getValue())
@@ -112,3 +125,10 @@ func debug_player_resources():
 	print("Turn: ", current_turn.value)
 	print("Danger Level: ", danger_level.value)
 	print("========================")
+
+func is_combat_resolved(combat_zone: CombatZone):
+	var finds = combatLocationDatas.filter(func(c:CombatLocationData): return c.relatedLocation == combat_zone)
+	if finds.size()==0:
+		return
+	var data: CombatLocationData = finds[0]
+	return data.isCombatResolved

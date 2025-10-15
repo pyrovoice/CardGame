@@ -3,9 +3,9 @@
 [ext_resource type="Script" uid="uid://dsb1ch8a7q1og" path="res://Game/scripts/game.gd" id="1_7475e"]
 [ext_resource type="PackedScene" uid="uid://dnt4p0i1i5qk1" path="res://Game/scenes/Deck.tscn" id="1_ds5t7"]
 [ext_resource type="PackedScene" uid="uid://daynfobgnbdrp" path="res://Game/scenes/combat_zone.tscn" id="2_w3xpy"]
-[ext_resource type="Script" uid="uid://bj67ghukul3cy" path="res://Game/scripts/player_control.gd" id="4_w3xpy"]
+[ext_resource type="Script" uid="uid://bj67ghukul3cy" path="res://Game/scripts/PlayerControl.gd" id="4_w5dfm"]
 [ext_resource type="PackedScene" uid="uid://dueg4t10qe41s" path="res://Game/scenes/graveyard.tscn" id="6_2jiha"]
-[ext_resource type="Script" uid="uid://cwo3od4ulniaq" path="res://Game/scenes/player_base.gd" id="7_bqf56"]
+[ext_resource type="Script" path="res://Game/scenes/PlayerBase.gd" id="6_w5dfm"]
 [ext_resource type="PackedScene" uid="uid://cqj7vnp5xo8dy" path="res://Shared/scenes/CardPopupManager.tscn" id="7_popup"]
 [ext_resource type="Texture2D" uid="uid://dkmniw1rj2l6i" path="res://Assets/Images/gold_coin_detailed.png" id="8_cc2av"]
 [ext_resource type="PackedScene" uid="uid://dq0b45a6txn6s" path="res://Game/scenes/extra_deck.tscn" id="10_5jp4b"]
@@ -69,14 +69,14 @@ light_cull_mask = 4294967263
 omni_range = 50.0
 
 [node name="playerControl" type="Node3D" parent="."]
-script = ExtResource("4_w3xpy")
+script = ExtResource("4_w5dfm")
 
 [node name="graveyard" parent="." instance=ExtResource("6_2jiha")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.74551, -0.001, 2.00743)
 
 [node name="playerBase" type="StaticBody3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.59764, -0.001, 1.97616)
-script = ExtResource("7_bqf56")
+script = ExtResource("6_w5dfm")
 
 [node name="MeshInstance3D" type="MeshInstance3D" parent="playerBase"]
 mesh = SubResource("PlaneMesh_bqf56")

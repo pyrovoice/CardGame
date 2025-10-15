@@ -1,4 +1,4 @@
-extends StaticBody3D
+extends CardLocation
 class_name PlayerBase
 
 @onready var mesh_instance: MeshInstance3D = $MeshInstance3D

@@ -67,45 +67,7 @@ static func getCardZone(game: Game, card: Card) -> GameZone.e:
 	"""Determine what zone a card is currently in based on its parent and controller"""
 	if not card:
 		return GameZone.e.UNKNOWN
-	
-	# Enhanced controller-based detection if card data is available
-	if card.cardData:
-		var is_player_controlled = card.cardData.playerControlled
 		
-		# Search in hand
-		var hand_cards = getCardsInHand(game, is_player_controlled)
-		if card in hand_cards:
-			return GameZone.e.HAND
-		
-		# Search in player base (only for player-controlled cards)
-		if is_player_controlled:
-			var base_cards = game.player_base.getCards()
-			if card in base_cards:
-				return GameZone.e.PLAYER_BASE
-		
-		# Search in combat zones
-		for combat_zone in game.combatZones:
-			var spots = combat_zone.allySpots if is_player_controlled else combat_zone.ennemySpots
-			for spot in spots:
-				if spot.getCard() == card:
-					return GameZone.e.COMBAT_ZONE
-		
-		# Search in extra deck (only for player-controlled cards)
-		if is_player_controlled:
-			var extra_deck_cards = game.extra_deck.get_children()
-			if card in extra_deck_cards:
-				return GameZone.e.EXTRA_DECK
-		
-		# Check if card is in deck (CardData based)
-		var deck_cards = getCardsInDeck(game, is_player_controlled)
-		if card.cardData in deck_cards:
-			return GameZone.e.DECK
-		
-		# Check if card is in graveyard (CardData based)  
-		var graveyard_cards = getCardsInGraveyard(game, is_player_controlled)
-		if card.cardData in graveyard_cards:
-			return GameZone.e.GRAVEYARD
-	
 	# Fallback to parent-based detection
 	var parent = card.get_parent()
 	if not parent:
