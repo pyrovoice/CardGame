@@ -4,8 +4,7 @@ class_name Card
 @onready var card_representation: Node3D = $CardRepresentation
 @onready var card_2d_display: MeshInstance3D = $CardRepresentation/Card2DDisplay
 @onready var sub_viewport: SubViewport = $CardRepresentation/Card2DDisplay/SubViewport
-@onready var card_2d_full: Card2D = $CardRepresentation/Card2DDisplay/SubViewport/Card2D
-@onready var card_2d_small: Card2D_Small = $CardRepresentation/Card2DDisplay/SubViewport/Card2D_Small
+@onready var card_2d: Card2D = $CardRepresentation/Card2DDisplay/SubViewport/Card2D
 @onready var card_cover: TextureRect = $CardRepresentation/Card2DDisplay/SubViewport/Control/cardCover
 @onready var collision_shape_3d: CollisionShape3D = $CardRepresentation/CollisionShape3D
 @onready var highlight_mesh: MeshInstance3D = $CardRepresentation/Card2DDisplay/outline
@@ -17,6 +16,7 @@ var is_selectable: bool = false
 var is_selected: bool = false
 var is_drag_outside_hand: bool = false
 var is_facedown: bool = true
+var tween_change_size: Tween = null
 
 enum CardControlState{
 	FREE,
@@ -57,8 +57,7 @@ func setData(_cardData):
 		return
 	cardData = _cardData
 	objectID = getNextID()
-	card_2d_small.set_card(self)
-	card_2d_full.set_card(cardData)
+	card_2d.set_card(cardData)
 	updateDisplay()
 	
 func updateDisplay():
@@ -67,14 +66,11 @@ func updateDisplay():
 		return
 	
 	card_cover.hide()
-	card_2d_small.hide()
-	card_2d_full.hide()
+	card_2d.hide()
 	if is_facedown:
 		card_cover.show()
-	elif is_small:
-		card_2d_small.show()
 	else:
-		card_2d_full.show()
+		card_2d.show()
 
 func describe() -> String:
 	return objectID + cardData.describe()
@@ -83,36 +79,36 @@ func makeSmall():
 	if is_small:
 		return
 	is_small = true
-	card_2d_full.hide()
-	card_2d_small.show()
-	# Adjust SubViewport size to match small card size
-	(card_2d_display.mesh as PlaneMesh).size.y = 0.55
-	(collision_shape_3d.shape as BoxShape3D).size.y = 0.55
-	sub_viewport.size = Vector2i(150, 150)
-	scale = Vector3(1, 1, 1)
-	
+	if tween_change_size.is_running():
+		await tween_change_size.finished
 	# Scale highlight mesh to match small card size
 	if highlight_mesh:
 		highlight_mesh.scale = Vector3(1.05, 1, 0.65)  # Adjust Y scale to match card ratio
-	
-	updateDisplay()
+	tween_change_size = get_tree().create_tween()
+	tween_change_size.set_parallel()
+	tween_change_size.tween_property(card_2d_display.mesh, "size", Vector2(0.55, 0.55), 0.2)
+	tween_change_size.tween_property(sub_viewport, "size", Vector2i(150, 150), 0.2)
+	tween_change_size.tween_property(self, "scale", Vector3(1, 1, 1), 0.2)
+	# Adjust SubViewport size to match small card size
+	(collision_shape_3d.shape as BoxShape3D).size.y = 0.55
 
 func makeBig():
 	if not is_small:
 		return
 	is_small = false
+	if tween_change_size.is_running():
+		await tween_change_size.finished
+	# Scale highlight mesh to match small card size
+	if highlight_mesh:
+		highlight_mesh.scale = Vector3(1.05, 1, 0.65)  # Adjust Y scale to match card ratio
+	tween_change_size = get_tree().create_tween()
+	tween_change_size.set_parallel()
+	tween_change_size.tween_property(card_2d_display.mesh, "size", Vector2(0.55, 0.89), 0.2)
+	tween_change_size.tween_property(sub_viewport, "size", Vector2i(198, 267), 0.2)
+	tween_change_size.tween_property(self, "scale", Vector3(1.5, 1.5, 1.5), 0.2)
 	
 	# Reset SubViewport size for full card
-	(card_2d_display.mesh as PlaneMesh).size.y = 0.89
 	(collision_shape_3d.shape as BoxShape3D).size.y = 0.89
-	sub_viewport.size = Vector2i(198, 267)
-	scale = Vector3(1.5, 1.5, 1.5)
-	
-	# Reset highlight mesh to match big card size
-	if highlight_mesh:
-		highlight_mesh.scale = Vector3(1.05, 1.05, 1.0)  # Back to normal scale
-	
-	updateDisplay()
 
 func getPower():
 	return cardData.power

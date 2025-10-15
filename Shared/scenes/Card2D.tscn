@@ -65,10 +65,10 @@ anchor_left = 0.5
 anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
-offset_left = -106.0
-offset_top = -137.5
-offset_right = -58.0
-offset_bottom = -94.5
+offset_left = -108.0
+offset_top = -141.5
+offset_right = -60.0
+offset_bottom = -98.5
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
@@ -98,18 +98,16 @@ vertical_alignment = 1
 
 [node name="NameLabel" type="Label" parent="Background"]
 layout_mode = 1
-offset_left = 28.0
+offset_left = 35.0
 offset_top = 3.0
-offset_right = 330.0
+offset_right = 289.0
 offset_bottom = 47.0
 scale = Vector2(0.5, 0.5)
 theme_override_colors/font_color = Color(0, 0, 0, 1)
 theme_override_font_sizes/font_size = 36
-text = "Card Name"
+text = "Card Name that's too long"
 horizontal_alignment = 1
 vertical_alignment = 1
-autowrap_mode = 2
-clip_text = true
 
 [node name="TypeLabel" type="Label" parent="Background"]
 layout_mode = 1
@@ -156,9 +154,10 @@ autowrap_mode = 2
 [node name="TextureRect" type="TextureRect" parent="Background"]
 modulate = Color(1, 0.357326, 0.290208, 1)
 layout_mode = 0
-offset_top = 102.0
-offset_right = 34.0
-offset_bottom = 138.0
+offset_left = -5.0
+offset_top = 112.0
+offset_right = 29.0
+offset_bottom = 148.0
 texture = ExtResource("6_tgpg6")
 expand_mode = 1
 
