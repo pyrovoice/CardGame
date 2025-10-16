@@ -38,7 +38,7 @@ static func getNextID():
 func _ready():
 	# Initially show the small card, hide the full card (cards start small by default)
 	# Create a unique material for this card instance
-	if sub_viewport and card_2d_display:
+	if sub_viewport and card_representation:
 		# Create a new material instance (not shared)
 		var material = StandardMaterial3D.new()
 		material.flags_unshaded = true
@@ -47,7 +47,7 @@ func _ready():
 		material.albedo_color = Color.WHITE
 		material.albedo_texture = sub_viewport.get_texture()
 		# Apply the unique material to this card
-		card_2d_display.set_surface_override_material(0, material)
+		card_representation.set_surface_override_material(0, material)
 	
 		
 

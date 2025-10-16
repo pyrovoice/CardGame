@@ -32,32 +32,34 @@ albedo_color = Color(0, 0.529412, 1, 1)
 grow = true
 grow_amount = -0.045
 
-[node name="Card" type="Node3D"]
+[node name="Card" type="StaticBody3D"]
 script = ExtResource("1_p5v87")
 
-[node name="CardRepresentation" type="StaticBody3D" parent="."]
-
-[node name="CollisionShape3D" type="CollisionShape3D" parent="CardRepresentation"]
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
 shape = SubResource("BoxShape3D_card")
 
-[node name="Card2DDisplay" type="MeshInstance3D" parent="CardRepresentation"]
+[node name="CardRepresentation" type="MeshInstance3D" parent="."]
 unique_name_in_owner = true
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.003, 0)
 mesh = SubResource("PlaneMesh_020dk")
+skeleton = NodePath("")
 
-[node name="SubViewport" type="SubViewport" parent="CardRepresentation/Card2DDisplay"]
+[node name="SubViewport" type="SubViewport" parent="CardRepresentation"]
 size = Vector2i(198, 267)
 render_target_update_mode = 4
 
-[node name="Card2D" parent="CardRepresentation/Card2DDisplay/SubViewport" instance=ExtResource("2_card2d")]
+[node name="Card2D" parent="CardRepresentation/SubViewport" instance=ExtResource("2_card2d")]
 
-[node name="Control" type="Control" parent="CardRepresentation/Card2DDisplay/SubViewport"]
+[node name="Card2D_Small" parent="CardRepresentation/SubViewport" instance=ExtResource("3_020dk")]
+visible = false
+
+[node name="Control" type="Control" parent="CardRepresentation/SubViewport"]
 layout_mode = 3
 anchors_preset = 0
 offset_right = 198.0
 offset_bottom = 347.0
 
-[node name="cardCover" type="TextureRect" parent="CardRepresentation/Card2DDisplay/SubViewport/Control"]
+[node name="cardCover" type="TextureRect" parent="CardRepresentation/SubViewport/Control"]
 visible = false
 clip_contents = true
 layout_mode = 1
@@ -69,7 +71,7 @@ grow_vertical = 2
 texture = ExtResource("4_g4dbd")
 expand_mode = 3
 
-[node name="outline" type="MeshInstance3D" parent="CardRepresentation/Card2DDisplay"]
+[node name="outline" type="MeshInstance3D" parent="CardRepresentation"]
 unique_name_in_owner = true
 transform = Transform3D(1.05, 0, 0, 0, -1, 9.00455e-08, 0, -8.74228e-08, -1.03, 0, 0, 0)
 visible = false

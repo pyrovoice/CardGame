@@ -77,7 +77,7 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.74551, -0.001, 2.00743)
 
 [node name="playerBase" type="StaticBody3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.59764, -0.001, 1.97616)
-script = ExtResource("7_bqf56")
+script = ExtResource("6_w5dfm")
 
 [node name="MeshInstance3D" type="MeshInstance3D" parent="playerBase"]
 mesh = SubResource("PlaneMesh_bqf56")

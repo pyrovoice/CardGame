@@ -1,11 +1,10 @@
-Archetype: Tokens
-Create a bunch of small creatures, can combine into bigger things
-Rat, Flies, Locust...
+Archetype: Sacrifice
+Create a bunch of Flies through creature death, that can combine into Swarms
 Starts with "Bog Witches" that create vermin on various conditions
-Put Vermin on cards in the opponent's deck
+Put Eggs on cards in the opponent's deck
 Lore: Bog Witches summon disgusting gods of flies
 Go wide strategy
-gimmick: Vermins of the same type blend together in a swarm ("Locust swarm, rat swarm...) when attacking, which unblend at the end? Possibility to do powerfull fights without loosing resource
+
 Main1: Create the insects, use Evanescent deaths from last turn
 Combat: Swarm fights
 Main 2: Sacrifice insects for effects and bosses

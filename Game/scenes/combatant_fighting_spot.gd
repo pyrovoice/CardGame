@@ -1,4 +1,4 @@
-extends StaticBody3D
+extends CardLocation
 class_name CombatantFightingSpot
 
 signal onCardEnteredOrLeft

@@ -1,0 +1,25 @@
+Archetype: Combo
+Gimmick: Small ingredient based creatures that go to the pot when they die. Other cards and extra deck use the pot to do stuff
+Ingredient families have something in common
+	
+Ingredients:
+	Fruit
+	Veggie
+	Meat
+	Spices: Dying to an opponent makes them become food for the pot
+	- Salt
+	- Pepper
+	Mixed:
+	- Tomato (fruit + veggie)
+
+Card list:
+	- Destroy target food. If it was yours, draw two cards.
+	- This turn, for each creatures dying, get a charge
+	- Creature with Might X, X being the Pot's content
+	
+Deck checklist:
+- Does something unique and gameplay warping: Pot Idea
+- Builds up as game goes on: Pot gets fuller.
+- Interact with the opponent
+- Cares about combat
+- Is not too parasitic
