@@ -24,6 +24,18 @@ func remove_card(card_data: CardData) -> bool:
 		return true
 	return false
 
+# Draw a specific card from this container (removes and instantiates it)
+func draw_specific_card(card_data: CardData, card_type: CardData.CardType = CardData.CardType.CREATURE) -> Card:
+	var index = cards.find(card_data)
+	if index != -1:
+		cards.remove_at(index)
+		update_size()
+		# Create card instance from the card data
+		var card = (get_parent() as Game).createCardFromData(card_data, card_type)
+		self.add_child(card)
+		return card
+	return null
+
 # Get the number of cards in this container
 func get_card_count() -> int:
 	return cards.size()

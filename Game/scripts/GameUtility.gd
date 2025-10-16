@@ -21,7 +21,7 @@ static func getAllCardsInPlay(game: Game) -> Array[Card]:
 		cz.ennemySpots.filter(func(c: CombatantFightingSpot): return c.getCard() != null).map(func(c: CombatantFightingSpot): cards.push_back(c.getCard()))
 	return cards
 
-static func createCardFromData(game: Game, cardData: CardData, card_type: CardData.CardType = CardData.CardType.CREATURE, player_controlled: bool = true, player_owned: bool = true):
+static func createCardFromData(game: Game, cardData: CardData, player_controlled: bool, isToken: bool):
 	if cardData == null:
 		push_warning("Tried to draw from empty deck.")
 		return null
@@ -35,33 +35,13 @@ static func createCardFromData(game: Game, cardData: CardData, card_type: CardDa
 		push_error("Card instance is null! Check if Card.gd is attached to Card.tscn root.")
 		return
 	game.add_child(card_instance)
+	cardData.playerControlled = player_controlled
+	cardData.playerOwned = player_controlled
 	card_instance.setData(cardData)
 	card_instance.name = cardData.cardName + "_" + str(Game.getObjectCountAndIncrement())
 	
-	# Set the card type for tracking purposes
-	match card_type:
-		CardData.CardType.TOKEN:
-			card_instance.isToken = true
-		_:
-			card_instance.isToken = false
-	
+	card_instance.isToken = isToken
 	return card_instance
-
-static func createToken(game: Game, cardData: CardData) -> Card:
-	"""Create a token card and execute its enters-the-battlefield effects"""
-	if cardData == null:
-		push_warning("Tried to create token with null cardData.")
-		return null
-	
-	# Create the card instance as a token
-	var token_card = createCardFromData(game, cardData, CardData.CardType.TOKEN)
-	if not token_card:
-		return null
-	
-	# Execute the card enters logic for the token
-	await game.executeCardEnters(token_card, GameZone.e.UNKNOWN, GameZone.e.PLAYER_BASE)
-	
-	return token_card
 
 static func getCardZone(game: Game, card: Card) -> GameZone.e:
 	"""Determine what zone a card is currently in based on its parent and controller"""

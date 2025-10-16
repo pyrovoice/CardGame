@@ -314,7 +314,8 @@ func moveCardToPlayerBase(card: Card) -> bool:
 	var global_target = player_base.global_position + target_position + Vector3(0, 0.1, 0)
 	
 	# Use the enhanced animate_card_to_position with reparenting
-	await AnimationsManagerAL.animate_card_to_position(card, global_target, player_base)
+	var tween = await AnimationsManagerAL.animate_card_to_position(card, global_target, player_base)
+	await tween.finished
 	return true
 
 func drawCard(howMany: int = 1, player = true):
@@ -638,6 +639,7 @@ func resolveStateBasedAction():
 	
 	# Check and highlight castable cards
 	updateDecks()
+	_displayCastableExtraDeckCards()
 	highlightCastableCards()
 
 func updateDecks():
@@ -707,12 +709,12 @@ static func getObjectCountAndIncrement():
 	objectCount +=1
 	return objectCount-1
 	
-func createCardFromData(cardData: CardData, card_type: CardData.CardType = CardData.CardType.CREATURE, player_controlled: bool = true, player_owned: bool = true):
-	return GameUtility.createCardFromData(self, cardData, card_type, player_controlled, player_owned)
+func createCardFromData(cardData: CardData, player_controlled: bool):
+	return GameUtility.createCardFromData(self, cardData, player_controlled, false)
 
-func createToken(cardData: CardData) -> Card:
+func createToken(cardData: CardData, player_controlled: bool) -> Card:
 	"""Create a token card and execute its enters-the-battlefield effects"""
-	return await GameUtility.createToken(self, cardData)
+	return GameUtility.createCardFromData(self, cardData, player_controlled, true)
 
 func executeCardEnters(card: Card, source_zone: GameZone.e, target_zone: GameZone.e):
 	"""Execute the card entering the battlefield - handles movement and triggers"""
@@ -722,7 +724,7 @@ func executeCardEnters(card: Card, source_zone: GameZone.e, target_zone: GameZon
 	if not play_successful:
 		print("❌ Failed to move card to player base")
 		return
-	
+	card.setFlip(true)
 	# Trigger CARD_ENTERS action after the card has moved to battlefield
 	var enters_action = GameAction.new(TriggerType.Type.CARD_ENTERS, card, source_zone, target_zone)
 	AbilityManagerAL.triggerGameAction(self, enters_action)
@@ -806,34 +808,44 @@ func _clearExtraDeckDisplay():
 		for child in extra_deck_display.get_children():
 			child.queue_free()
 
-func _arrangeExtraDeckCards(castable_cards: Array[CardData]):
-	"""Arrange castable extra deck cards in the display area"""
+func _displayCastableExtraDeckCards():
+	"""Display castable extra deck cards to the right of the hand"""
 	
-	if not extra_deck_display or castable_cards.is_empty():
+	if not extra_deck_display:
 		return
 	
-	var spacing = 0.8  # Horizontal spacing between cards
-	var start_x = 0
+	for child in extra_deck_display.get_children():
+		if child is Card:
+			var card = child as Card
+			# Check if this card can still be played
+			if card.cardData and not CardPaymentManagerAL.isCardDataCastable(card.cardData):
+				# Re-add cardData back to extra_deck since it's no longer castable
+				extra_deck.add_card(card.cardData)
+				card.queue_free()
+	# Check for new castable cards in the extra_deck and move them to display
 	
-	for i in range(castable_cards.size()):
-		var card_data = castable_cards[i]
-		var card_instance = createCardFromData(card_data, CardData.CardType.BOSS)
+	for card_data: CardData in extra_deck.cards:
+		var is_castable = CardPaymentManagerAL.isCardDataCastable(card_data)
 		
-		if card_instance:
-			# Add to extra deck display
-			card_instance.reparent(extra_deck_display)
-			
-			# Position the card
-			card_instance.position.x = start_x + spacing * i
-			card_instance.position.y = 0
-			card_instance.position.z = 0
-			
-			# Make sure it's visible and properly sized
-			card_instance.makeSmall()
-			
-			# Add some visual indication that it's from extra deck (e.g., gold outline)
-			# Note: This will be overridden by selection/hover states as they have higher priority
-			card_instance.set_outline_color(Color.GOLD)
+		if is_castable:
+			var card = extra_deck.draw_specific_card(card_data, CardData.CardType.BOSS)
+			card.reparent(extra_deck_display)
+			card.setFlip(true)
+	
+	# Move castable cards from extra_deck to display
+	var spacing = 0.8  # Horizontal spacing between cards
+	var loopC = 0
+	var cards = extra_deck_display.get_children().filter(func(child): return child is Card)
+	for c: Card in cards:
+		# Position the card
+		c.position.x = spacing * loopC
+		c.position.y = 0
+		c.position.z = 0
+		
+		c.makeSmall()
+		# Add visual indication that it's from extra deck
+		c.set_outline_color(Color.GOLD)
+		loopC += 1
 
 func cancelSelection():
 	"""Handle selection cancellation - called when cancel button is pressed or right-click cancels"""

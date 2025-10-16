@@ -72,11 +72,12 @@ func _input(event):
 			# Mouse released
 			if dragged_card:
 				# Notify game that drag ended (handles auto-casting)
-				cardDragEnded.emit(dragged_card, !isMousePointerInHandZone(), getObjectUnderMouse(CardLocation))
+				var card = dragged_card
+				dragged_card = null
+				cardDragEnded.emit(card, !isMousePointerInHandZone(), getObjectUnderMouse(CardLocation))
 			elif event.position == mouseDownButtonPos:
 				print("Left click ")
 				leftClick.emit(getObjectUnderMouse())
-			dragged_card = null
 			mouseDownButtonPos = Vector2.INF
 			
 	""" RIGHT MOUSE BUTTON"""

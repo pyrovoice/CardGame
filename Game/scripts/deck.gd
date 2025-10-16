@@ -28,9 +28,7 @@ func shuffle():
 func draw_card_from_top(howMany = 1) -> Array[Card]:
 	var cardsDrawn:Array[Card] = []
 	for i in range(0, howMany):
-		var card_data: CardData = cards.pop_front()
-		update_size()  # Update size after removing card
-		cardsDrawn.push_back((get_parent() as Game).createCardFromData(card_data))
+		cardsDrawn.push_back(draw_specific_card(cards[howMany-i]))
 	return cardsDrawn
 	
 # Peek at the top N card data (does not remove or instantiate)

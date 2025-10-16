@@ -29,9 +29,6 @@ func onHighlight():
 	# Check cards in hand for highlighting
 	_highlightHandCards()
 	
-	# Check extra deck cards and display castable ones
-	_displayCastableExtraDeckCards()
-	
 	# Highlight extra deck display cards based on castability
 	_highlightExtraDeckDisplayCards()
 
@@ -111,23 +108,3 @@ func _highlightExtraDeckDisplayCards():
 			card.set_selectable(is_castable)
 			if is_castable:
 				currentlyHighlightedCards.append(card)
-
-func _displayCastableExtraDeckCards():
-	"""Display castable extra deck cards to the right of the hand"""
-	if not game:
-		return
-		
-	# Clear existing extra deck display
-	game._clearExtraDeckDisplay()
-	
-	# Check each card in extra deck for castability
-	var castable_cards: Array[CardData] = []
-	
-	for card_data: CardData in game.extra_deck.cards:
-		var is_castable = CardPaymentManagerAL.isCardDataCastable(card_data)
-		
-		if is_castable:
-			castable_cards.append(card_data)
-	
-	# Display castable cards
-	game._arrangeExtraDeckCards(castable_cards)

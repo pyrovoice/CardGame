@@ -211,6 +211,7 @@ func animate_card_to_cast_position(card: Card, isTurnedOver):
 	
 	# Wait for existing animations and create new tween
 	var tween = await get_tween_for_card(card)
+	card.cardControlState = Card.CardControlState.MOVED_BY_GAME
 	card.makeBig()
 	if isTurnedOver:
 		turn_over(card)
@@ -219,8 +220,10 @@ func animate_card_to_cast_position(card: Card, isTurnedOver):
 	var preparation_position = Vector3(2.5, 1.4, 1)
 	tween.tween_property(card.card_representation, "global_position", preparation_position, 0.6)
 	# Wait for animation to complete
+	print("Animate cast " + card.name, ", Time " + str(Time.get_ticks_msec()))
 	await tween.finished
-	print("Finished")
+	card.cardControlState = Card.CardControlState.FREE
+	print("Cast finished " + card.name, ", Time " + str(Time.get_ticks_msec()))
 	
 func animate_card_to_card_selection_position(card: Card):
 	"""Smoothly animate a card to the right and alow player to chose cards"""
@@ -231,11 +234,13 @@ func animate_card_to_card_selection_position(card: Card):
 	# Wait for existing animations and create new tween
 	var tween = await get_tween_for_card(card)
 	
+	card.cardControlState = Card.CardControlState.MOVED_BY_GAME
 	var casting_position = Vector3(3.1, 1.4, 1)
 	tween.tween_property(card.card_representation, "global_position", casting_position, 0.3)
 	
 	# Wait for animation to complete
 	await tween.finished
+	card.cardControlState = Card.CardControlState.FREE
 
 func animateDraw(card: Card, from: Vector3, isTurnedOVer, cardsDrawnAtOnce: Array[Card]):
 	var tween = await get_tween_for_card(card)
