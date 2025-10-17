@@ -9,7 +9,7 @@ var additionalCosts: Array[Dictionary] = []  # Additional costs like sacrifice, 
 #Creature, spell, permanent, boss - can have multiple types
 var types: Array[CardType] = []
 #Goblin, Fire, Elemental... Can have up to 3
-var subtypes: Array = []
+var subtypes: Array[String] = []
 var power: int
 var text_box: String
 #Contain all abilities from the card textBox to be useable by the game
@@ -86,6 +86,10 @@ func hasType(card_type: CardType) -> bool:
 	"""Check if this card has a specific type"""
 	return card_type in types
 
+func hasSubtype(card_type: String) -> bool:
+	"""Check if this card has a specific type"""
+	return card_type in subtypes
+	
 func addType(card_type: CardType):
 	"""Add a type to this card if it doesn't already have it"""
 	if card_type not in types:

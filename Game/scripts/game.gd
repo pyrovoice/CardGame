@@ -142,7 +142,7 @@ func tryMoveCard(card: Card, target_location: Node3D) -> void:
 		_:
 			print("❌ Cannot move card from zone: ", source_zone)
 	
-func tryPlayCard(card: Card, target_location: Node3D) -> void:
+func tryPlayCard(card: Card, target_location: Node3D, selection_data: Dictionary = {}) -> void:
 	"""Attempt to play a card to the specified location"""
 	if not card:
 		return
@@ -159,7 +159,8 @@ func tryPlayCard(card: Card, target_location: Node3D) -> void:
 		await AnimationsManagerAL.animate_card_to_cast_position(card, card.is_facedown)
 		
 		# Collect all required player selections upfront
-		var selection_data = await _collectAllPlayerSelections(card)
+		if selection_data == {}:
+			selection_data = await _collectAllPlayerSelections(card)
 		
 		# If any selection was cancelled, abort the play
 		if selection_data.cancelled:
@@ -172,7 +173,6 @@ func tryPlayCard(card: Card, target_location: Node3D) -> void:
 	# If target was combat location, also execute the attack
 	if target_location is CombatantFightingSpot:
 		await executeCardAttacks(card, target_location as CombatantFightingSpot)
-	arrange_cards_fan(card.cardData.playerControlled)
 
 func _canPlayCard(card: Card, source_zone: GameZone.e) -> bool:
 	"""Check if the card can be played to the target location"""
@@ -202,6 +202,7 @@ func _executeCardPlay(card: Card, source_zone: GameZone.e, _target_location: Nod
 	else:
 		# Non-spell cards enter the battlefield normally
 		await executeCardEnters(card, source_zone, GameZone.e.PLAYER_BASE)
+	resolveStateBasedAction()
 
 func _executeSpellWithTargets(card: Card, targets: Array):
 	"""Execute spell effects with pre-selected targets"""

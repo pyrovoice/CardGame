@@ -112,12 +112,15 @@ func createTestCard(card_name: String, player_controlled: bool = true) -> Card:
 	"""Helper to create a card for testing"""
 	var card_data = CardLoaderAL.getCardByName(card_name)
 	assert(card_data != null, "Card not found: " + card_name)
-	return game.createCardFromData(card_data, CardData.CardType.CREATURE, player_controlled, player_controlled)
+	return game.createCardFromData(card_data, player_controlled)
 
 func addCardToHand(card: Card):
 	"""Helper to add card to player hand"""
 	card.reparent(game.player_hand)
-
+	
+func addCardToExtraDeck(card: CardData):
+	game.extra_deck.cards.push_back(card)
+	
 func setPlayerGold(amount: int):
 	"""Helper to set player gold"""
 	game.game_data.player_gold.setValue(amount)
@@ -210,9 +213,62 @@ func test_animation_completion():
 func test_goblin_pair():
 	"""Test Goblin Pair card creation and spawning"""
 	var cardData = CardLoaderAL.getCardByName("goblin pair")
-	var c = game.createCardFromData(cardData, CardData.CardType.CREATURE, true, true)
+	var c = game.createCardFromData(cardData, true)
 	addCardToHand(c)
 	game.game_data.player_gold.setValue(99)
 	await game.tryPlayCard(c, game.player_base)
 	var cardsInPlay = game.player_base.getCards()
 	assert(cardsInPlay.size() == 2, "Goblin Pair should spawn 2 cards")
+
+func test_goblin_boss_extra_deck_casting():
+	"""Test playing Goblin Boss from extra deck with proper selection"""
+	# Setup: Give player plenty of gold
+	setPlayerGold(99)
+	
+	# Step 1: Play 2 Goblin Pairs to get 4 goblins total (2 pairs + 2 tokens)
+	addCardToExtraDeck(CardLoaderAL.getCardByName("Goblin Boss"))
+	var goblin_pair_1 = createTestCard("goblin pair")
+	addCardToHand(goblin_pair_1)
+	
+	# Play first Goblin Pair and wait for animation to complete
+	await game.tryPlayCard(goblin_pair_1, game.player_base)
+	assertCardCount(2, "play")  # Should have 2 goblins now
+	
+	
+	# Step 2: Assert that Goblin Boss appears in extra deck display
+	var extra_deck_cards = game.extra_deck_display.get_children().filter(func(child): return child is Card)
+	var goblin_boss_found = false
+	var goblin_boss_card: Card = null
+	
+	for card in extra_deck_cards:
+		if card.cardData.cardName == "Goblin Boss":
+			goblin_boss_found = true
+			goblin_boss_card = card
+			break
+	
+	assert(goblin_boss_found, "Goblin Boss should be displayed in extra deck when 2+ goblins are in play")
+	
+	# Step 3: Attempt to play Goblin Boss from extra deck
+	# This should trigger selection for the additional cost (sacrifice 2 goblins)
+	var goblins_before = getCardsInPlay().filter(func(card:Card): return card.cardData.hasSubtype("Goblin")).size()
+	assert(goblins_before >= 2, "Should have at least 2 goblins before casting boss")
+	
+	# Get the first 2 goblin cards for selection
+	var goblins_in_play = getCardsInPlay().filter(func(card): return card.cardData.hasSubtype("Goblin"))
+	assert(goblins_in_play.size() >= 2, "Should have at least 2 goblins to sacrifice")
+	
+	# Prepare selection data with the two goblins to sacrifice
+	var selection_data = {
+		"additional_cost_selections": [goblins_in_play[0], goblins_in_play[1]] as Array[Card],
+		"spell_targets": [] as Array[Card],
+		"cancelled": false
+	}
+	
+	await game.tryPlayCard(goblin_boss_card, game.player_base, selection_data)
+	
+	# Step 4: Assert final state
+	var final_cards = getCardsInPlay()
+	var boss_found = final_cards.filter(func(c: Card): return c.cardData.cardName == "Goblin Boss").size() >= 1
+	
+	assert(boss_found, "Goblin Boss should be in play")
+	assert(final_cards.size() == 1, "Should have exactly 1 card in play: Goblin Boss")
