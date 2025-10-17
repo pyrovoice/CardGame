@@ -73,7 +73,6 @@ func _input(event):
 			if dragged_card:
 				# Notify game that drag ended (handles auto-casting)
 				cardDragEnded.emit(dragged_card, !isMousePointerInHandZone(), getObjectUnderMouse(CardLocation))
-				print("Release dragging ")
 			elif event.position == mouseDownButtonPos:
 				print("Left click ")
 				leftClick.emit(getObjectUnderMouse())

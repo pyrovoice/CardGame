@@ -184,6 +184,7 @@ func animate_card_to_rest_position(card: Card):
 	"""Animate the card representation back to its rest position without blocking"""
 	if !card:
 		return
+	print("Rest: " + card.name)
 	
 	# Check if card already has an active tween - if so, don't interfere
 	var card_id = card.get_instance_id()
@@ -201,25 +202,12 @@ func animate_card_to_rest_position(card: Card):
 	# Wait for animation to complete
 	await tween.finished
 
-func animate_card_to_casting_position(card: Card):
-	"""Smoothly animate a card to the casting position"""
-	if not card:
-		return
-	print("MoveCast: " + card.name)
-	
-	# Wait for existing animations and create new tween
-	var tween = await get_tween_for_card(card)
-	
-	var casting_position = Vector3(3.1, 1.4, 1)
-	tween.tween_property(card.card_representation, "global_position", casting_position, 0.3)
-	
-	# Wait for animation to complete
-	await tween.finished
 
-func animate_card_to_cast_preparation_position(card: Card, isTurnedOver):
+func animate_card_to_cast_position(card: Card, isTurnedOver):
 	"""Smoothly animate a card to the cast preparation position (shown immediately when casting starts)"""
 	if not card:
 		return
+	print("MoveCast: " + card.name)
 	
 	# Wait for existing animations and create new tween
 	var tween = await get_tween_for_card(card)
@@ -233,6 +221,21 @@ func animate_card_to_cast_preparation_position(card: Card, isTurnedOver):
 	# Wait for animation to complete
 	await tween.finished
 	print("Finished")
+	
+func animate_card_to_card_selection_position(card: Card):
+	"""Smoothly animate a card to the right and alow player to chose cards"""
+	if not card:
+		return
+	print("MoveSelect: " + card.name)
+	
+	# Wait for existing animations and create new tween
+	var tween = await get_tween_for_card(card)
+	
+	var casting_position = Vector3(3.1, 1.4, 1)
+	tween.tween_property(card.card_representation, "global_position", casting_position, 0.3)
+	
+	# Wait for animation to complete
+	await tween.finished
 
 func animateDraw(card: Card, from: Vector3, isTurnedOVer, cardsDrawnAtOnce: Array[Card]):
 	var tween = await get_tween_for_card(card)

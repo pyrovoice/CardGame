@@ -156,7 +156,7 @@ func tryPlayCard(card: Card, target_location: Node3D) -> void:
 	# Only process additional selections if playing from hand or extra deck
 	if source_zone == GameZone.e.HAND or source_zone == GameZone.e.EXTRA_DECK:
 		# Move card to cast preparation position to show casting has started
-		AnimationsManagerAL.animate_card_to_cast_preparation_position(card, card.is_facedown)
+		await AnimationsManagerAL.animate_card_to_cast_position(card, card.is_facedown)
 		
 		# Collect all required player selections upfront
 		var selection_data = await _collectAllPlayerSelections(card)
@@ -897,7 +897,7 @@ func start_card_selection(requirement: Dictionary, possible_cards: Array[Card], 
 	if casting_card:
 		current_casting_card = casting_card
 		casting_card_original_parent = casting_card.get_parent()
-		await AnimationsManagerAL.animate_card_to_casting_position(casting_card)
+		await AnimationsManagerAL.animate_card_to_card_selection_position(casting_card)
 	
 	# Start the selection process
 	var selected_cards = await selection_manager.start_selection_and_wait(requirement, possible_cards, selection_type, self, casting_card)

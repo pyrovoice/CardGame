@@ -49,14 +49,11 @@ func tryPayCard(card: Card, selected_additional_cards: Array[Card] = []) -> bool
 		return false
 	
 	var gold_cost = card.cardData.goldCost
-	print("Trying to pay ", gold_cost, " gold for ", card.cardData.cardName)
 	
 	# Pay gold cost first
 	if not current_game.game_data.spend_gold(gold_cost, card.cardData.playerControlled):
 		print("Failed to pay gold cost!")
 		return false
-	
-	print("Successfully paid ", gold_cost, " gold. Remaining gold: ", current_game.game_data.player_gold.value)
 	
 	# Pay additional costs
 	if card.cardData.hasAdditionalCosts():
