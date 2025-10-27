@@ -8,7 +8,7 @@ class_name PlayerControl
 @onready var mouse_intercept_plane: StaticBody3D = $"../Camera3D/mouseInterceptPlane"
 @onready var camera: Camera3D = $"../Camera3D"
 
-signal tryMoveCard(card: Card, target: Node3D)
+signal onCardHover(card: Card, zone: GameZone.e)
 signal rightClick(card: Card)
 signal leftClick(objectUnderMouse: Node3D)
 signal cardDragStarted(card: Card)
@@ -27,39 +27,6 @@ const ENLARGED_CARD_HEIGHT = 600
 func _ready():
 	pass  # CardPopupManager is now referenced via @onready
 
-var cardInHandUnderMouse: Card = null
-var currently_highlighted_card: Card = null
-var currently_highlighted_target: Node3D = null
-
-
-func updateHighlights():
-	"""Update which objects should be highlighted based on current state"""
-	var target_card: Card = null
-	
-	# Determine which card should be highlighted
-	if isMousePointerInHandZone():
-		# In hand zone - highlight card that would be popped up
-		target_card = cardInHandUnderMouse
-	
-	# Update highlight state
-	if currently_highlighted_card != target_card:
-		# Remove highlight from previously highlighted card
-		if currently_highlighted_card:
-			currently_highlighted_card.highlight(false)
-		
-		# Add highlight to new target card
-		if target_card:
-			target_card.highlight(true)
-		
-		currently_highlighted_card = target_card
-
-func clearTargetHighlight():
-	"""Clear the current target highlight"""
-	if currently_highlighted_target and currently_highlighted_target.has_method("highlight"):
-		currently_highlighted_target.highlight(false)
-	currently_highlighted_target = null
-	
-
 var dragged_card: Card = null
 var mouseDownButtonPos: Vector2 = Vector2.INF
 func _input(event):
@@ -76,63 +43,46 @@ func _input(event):
 				dragged_card = null
 				cardDragEnded.emit(card, !isMousePointerInHandZone(), getObjectUnderMouse(CardLocation))
 			elif event.position == mouseDownButtonPos:
-				print("Left click ")
 				leftClick.emit(getObjectUnderMouse())
 			mouseDownButtonPos = Vector2.INF
 			
 	""" RIGHT MOUSE BUTTON"""
 	if event is InputEventMouseButton && event.button_index == MOUSE_BUTTON_RIGHT:
 		if event.pressed:
-			var target_card: Card = null
-			
-			# First check if there's a card under mouse in hand
-			if cardInHandUnderMouse:
-				target_card = cardInHandUnderMouse
-			else:
-				# Check for cards in play (combat zones)
-				target_card = getCardUnderMouse()
-			rightClick.emit(target_card)
-	if event is InputEventMouseMotion:
+			rightClick.emit(getCardUnderMouse())
+	if event is InputEventMouseMotion: #Dragging
+		var cardUnderMouse = getCardUnderMouse()
 		if !dragged_card && mouseDownButtonPos != Vector2.INF:
-			if isMousePointerInHandZone():
-				dragged_card = cardInHandUnderMouse
-			else:
-				dragged_card = getObjectUnderMouse(Card)
+			dragged_card = cardUnderMouse
 			if dragged_card:
 				cardDragStarted.emit(dragged_card)
 		if dragged_card:
-			var is_outside_hand = !isMousePointerInHandZone()
-			cardDragPositionChanged.emit(dragged_card, is_outside_hand, getMousePositionHand())
-		
-		if isMousePointerInHandZone():
-			var hover_range = 50
-			var _lift_amount = 1
-			var closest_dist = hover_range + 1  # start bigger than range
-			var cards = player_hand.get_children()
-			var mouse_pos = get_viewport().get_mouse_position()
-			var closest_card
-			for card: Card in cards:
-				var card_screen_pos = camera.unproject_position(card.global_transform.origin)
-				var dist = mouse_pos.distance_to(card_screen_pos)
-				if dist < hover_range && dist < closest_dist:
-					closest_dist = dist
-					closest_card = card
-			
-			if closest_card && closest_card != cardInHandUnderMouse:
-				AnimationsManagerAL.animate_card_to_rest_position(cardInHandUnderMouse)
-				AnimationsManagerAL.animate_card_popup(closest_card)
-				cardInHandUnderMouse = closest_card
-			elif !closest_card && cardInHandUnderMouse != null:
-				AnimationsManagerAL.animate_card_to_rest_position(cardInHandUnderMouse)
-				cardInHandUnderMouse = null
+			cardDragPositionChanged.emit(dragged_card, !isMousePointerInHandZone(), getMousePositionHand())
+		elif cardUnderMouse: #Just moving around
+			onCardHover.emit(cardUnderMouse)
 
-			# Update highlights based on current mouse position
-			updateHighlights()
-			
-func getCardUnderMouse() -> Card:
-	"""Get any card under mouse cursor, whether in hand or in play"""
-	# Use the existing getObjectUnderMouse function to find a Card
-	return getObjectUnderMouse(Card) as Card
+func getCardUnderMouse():
+	if isMousePointerInHandZone():
+		return getCardUnderMouseInHand()
+	else:
+		return getObjectUnderMouse(Card)
+		
+func getCardUnderMouseInHand() -> Card:
+	if !isMousePointerInHandZone():
+		return
+	var hover_range = 50
+	var _lift_amount = 1
+	var closest_dist = hover_range + 1  # start bigger than range
+	var cards = player_hand.get_children()
+	var mouse_pos = get_viewport().get_mouse_position()
+	var closest_card = null
+	for card: Card in cards:
+		var card_screen_pos = camera.unproject_position(card.global_transform.origin)
+		var dist = mouse_pos.distance_to(card_screen_pos)
+		if dist < hover_range && dist < closest_dist:
+			closest_dist = dist
+			closest_card = card
+	return closest_card
 
 func getMousePositionHand() -> Vector3:
 	var mouse_position = get_viewport().get_mouse_position()

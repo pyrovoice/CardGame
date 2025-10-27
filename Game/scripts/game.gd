@@ -36,7 +36,6 @@ var loaded_card_data: Array[CardData] = []
 
 # Container for castable extra deck cards (displayed to the right of hand)
 @onready var extra_deck_display: Node3D = $Camera3D/extra_deck_display
-
 func _ready() -> void:
 	# Initialize game data
 	game_data = GameData.new()
@@ -71,6 +70,7 @@ func _ready() -> void:
 		highlightManager.end_card_drag(card)
 		if is_outside_hand:
 			tryMoveCard(card, targetLocation))
+	player_control.onCardHover.connect(on_card_hover)
 	draw.pressed.connect(onTurnStart)
 	if doStartGame:
 		setupGame()
@@ -1097,3 +1097,46 @@ func exchange_card_in_spots(from: CombatantFightingSpot, to: CombatantFightingSp
 		from.setCard(to.getCard())
 	if fromCard:
 		to.setCard(fromCard)
+
+var lastCardHover = null
+var hover_timeout_active: bool = false
+
+func on_card_hover(card: Card):
+	if lastCardHover == card:
+		return
+	
+	# End any existing hover effect
+	if lastCardHover != null:
+		on_card_hover_end()
+	
+	lastCardHover = card
+	if getCardZone(card) == GameZone.e.HAND:
+		AnimationsManagerAL.animate_card_popup(card)
+	
+	# Start a coroutine that checks if on_card_hover signal was emitted this frame and 
+	# if not, call on_card_hover_end
+	hover_timeout_active = true
+	_start_hover_timeout_check()
+		
+func on_card_hover_end():
+	# Reset the card that's being popped up in AnimationsManagerAL
+	if lastCardHover != null:
+		if getCardZone(lastCardHover) == GameZone.e.HAND:
+			lastCardHover.makeSmall()
+			# Reset position to normal hand position
+			var original_pos = lastCardHover.card_representation.position
+			original_pos.z = 0  # Reset z-offset from popup
+			lastCardHover.card_representation.position = original_pos
+		lastCardHover = null
+	
+	# Cancel hover timeout check
+	hover_timeout_active = false
+
+func _start_hover_timeout_check():
+	"""Coroutine that waits a frame and checks if hover is still active"""
+	await get_tree().process_frame
+	
+	# If we get here and the timeout is still active, it means no new hover occurred
+	if hover_timeout_active:
+		hover_timeout_active = false
+		on_card_hover_end()
