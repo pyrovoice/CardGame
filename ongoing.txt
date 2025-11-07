@@ -1,0 +1,3 @@
+- Fix create card for admin tool, without having to draw it
+- Start adding some fucking gameplay
+- Fix goblin token being a card

@@ -91,7 +91,7 @@ func makeSmall():
 	
 	# Adjust SubViewport size to match small card size
 	(collision_shape_3d.shape as BoxShape3D).size.z = 0.55
-
+	
 func makeBig():
 	if not is_small:
 		return

@@ -43,11 +43,12 @@ func _on_add_card_pressed():
 		return
 	
 	# Create card from data
-	game.deck.cards.push_front(card_data)
-	game.drawCard(1)
-	
-	# Clear the input field
-	card_name_input.text = ""
+	var card: Card = game.createCardFromData(card_data, true)
+	card.makeSmall()
+	card.setFlip(true)
+	await card.tween_change_size.finished
+	card.reparent(game.player_hand)
+	game.arrange_cards_fan(true)
 
 func _on_close_pressed():
 	"""Close the admin console"""

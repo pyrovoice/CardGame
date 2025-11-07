@@ -352,9 +352,6 @@ func arrange_cards_fan(isPlayerHand = true, addedCards: Array[Card] = []):
 	
 	var spacing = 0.60       # Horizontal space between cards
 	
-	# Clamp count to max 10 if needed
-	count = min(count, 10)
-	
 	# Calculate starting offset to center the cards
 	var total_width = spacing * (count - 1)
 	var start_x = -total_width / 2
