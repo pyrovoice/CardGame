@@ -2,33 +2,46 @@ extends Node
 class_name TestGameRunner
 
 var game_scene: PackedScene = preload("res://Game/scenes/game.tscn")
-var game_instance: Game
+var test_manager_scene: PackedScene = preload("res://Test/TestManager.tscn")
 var test_manager: TestManager
 
 func _ready():
-	print("=== Starting Test Game Runner ===")
+	print("=== Starting Test Manager ===")
 	
-	# Load the game scene
-	game_instance = game_scene.instantiate()
-	game_instance.doStartGame = false
-	add_child(game_instance)
-	print("Game loaded and ready")
-	
-	# Create and setup test manager
-	test_manager = TestManager.new()
-	test_manager.game = game_instance
+	# Load and setup test manager UI first
+	test_manager = test_manager_scene.instantiate()
+	test_manager.test_runner = self  # Give test manager reference to runner
 	add_child(test_manager)
 	
-	print("TestManager created, waiting for game to stabilize...")
+	print("TestManager UI loaded and ready")
+	print("Use the buttons to run tests!")
+
+func ensure_game_loaded() -> Game:
+	"""Load the game if it hasn't been loaded yet and return it"""
+	var game_instance = get_node_or_null("Game")
+	if not game_instance:
+		print("Loading game for test execution...")
+		game_instance = game_scene.instantiate()
+		game_instance.name = "Game"
+		game_instance.doStartGame = false
+		add_child(game_instance)
+		
+		# Hide the test manager UI while tests are running
+		test_manager.visible = false
+		print("Game loaded, UI hidden for test execution")
 	
-	print("Starting tests...")
-	
-	# Run the tests
-	var results = await test_manager.runTests()
-	
-	print("\n=== Test Session Complete ===")
-	print("Results: ", results.passed, " passed, ", results.failed, " failed")
-	
-	# Optional: Return to main menu after tests
-	await get_tree().create_timer(3.0).timeout
-	get_tree().change_scene_to_file("res://MainMenu/scenes/MainMenu.tscn")
+	return game_instance
+
+func show_test_manager():
+	"""Show the test manager UI after tests complete"""
+	if test_manager:
+		test_manager.visible = true
+		print("Test execution complete, UI restored")
+
+func cleanup_game():
+	"""Destroy the game instance to reset state"""
+	var game_instance = get_node_or_null("Game")
+	if game_instance:
+		print("Cleaning up game instance...")
+		game_instance.queue_free()
+		print("Game instance destroyed - state reset to initial")

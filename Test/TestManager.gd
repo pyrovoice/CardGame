@@ -1,8 +1,196 @@
-extends Node
+extends Control
 class_name TestManager
 
 var game: Game
 var test_results: Array[Dictionary] = []
+var session_test_results: Dictionary = {}  # Track results by test name for the session
+var test_runner: TestGameRunner  # Reference to the test runner
+var current_test_failed: bool = false  # Track if current test failed
+var current_test_error: String = ""    # Store current test error message
+
+# UI References
+@onready var run_all_button: Button = $AllTests
+@onready var run_failed_button: Button = $FailedTests  
+@onready var test_grid_container: GridContainer = $GridContainer
+
+# === CUSTOM ASSERT SYSTEM ===
+
+func assert_test(condition: bool, message: String = "Assertion failed") -> bool:
+	"""Custom assert that allows tests to fail gracefully"""
+	if not condition:
+		current_test_failed = true
+		current_test_error = message
+		print("❌ ASSERTION FAILED: ", message)
+		return false
+	return true
+
+func assert_test_equal(actual, expected, message: String = "") -> bool:
+	"""Assert that two values are equal"""
+	if actual != expected:
+		var error_msg = message if message != "" else "Expected %s but got %s" % [expected, actual]
+		return assert_test(false, error_msg)
+	return true
+
+func assert_test_not_null(value, message: String = "") -> bool:
+	"""Assert that value is not null"""
+	var error_msg = message if message != "" else "Value should not be null"
+	return assert_test(value != null, error_msg)
+
+func assert_test_null(value, message: String = "") -> bool:
+	"""Assert that value is null"""
+	var error_msg = message if message != "" else "Value should be null"
+	return assert_test(value == null, error_msg)
+
+func assert_test_true(condition: bool, message: String = "") -> bool:
+	"""Assert that condition is true"""
+	var error_msg = message if message != "" else "Condition should be true"
+	return assert_test(condition, error_msg)
+
+func assert_test_false(condition: bool, message: String = "") -> bool:
+	"""Assert that condition is false"""
+	var error_msg = message if message != "" else "Condition should be false"
+	return assert_test(not condition, error_msg)
+
+func _ready():
+	# Connect buttons
+	run_all_button.pressed.connect(_on_run_all_tests)
+	run_failed_button.pressed.connect(_on_run_failed_tests)
+	
+	# Initialize UI
+	_populate_test_buttons()
+
+func _on_run_all_tests():
+	"""Button handler to run all tests"""
+	if test_runner:
+		game = test_runner.ensure_game_loaded()
+	await runTests()
+	_update_test_button_states()
+	if test_runner:
+		test_runner.cleanup_game()  # Destroy game after all tests complete
+		game = null  # Clear reference to destroyed game
+		test_runner.show_test_manager()
+
+func _on_run_failed_tests():
+	"""Button handler to run only failed tests"""
+	if test_runner:
+		game = test_runner.ensure_game_loaded()
+	await runFailedTests()
+	_update_test_button_states()
+	if test_runner:
+		test_runner.cleanup_game()  # Destroy game after failed tests complete
+		game = null  # Clear reference to destroyed game
+		test_runner.show_test_manager()
+
+func _populate_test_buttons():
+	"""Create individual buttons for each test method"""
+	# Clear existing buttons
+	for child in test_grid_container.get_children():
+		child.queue_free()
+	await get_tree().process_frame
+	
+	var test_methods = _discover_test_methods()
+	
+	for test_method in test_methods:
+		var button = Button.new()
+		button.text = test_method.replace("test_", "").replace("_", " ").capitalize()
+		button.name = test_method
+		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		
+		# Connect to individual test runner
+		button.pressed.connect(_on_individual_test_pressed.bind(test_method))
+		
+		# Set initial color based on session results
+		_update_button_appearance(button, test_method)
+		
+		test_grid_container.add_child(button)
+
+func _on_individual_test_pressed(test_method: String):
+	"""Run a single test when its button is pressed"""
+	print("=== Running Individual Test: ", test_method, " ===")
+	
+	if test_runner:
+		game = test_runner.ensure_game_loaded()
+	
+	var result = await _run_single_test(test_method)
+	
+	# Update session results
+	session_test_results[test_method] = result
+	
+	# Update button appearance
+	var button = test_grid_container.get_node(test_method)
+	_update_button_appearance(button, test_method)
+	
+	# Print result
+	if result.passed:
+		print("✅ PASSED: ", test_method, " (", result.duration_ms, "ms)")
+	else:
+		print("❌ FAILED: ", test_method)
+		print("   Error: ", result.error)
+	
+	if test_runner:
+		test_runner.cleanup_game()  # Destroy game after individual test completes
+		game = null  # Clear reference to destroyed game
+		test_runner.show_test_manager()
+
+func _update_test_button_states():
+	"""Update all test button appearances based on session results"""
+	for child in test_grid_container.get_children():
+		if child is Button:
+			_update_button_appearance(child, child.name)
+
+func _update_button_appearance(button: Button, test_method: String):
+	"""Update button color based on test result"""
+	if test_method in session_test_results:
+		var result = session_test_results[test_method]
+		if result.passed:
+			button.modulate = Color.GREEN
+			button.tooltip_text = "PASSED (" + str(result.duration_ms) + "ms)"
+		else:
+			button.modulate = Color.RED
+			button.tooltip_text = "FAILED: " + result.error
+	else:
+		button.modulate = Color.WHITE
+		button.tooltip_text = "Not run yet"
+
+func runFailedTests():
+	"""Run only the tests that failed in the current session"""
+	print("=== Running Failed Tests ===")
+	
+	var failed_tests = []
+	for test_name in session_test_results.keys():
+		var result = session_test_results[test_name]
+		if not result.passed:
+			failed_tests.append(test_name)
+	
+	if failed_tests.is_empty():
+		print("No failed tests to rerun!")
+		return {"passed": 0, "failed": 0, "results": []}
+	
+	test_results.clear()
+	var passed = 0
+	var failed = 0
+	
+	for test_method in failed_tests:
+		print("\n--- Re-running: ", test_method, " ---")
+		
+		var result = await _run_single_test(test_method)
+		test_results.append(result)
+		session_test_results[test_method] = result
+		
+		if result.passed:
+			print("✅ NOW PASSED: ", test_method, " (", result.duration_ms, "ms)")
+			passed += 1
+		else:
+			print("❌ STILL FAILED: ", test_method)
+			print("   Error: ", result.error)
+			failed += 1
+	
+	print("\n=== Failed Tests Rerun Results ===")
+	print("Now Passed: ", passed)
+	print("Still Failed: ", failed)
+	print("Total Rerun: ", passed + failed)
+	
+	return {"passed": passed, "failed": failed, "results": test_results}
 
 func runTests():
 	"""Automatically discovers and runs all test methods"""
@@ -18,6 +206,9 @@ func runTests():
 		
 		var result = await _run_single_test(test_method)
 		test_results.append(result)
+		
+		# Update session results
+		session_test_results[test_method] = result
 		
 		if result.passed:
 			print("✅ PASSED: ", test_method, " (", result.get("duration_ms", 0), "ms)")
@@ -55,18 +246,26 @@ func _run_single_test(test_method: String) -> Dictionary:
 		"start_time": Time.get_ticks_msec()
 	}
 	
-	# Connect to tree's error signal temporarily
-	if not get_tree().tree_process_mode_changed.is_connected(_on_test_error):
-		# We'll use a custom error tracking approach instead
-		pass
+	# Reset test failure tracking
+	current_test_failed = false
+	current_test_error = ""
 	
 	# Run beforeEach setup
 	await beforeEach()
 	
 	# Execute the test method
 	if has_method(test_method):
-		await call(test_method)
-		result.passed = true
+		var test_result = await call(test_method)
+		
+		# Check if test failed via custom assert or returned false
+		if current_test_failed:
+			result.passed = false
+			result.error = current_test_error
+		elif test_result == false:
+			result.passed = false
+			result.error = "Test returned false"
+		else:
+			result.passed = true
 	else:
 		result.error = "Test method '" + test_method + "' not found"
 	
@@ -119,6 +318,8 @@ func resetState():
 	for combat_zone in game.combatZones:
 		if combat_zone is CombatZone:
 			game.game_data.set_combat_resolved(combat_zone, false)
+			# Reset combat data (capture values) for each zone
+			game.game_data.reset_combat_zone_data(combat_zone)
 			# Reset button display
 			combat_zone.update_resolve_fight_display(false)
 	
@@ -133,7 +334,8 @@ func beforeEach():
 func createTestCard(card_name: String, player_controlled: bool = true) -> Card:
 	"""Helper to create a card for testing"""
 	var card_data = CardLoaderAL.getCardByName(card_name)
-	assert(card_data != null, "Card not found: " + card_name)
+	if not assert_test_not_null(card_data, "Card not found: " + card_name):
+		return null
 	return game.createCardFromData(card_data, player_controlled)
 
 func addCardToHand(card: Card):
@@ -151,7 +353,7 @@ func getCardsInPlay() -> Array[Card]:
 	"""Helper to get all cards in play"""
 	return game.player_base.getCards()
 
-func assertCardCount(expected: int, zone: String = "play"):
+func assertCardCount(expected: int, zone: String = "play") -> bool:
 	"""Assert the number of cards in a specific zone"""
 	var actual: int
 	match zone:
@@ -160,11 +362,11 @@ func assertCardCount(expected: int, zone: String = "play"):
 		"hand":
 			actual = game.player_hand.get_child_count()
 		_:
-			assert(false, "Unknown zone: " + zone)
+			return assert_test(false, "Unknown zone: " + zone)
 	
-	assert(actual == expected, "Expected %d cards in %s, but found %d" % [expected, zone, actual])
+	return assert_test_equal(actual, expected, "Expected %d cards in %s, but found %d" % [expected, zone, actual])
 
-func assertCardExists(card_name: String, zone: String = "play"):
+func assertCardExists(card_name: String, zone: String = "play") -> bool:
 	"""Assert that a specific card exists in a zone"""
 	var found = false
 	match zone:
@@ -179,7 +381,7 @@ func assertCardExists(card_name: String, zone: String = "play"):
 					found = true
 					break
 	
-	assert(found, "Card '%s' not found in %s" % [card_name, zone])
+	return assert_test_true(found, "Card '%s' not found in %s" % [card_name, zone])
 
 func clickCombatButton(combat_zone: CombatZone):
 	"""Helper method to click a combat zone's resolve button and wait for completion"""
@@ -195,8 +397,17 @@ func clickCombatButton(combat_zone: CombatZone):
 func test_card_creation():
 	"""Test that cards can be created from card data"""
 	var card = createTestCard("goblin pair")
-	assert(card != null, "Card should be created")
-	assert(card.cardData.cardName == "Goblin pair", "Card should have correct name")
+	if not assert_test_not_null(card, "Card should be created"):
+		return false
+	if not assert_test_equal(card.cardData.cardName, "Goblin pair", "Card should have correct name"):
+		return false
+	return true
+
+func test_failure_example():
+	"""Example test that demonstrates failure handling"""
+	if not assert_test_true(false, "This test is designed to fail for demonstration"):
+		return false
+	return true
 
 func test_card_play_basic():
 	"""Test basic card playing functionality"""
@@ -204,14 +415,19 @@ func test_card_play_basic():
 	addCardToHand(card)
 	setPlayerGold(3)
 	await get_tree().process_frame
-	assertCardCount(0, "play")
-	assertCardCount(1, "hand")
+	if not assertCardCount(0, "play"):
+		return false
+	if not assertCardCount(1, "hand"):
+		return false
 	
 	await game.tryPlayCard(card, game.player_base)
 	
-	assertCardCount(2, "play")
-	assertCardCount(0, "hand")
-	assertCardExists("Goblin pair", "play")
+	if not assertCardCount(2, "play"):
+		return false
+	if not assertCardCount(0, "hand"):
+		return false
+	if not assertCardExists("Goblin pair", "play"):
+		return false
 
 func test_insufficient_gold():
 	"""Test that cards can't be played without enough gold"""
@@ -222,8 +438,10 @@ func test_insufficient_gold():
 	await game.tryPlayCard(card, game.player_base)
 	
 	# Card should still be in hand
-	assertCardCount(0, "play")
-	assertCardCount(1, "hand")
+	if not assertCardCount(0, "play"):
+		return false
+	if not assertCardCount(1, "hand"):
+		return false
 	
 func test_animation_completion():
 	"""Test that card animations complete properly"""
@@ -236,7 +454,8 @@ func test_animation_completion():
 	var end_time = Time.get_ticks_msec()
 	
 	# Should take some time for animation
-	assert(end_time - start_time > 100, "Animation should take some time")
+	if not assert_test(end_time - start_time > 100, "Animation should take some time"):
+		return false
 	assertCardExists("Goblin pair", "play")
 
 # Add more tests as needed...
@@ -249,7 +468,8 @@ func test_goblin_pair():
 	game.game_data.player_gold.setValue(99)
 	await game.tryPlayCard(c, game.player_base)
 	var cardsInPlay = game.player_base.getCards()
-	assert(cardsInPlay.size() == 2, "Goblin Pair should spawn 2 cards")
+	if not assert_test_equal(cardsInPlay.size(), 2, "Goblin Pair should spawn 2 cards"):
+		return false
 
 func test_goblin_boss_extra_deck_casting():
 	"""Test playing Goblin Boss from extra deck with proper selection"""
@@ -263,7 +483,8 @@ func test_goblin_boss_extra_deck_casting():
 	
 	# Play first Goblin Pair and wait for animation to complete
 	await game.tryPlayCard(goblin_pair_1, game.player_base)
-	assertCardCount(2, "play")  # Should have 2 goblins now
+	if not assertCardCount(2, "play"):  # Should have 2 goblins now
+		return false
 	
 	
 	# Step 2: Assert that Goblin Boss appears in extra deck display
@@ -277,16 +498,19 @@ func test_goblin_boss_extra_deck_casting():
 			goblin_boss_card = card
 			break
 	
-	assert(goblin_boss_found, "Goblin Boss should be displayed in extra deck when 2+ goblins are in play")
+	if not assert_test_true(goblin_boss_found, "Goblin Boss should be displayed in extra deck when 2+ goblins are in play"):
+		return false
 	
 	# Step 3: Attempt to play Goblin Boss from extra deck
 	# This should trigger selection for the additional cost (sacrifice 2 goblins)
 	var goblins_before = getCardsInPlay().filter(func(card:Card): return card.cardData.hasSubtype("Goblin")).size()
-	assert(goblins_before >= 2, "Should have at least 2 goblins before casting boss")
+	if not assert_test(goblins_before >= 2, "Should have at least 2 goblins before casting boss"):
+		return false
 	
 	# Get the first 2 goblin cards for selection
 	var goblins_in_play = getCardsInPlay().filter(func(card): return card.cardData.hasSubtype("Goblin"))
-	assert(goblins_in_play.size() >= 2, "Should have at least 2 goblins to sacrifice")
+	if not assert_test(goblins_in_play.size() >= 2, "Should have at least 2 goblins to sacrifice"):
+		return false
 	
 	# Prepare selection data with the two goblins to sacrifice
 	var selection_data = {
@@ -301,8 +525,10 @@ func test_goblin_boss_extra_deck_casting():
 	var final_cards = getCardsInPlay()
 	var boss_found = final_cards.filter(func(c: Card): return c.cardData.cardName == "Goblin Boss").size() >= 1
 	
-	assert(boss_found, "Goblin Boss should be in play")
-	assert(final_cards.size() == 1, "Should have exactly 1 card in play: Goblin Boss")
+	if not assert_test_true(boss_found, "Goblin Boss should be in play"):
+		return false
+	if not assert_test_equal(final_cards.size(), 1, "Should have exactly 1 card in play: Goblin Boss"):
+		return false
 
 func test_combat_zone_button_click():
 	"""Test clicking combat zone resolve button changes zone resolution state"""
@@ -313,27 +539,32 @@ func test_combat_zone_button_click():
 	# Get the first combat zone and place the card there
 	var combat_zone = game.combatZones[0] as CombatZone
 	var first_ally_spot = combat_zone.getFirstEmptyLocation(true)
-	assert(first_ally_spot != null, "Should have an empty ally spot available")
+	if not assert_test_not_null(first_ally_spot, "Should have an empty ally spot available"):
+		return false
 	
 	# Place the card directly in the combat zone
 	first_ally_spot.setCard(card)
 	await get_tree().process_frame  # Wait for the UI to update
 	
 	# Verify the card is in the combat zone
-	assert(first_ally_spot.getCard() == card, "Card should be placed in the combat zone")
+	if not assert_test_equal(first_ally_spot.getCard(), card, "Card should be placed in the combat zone"):
+		return false
 	
 	# Check initial state - combat should not be resolved
-	assert(!game.game_data.is_combat_resolved(combat_zone), "Combat should initially be unresolved")
+	if not assert_test_false(game.game_data.is_combat_resolved(combat_zone), "Combat should initially be unresolved"):
+		return false
 	
 	# Click the combat button and wait for resolution
 	await clickCombatButton(combat_zone)
 	
 	# Verify the combat zone state has changed - it should now be resolved
-	assert(game.game_data.is_combat_resolved(combat_zone), "Combat should be resolved after clicking the button")
+	if not assert_test_true(game.game_data.is_combat_resolved(combat_zone), "Combat should be resolved after clicking the button"):
+		return false
 	
 	# Verify the button display has been updated
 	var resolve_button = combat_zone.resolve_fight_button
-	assert(resolve_button.resolve_fight.modulate == Color.GREEN, "Button color should change to green after resolution")
+	if not assert_test_equal(resolve_button.resolve_fight.modulate, Color.GREEN, "Button color should change to green after resolution"):
+		return false
 
 func test_combat_location_independence():
 	"""Test that attacking one combat location doesn't affect another location's state"""
@@ -346,25 +577,32 @@ func test_combat_location_independence():
 	# Get two different combat zones
 	var combat_zone_1 = game.combatZones[0] as CombatZone
 	var combat_zone_2 = game.combatZones[1] as CombatZone
-	assert(combat_zone_1 != combat_zone_2, "Should have different combat zones")
+	if not assert_test(combat_zone_1 != combat_zone_2, "Should have different combat zones"):
+		return false
 	
 	# Play goblin1 to first combat location
 	var first_ally_spot_1 = combat_zone_1.getFirstEmptyLocation(true)
-	assert(first_ally_spot_1 != null, "First combat zone should have an empty ally spot")
+	if not assert_test_not_null(first_ally_spot_1, "First combat zone should have an empty ally spot"):
+		return false
 	await game.tryPlayCard(goblin1, first_ally_spot_1)
 	
 	# Play goblin2 to second combat location
 	var first_ally_spot_2 = combat_zone_2.getFirstEmptyLocation(true)
-	assert(first_ally_spot_2 != null, "Second combat zone should have an empty ally spot")
+	if not assert_test_not_null(first_ally_spot_2, "Second combat zone should have an empty ally spot"):
+		return false
 	await game.tryPlayCard(goblin2, first_ally_spot_2)
 	
 	# Verify both cards are in their respective zones
-	assert(first_ally_spot_1.getCard() == goblin1, "Goblin1 should be in first combat zone")
-	assert(first_ally_spot_2.getCard() == goblin2, "Goblin2 should be in second combat zone")
+	if not assert_test_equal(first_ally_spot_1.getCard(), goblin1, "Goblin1 should be in first combat zone"):
+		return false
+	if not assert_test_equal(first_ally_spot_2.getCard(), goblin2, "Goblin2 should be in second combat zone"):
+		return false
 	
 	# Check initial state - both combats should be unresolved
-	assert(!game.game_data.is_combat_resolved(combat_zone_1), "Combat zone 1 should initially be unresolved")
-	assert(!game.game_data.is_combat_resolved(combat_zone_2), "Combat zone 2 should initially be unresolved")
+	if not assert_test_false(game.game_data.is_combat_resolved(combat_zone_1), "Combat zone 1 should initially be unresolved"):
+		return false
+	if not assert_test_false(game.game_data.is_combat_resolved(combat_zone_2), "Combat zone 2 should initially be unresolved"):
+		return false
 	
 	# Store initial combat zone data for comparison
 	var initial_zone_2_data = game.game_data.get_combat_zone_data(combat_zone_2)
@@ -374,18 +612,25 @@ func test_combat_location_independence():
 	await clickCombatButton(combat_zone_1)
 	
 	# Verify only the first combat zone was resolved
-	assert(game.game_data.is_combat_resolved(combat_zone_1), "Combat zone 1 should be resolved after clicking its button")
-	assert(!game.game_data.is_combat_resolved(combat_zone_2), "Combat zone 2 should remain unresolved")
+	if not assert_test_true(game.game_data.is_combat_resolved(combat_zone_1), "Combat zone 1 should be resolved after clicking its button"):
+		return false
+	if not assert_test_false(game.game_data.is_combat_resolved(combat_zone_2), "Combat zone 2 should remain unresolved"):
+		return false
 	
 	# Get the resolve fight buttons from both combat zones for button state verification
 	var resolve_button_1 = combat_zone_1.resolve_fight_button
 	var resolve_button_2 = combat_zone_2.resolve_fight_button
-	assert(resolve_button_1.resolve_fight.text == "DONE", "Button 1 text should change to DONE after resolution")
-	assert(resolve_button_1.resolve_fight.modulate == Color.GREEN, "Button 1 color should change to green after resolution")
-	assert(resolve_button_2.resolve_fight.text == "FIGHT", "Button 2 text should remain FIGHT")
-	assert(resolve_button_2.resolve_fight.modulate == Color.WHITE, "Button 2 color should remain white")
+	if not assert_test_equal(resolve_button_1.resolve_fight.text, "DONE", "Button 1 text should change to DONE after resolution"):
+		return false
+	if not assert_test_equal(resolve_button_1.resolve_fight.modulate, Color.GREEN, "Button 1 color should change to green after resolution"):
+		return false
+	if not assert_test_equal(resolve_button_2.resolve_fight.text, "FIGHT", "Button 2 text should remain FIGHT"):
+		return false
+	if not assert_test_equal(resolve_button_2.resolve_fight.modulate, Color.WHITE, "Button 2 color should remain white"):
+		return false
 	
 	# Verify that the second combat zone's data in GameData hasn't changed
 	var final_zone_2_data = game.game_data.get_combat_zone_data(combat_zone_2)
-	assert(final_zone_2_data.player_capture_current == initial_player_capture_current, 
-		"Second combat zone's player_capture_current should not have changed")
+	if not assert_test_equal(final_zone_2_data.player_capture_current, initial_player_capture_current, 
+		"Second combat zone's player_capture_current should not have changed"):
+		return false
