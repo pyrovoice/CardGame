@@ -90,7 +90,7 @@ func makeSmall():
 	tween_change_size.tween_property(card_2d, "position", Vector2(-25, 0), TRANSITION_DURATION)
 	
 	# Adjust SubViewport size to match small card size
-	(collision_shape_3d.shape as BoxShape3D).size.y = 0.55
+	(collision_shape_3d.shape as BoxShape3D).size.z = 0.55
 
 func makeBig():
 	if not is_small:

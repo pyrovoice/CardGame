@@ -3,11 +3,11 @@ class_name CombatZone
 
 @onready var opponent_total_strength: Label3D = $OpponentTotalStrength
 @onready var ally_total_strength: Label3D = $AllyTotalStrength
-@onready var resolve_fight_label: Label3D = $ResolveFight
 var ennemySpots: Array[CombatantFightingSpot] = []
 var allySpots: Array[CombatantFightingSpot] = []
-@onready var location_fill_opponent: Node3D = $LocationFillOpponent
-@onready var location_fill_player: Node3D = $LocationFillPlayer
+@onready var location_fill_opponent: LocationFill = $LocationFillOpponent
+@onready var location_fill_player: LocationFill = $LocationFillPlayer
+@onready var resolve_fight_button: ResolveFightButton = $Button
 
 func _ready() -> void:
 	for i in range(1, 4):
@@ -56,10 +56,4 @@ func getCardSlot(i: int , allyTeam: bool) -> CombatantFightingSpot:
 
 func update_resolve_fight_display(is_resolved: bool):
 	"""Update the appearance of the resolve fight label based on resolution status"""
-	if resolve_fight_label:
-		if is_resolved:
-			resolve_fight_label.text = "DONE"
-			resolve_fight_label.modulate = Color.GREEN
-		else:
-			resolve_fight_label.text = "FIGHT"
-			resolve_fight_label.modulate = Color.WHITE
+	resolve_fight_button.set_ready(is_resolved)

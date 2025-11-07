@@ -13,7 +13,7 @@ func _init(_game):
 		# Connect the cardDragPositionChanged signal to onCardDragged
 		game.player_control.cardDragPositionChanged.connect(onCardDragged)
 
-func onCardDragged(card: Card, is_outside_hand: bool):
+func onCardDragged(card: Card, is_outside_hand: bool, _pos):
 	"""Handle card drag with highlighting - blue or red depending on hand zone"""
 	currently_dragged_card = card
 	drag_outside_hand = is_outside_hand

@@ -3,7 +3,7 @@
 [ext_resource type="Script" uid="uid://fqb7xp4n6x0r" path="res://Game/scripts/combat_zone.gd" id="1_wucjk"]
 [ext_resource type="PackedScene" uid="uid://xlhxj0iq2gna" path="res://Game/scenes/combatantFightingSpot.tscn" id="2_ulpi2"]
 [ext_resource type="PackedScene" uid="uid://c1gh53ivxrt74" path="res://Game/scenes/locationFill.tscn" id="3_cu80e"]
-[ext_resource type="Script" path="res://Game/scenes/ResolveFightButton.gd" id="4_pjxud"]
+[ext_resource type="PackedScene" uid="uid://bjxoru03if1kc" path="res://Game/scenes/ResolveFightButton.tscn" id="4_pjxud"]
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_ulpi2"]
 size = Vector3(2, 0.05, 2)
@@ -53,13 +53,11 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.0249671, 0, 0.47551)
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.950427, 0, 0.47551)
 
 [node name="LocationFillPlayer" parent="." instance=ExtResource("3_cu80e")]
-transform = Transform3D(0.99999994, 0, 0, 0, 1, 0, 0, 0, 0.99999994, -0.8296982, 0.0021105409, -0.010971606)
+transform = Transform3D(0.99999994, 0, 0, 0, 1, 0, 0, 0, 0.99999994, -0.8296982, 0.0021105409, -0.029461771)
 
 [node name="LocationFillOpponent" parent="." instance=ExtResource("3_cu80e")]
-transform = Transform3D(0.99999994, 0, 0, 0, 1, 0, 0, 0, 0.99999994, 0.7971877, 0.01695007, -0.0242154)
+transform = Transform3D(-0.9999998, 0, 8.742276e-08, 0, 1, 0, -8.742276e-08, 0, -0.9999998, 0.7971877, 0.01695007, 0.024863333)
 isPlayer = false
 
-[node name="ResolveFight" type="Label3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, -0.17347631, 0.98483807, 0, -0.98483807, -0.17347631, -0.00015282631, 0.049019337, -0.0077236295)
-text = "Fight"
-script = ExtResource("4_pjxud")
+[node name="Button" parent="." instance=ExtResource("4_pjxud")]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 0, 0.023061872, 0)

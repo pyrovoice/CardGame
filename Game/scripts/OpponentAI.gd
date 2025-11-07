@@ -17,7 +17,7 @@ func execute_main_phase():
 	
 	# Step 3: Cast cards from hand while possible
 	var cards_cast = 0
-	var loopCount = 1
+	var loopCount = 20
 	while game.game_data.opponent_gold.getValue() > 0 and game.opponent_hand.get_children().size() > 0 and loopCount>0:
 		var opponent_hand_cards = game.opponent_hand.get_children()
 		loopCount -=1

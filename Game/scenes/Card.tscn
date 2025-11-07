@@ -5,7 +5,7 @@
 [ext_resource type="Texture2D" uid="uid://b83fgso4e737m" path="res://Shared/resources/card-back.png" id="4_g4dbd"]
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_card"]
-size = Vector3(0.66, 0.05, 0.89)
+size = Vector3(0.66, 2.015, 0.27)
 
 [sub_resource type="PlaneMesh" id="PlaneMesh_020dk"]
 resource_local_to_scene = true

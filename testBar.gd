@@ -1,4 +1,6 @@
 extends Node3D
+class_name LocationFill
+
 @onready var control: FlexibleProgressBar = $Sprite3D/SubViewport/Control
 
 @export var isPlayer = true
@@ -6,7 +8,7 @@ extends Node3D
 func setup_capture_bar(currentValue: SignalInt, maxValue: SignalInt):
 	"""Setup the capture bar with the GameData values"""
 	if !isPlayer:
-		control.material.set_shader_parameter("fluid_highlight_color", "ff0000")
+		control.material.set_shader_parameter("fluid_shadow_color", Color(2.613, 0.0, 0.15))
 	currentValue.value_changed.connect(setCurrentValue)
 	maxValue.value_changed.connect(setMaximum)
 	# Set initial values

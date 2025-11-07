@@ -1,0 +1,18 @@
+[gd_scene load_steps=3 format=3 uid="uid://bjxoru03if1kc"]
+
+[ext_resource type="Script" uid="uid://c7sx1r8gshnoe" path="res://Game/scenes/ResolveFightButton.gd" id="1_g40qf"]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_pjxud"]
+size = Vector3(0.49, 0.37, 0.015)
+
+[node name="Button" type="Area3D"]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 0, 0, 0)
+script = ExtResource("1_g40qf")
+metadata/_custom_type_script = "uid://c7sx1r8gshnoe"
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+shape = SubResource("BoxShape3D_pjxud")
+
+[node name="ResolveFight" type="Label3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 0.99999994, -1.4901161e-08, 0, 1.4901161e-08, 0.99999994, 0, 0, 0)
+text = "Fight"

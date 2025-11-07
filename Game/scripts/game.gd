@@ -89,16 +89,10 @@ func populate_decks():
 func onTurnStart(skipFirstTurn = false):
 	# Start a new turn (increases danger level via SignalInt)
 	if !skipFirstTurn:
-		game_data.start_new_turn()
-		# Reset movement tracking for all cards
-		reset_all_card_movement_tracking()
-		# Update last location for all cards to their current location
-		update_all_card_last_locations()
-		# Resolve any unresolved combats before continuing
 		await resolve_unresolved_combats()
-		# Reset combat resolution flags for new turn
+		game_data.start_new_turn()
+		reset_all_card_movement_tracking()
 		game_data.reset_combat_resolution_flags()
-		update_all_combat_zone_displays()
 	await drawCard()
 	@warning_ignore("integer_division")
 	await drawCard(game_data.danger_level.getValue()/3, false)
@@ -157,6 +151,8 @@ func tryPlayCard(card: Card, target_location: Node3D, selection_data: Dictionary
 	if source_zone == GameZone.e.HAND or source_zone == GameZone.e.EXTRA_DECK:
 		# Move card to cast preparation position to show casting has started
 		await AnimationsManagerAL.animate_card_to_cast_position(card, card.is_facedown)
+		if !card.cardData.playerControlled:
+			await get_tree().create_timer(0.5).timeout
 		
 		# Collect all required player selections upfront
 		if selection_data == {}:
@@ -377,7 +373,7 @@ func resolve_unresolved_combats():
 	"""Resolve combat only in zones that haven't been resolved yet"""
 	var lock = playerControlLock.addLock()
 	for cld in game_data.combatLocationDatas:
-		if !cld.isCombatResolved:
+		if !cld.isCombatResolved.value:
 			resolve_combat_for_zone(cld.relatedLocation)
 	
 	playerControlLock.removeLock(lock)
@@ -393,26 +389,13 @@ func resolve_combat_for_zone(combat_zone: CombatZone):
 	var lock = playerControlLock.addLock()
 	await resolveCombatInZone(combat_zone)
 	game_data.set_combat_resolved(combat_zone, true)
-	combat_zone.update_resolve_fight_display(true)
 	playerControlLock.removeLock(lock)
-
-func update_all_combat_zone_displays():
-	"""Update all combat zone displays based on resolution status"""
-	for c in game_data.combatLocationDatas:
-		c.relatedLocation.update_resolve_fight_display(c.is_combat_resolved)
 
 func reset_all_card_movement_tracking():
 	"""Reset movement tracking for all cards at start of turn"""
 	# Reset for all cards in player areas
 	for card in _get_all_player_cards():
 		card.cardData.reset_movement_tracking()
-
-func update_all_card_last_locations():
-	"""Update last location for all cards to their current location"""
-	# Update for all cards in player areas
-	for card in _get_all_player_cards():
-		var current_zone = getCardZone(card)
-		card.cardData.update_last_location(current_zone)
 
 func _get_all_player_cards() -> Array[Card]:
 	"""Get all player-controlled cards in play areas"""
@@ -452,22 +435,6 @@ func resolveCombatInZone(combatZone: CombatZone):
 	"""Resolve combat in a zone using the new slot-based damage system"""
 	print("🔥 === Resolving Combat in Zone ===")
 	
-	# Get the combat zone index for capture value updates
-	var zone_index = combatZones.find(combatZone)
-	if zone_index == -1:
-		print("❌ Could not find combat zone index")
-		return
-	
-	# Update LastLocation for all cards participating in this combat
-	for slot_index in range(1, 4):
-		var player_card = combatZone.getCardSlot(slot_index, true).getCard()
-		var opponent_card = combatZone.getCardSlot(slot_index, false).getCard()
-		
-		if player_card and player_card is Card:
-			player_card.cardData.update_last_location(GameZone.e.COMBAT_ZONE)
-		if opponent_card and opponent_card is Card:
-			opponent_card.cardData.update_last_location(GameZone.e.COMBAT_ZONE)
-	
 	# Loop over each card slot (1-3 for each side)
 	for slot_index in range(1, 4):
 		var player_card = combatZone.getCardSlot(slot_index, true).getCard()
@@ -489,140 +456,53 @@ func resolveCombatInZone(combatZone: CombatZone):
 		
 		# Handle unopposed damage to location
 		elif player_card and not opponent_card:
-			_apply_damage_to_location(player_damage, true, zone_index, combatZone)
+			_apply_damage_to_location(player_damage, true, combatZone)
 			
 		elif opponent_card and not player_card:
-			_apply_damage_to_location(opponent_damage, false, zone_index, combatZone)
+			_apply_damage_to_location(opponent_damage, false, combatZone)
 	
 	# Resolve state-based actions after all combat damage
 	resolveStateBasedAction()
 
-func _apply_damage_to_location(damage: int, is_player_damage: bool, zone_index: int, combatZone: CombatZone):
+func _apply_damage_to_location(damage: int, is_player_damage: bool, combatZone: CombatZone):
 	"""Apply damage to location capture values"""
 	if damage <= 0:
 		return
-	
-	# Add to appropriate capture value based on zone index
-	match zone_index:
-		0: # Combat Zone 1
-			if is_player_damage:
-				game_data.playerLocation1CaptureValue.setValue(
-					game_data.playerLocation1CaptureValue.getValue() + damage
-				)
-			else:
-				game_data.opponentLocation1CaptureValue.setValue(
-					game_data.opponentLocation1CaptureValue.getValue() + damage
-				)
-		1: # Combat Zone 2
-			if is_player_damage:
-				game_data.playerLocation2CaptureValue.setValue(
-					game_data.playerLocation2CaptureValue.getValue() + damage
-				)
-			else:
-				game_data.opponentLocation2CaptureValue.setValue(
-					game_data.opponentLocation2CaptureValue.getValue() + damage
-				)
-		2: # Combat Zone 3
-			if is_player_damage:
-				game_data.playerLocation3CaptureValue.setValue(
-					game_data.playerLocation3CaptureValue.getValue() + damage
-				)
-			else:
-				game_data.opponentLocation3CaptureValue.setValue(
-					game_data.opponentLocation3CaptureValue.getValue() + damage
-				)
-		_:
-			print("❌ Invalid zone index: ", zone_index)
-			return
+	game_data.add_location_capture_value(damage, is_player_damage, combatZone)
 	
 	# Show floating text animation
 	var damage_text = "+" + str(damage) + " Capture"
 	var damage_color = Color.BLUE if is_player_damage else Color.RED
 	AnimationsManagerAL.show_floating_text(self, combatZone.global_position, damage_text, damage_color)
-	
-	# Check for location capture
-	_check_location_capture(zone_index)
 
-func _check_location_capture(zone_index: int):
+func _check_locations_capture():
 	"""Check if any location has been captured based on capture thresholds"""
-	var player_threshold = game_data.player_capture_threshold.getValue()
-	var opponent_threshold = game_data.opponent_capture_threshold.getValue()
-	
-	var player_capture_value: SignalInt
-	var opponent_capture_value: SignalInt
-	
-	# Get the appropriate capture values for this zone
-	match zone_index:
-		0:
-			player_capture_value = game_data.playerLocation1CaptureValue
-			opponent_capture_value = game_data.opponentLocation1CaptureValue
-		1:
-			player_capture_value = game_data.playerLocation2CaptureValue
-			opponent_capture_value = game_data.opponentLocation2CaptureValue
-		2:
-			player_capture_value = game_data.playerLocation3CaptureValue
-			opponent_capture_value = game_data.opponentLocation3CaptureValue
-		_:
-			return
-	
-	# Check player capture
-	if player_capture_value.getValue() >= player_threshold:
-		_handle_location_captured(zone_index, true)
-	
-	# Check opponent capture  
-	if opponent_capture_value.getValue() >= opponent_threshold:
-		_handle_location_captured(zone_index, false)
+	for combatZone in combatZones:
+		var data = game_data.get_combat_zone_data(combatZone)
+		if data.opponent_capture_current.value >= data.opponent_capture_threshold.value:
+			_handle_location_captured(combatZone, false)
+		elif data.player_capture_current.value >= data.player_capture_threshold.value:
+			_handle_location_captured(combatZone, true)
 
-func _handle_location_captured(zone_index: int, captured_by_player: bool):
+func _handle_location_captured(combatZone: CombatZone, captured_by_player: bool):
 	"""Handle when a location is captured"""
-	var location_name = "Location " + str(zone_index + 1)
 	
 	# Show dramatic capture effect
-	var capture_text = location_name + " CAPTURED!"
+	var capture_text = combatZone.name + " CAPTURED!"
 	var capture_color = Color.GOLD if captured_by_player else Color.PURPLE
-	AnimationsManagerAL.show_floating_text(self, combatZones[zone_index].global_position, capture_text, capture_color)
+	AnimationsManagerAL.show_floating_text(self, combatZone.global_position, capture_text, capture_color)
 	
 	if captured_by_player:
 		# Player captures location - award points and benefits
 		game_data.add_player_points(1)
-		
-		# Reset capture values for this location
-		_reset_location_capture_values(zone_index)
-		
-		# Increase capture thresholds (locations get harder to capture)
-		_increase_capture_thresholds()
-		
+		game_data.get_combat_zone_data(combatZone).player_capture_threshold.value += 5
 	else:
 		# Opponent captures location - player loses life but gains resources
 		game_data.damage_player(1)
 		game_data.add_gold(1)  # Compensation for losing location
+		game_data.get_combat_zone_data(combatZone).opponent_capture_threshold.value += 5
 		
-		# Reset capture values for this location
-		_reset_location_capture_values(zone_index)
-		
-		# Increase capture thresholds
-		_increase_capture_thresholds()
-
-func _reset_location_capture_values(zone_index: int):
-	"""Reset capture values for a location after it's been captured"""
-	match zone_index:
-		0:
-			game_data.playerLocation1CaptureValue.setValue(0)
-			game_data.opponentLocation1CaptureValue.setValue(0)
-		1:
-			game_data.playerLocation2CaptureValue.setValue(0)
-			game_data.opponentLocation2CaptureValue.setValue(0)
-		2:
-			game_data.playerLocation3CaptureValue.setValue(0)
-			game_data.opponentLocation3CaptureValue.setValue(0)
-
-func _increase_capture_thresholds():
-	"""Increase capture thresholds after any location is captured"""
-	var current_threshold = game_data.player_capture_threshold.getValue()
-	var new_threshold = current_threshold + 5  # Increase by 5 each time
-	
-	game_data.player_capture_threshold.setValue(new_threshold)
-	game_data.opponent_capture_threshold.setValue(new_threshold)
+	game_data.reset_combat_zone_data(combatZone)
 
 func resolveStateBasedAction():
 	var cards_in_play = getAllCardsInPlay()
@@ -637,7 +517,7 @@ func resolveStateBasedAction():
 		get_tree().change_scene_to_file("res://MainMenu/scenes/MainMenu.tscn")
 	if game_data.player_points.getValue() >= 6:
 		get_tree().change_scene_to_file("res://MainMenu/scenes/MainMenu.tscn")
-	
+	_check_locations_capture()
 	# Check and highlight castable cards
 	updateDecks()
 	_displayCastableExtraDeckCards()
@@ -720,6 +600,7 @@ func createToken(cardData: CardData, player_controlled: bool) -> Card:
 func executeCardEnters(card: Card, source_zone: GameZone.e, target_zone: GameZone.e):
 	"""Execute the card entering the battlefield - handles movement and triggers"""
 	# Move the card to player base
+	card.makeSmall()
 	var play_successful = await moveCardToPlayerBase(card)
 	
 	if not play_successful:
@@ -881,7 +762,7 @@ func _on_right_click(card: Card):
 	# Normal right-click behavior (show popup)
 	showCardPopup(card)
 
-func _on_left_click(objectUnderMouse: Node3D):
+func _on_left_click(objectUnderMouse):
 	if objectUnderMouse is Card and selection_manager.is_selecting():
 		selection_manager.handle_card_click(objectUnderMouse as Card)
 	elif objectUnderMouse is ResolveFightButton:

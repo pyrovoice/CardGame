@@ -1,8 +1,8 @@
 [gd_scene load_steps=6 format=3 uid="uid://c1gh53ivxrt74"]
 
 [ext_resource type="Script" uid="uid://bap0ueqv23v0t" path="res://testBar.gd" id="1_eeajj"]
-[ext_resource type="Shader" uid="uid://bqtbusseqn2e7" path="res://Assets/shaders/FlexibleProgressBar.gdshader" id="2_x881m"]
-[ext_resource type="Script" uid="uid://cuu2xefscvjc0" path="res://Assets/shaders/FlexibleProgressBar.gd" id="3_dth4b"]
+[ext_resource type="Shader" path="res://Assets/shaders/FlexibleProgressBar.gdshader" id="2_x881m"]
+[ext_resource type="Script" path="res://Assets/shaders/FlexibleProgressBar.gd" id="3_dth4b"]
 
 [sub_resource type="ViewportTexture" id="ViewportTexture_gw35f"]
 viewport_path = NodePath("Sprite3D/SubViewport")
@@ -43,9 +43,9 @@ shader_parameter/scan_steps = 15
 shader_parameter/edge_smoothness = 0.02
 shader_parameter/mask_expansion = 0.0
 shader_parameter/frame_edge_opacity = 0.9
-shader_parameter/fluid_base_color = Color(0.2, 0.6, 1, 1)
+shader_parameter/fluid_base_color = Color(0, 0.84313726, 1, 1)
 shader_parameter/fluid_highlight_color = Color(0, 0.73333335, 1, 1)
-shader_parameter/fluid_shadow_color = Color(1, 1, 0.30980393, 1)
+shader_parameter/fluid_shadow_color = Color(2.6126626, 2.6126626, 0.15035439, 1)
 shader_parameter/fluid_flow_speed = 0.50000002049012
 shader_parameter/fluid_turbulence = 0.10000000149012
 shader_parameter/fluid_noise_scale = 20.0

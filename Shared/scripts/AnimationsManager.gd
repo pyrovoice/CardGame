@@ -62,7 +62,6 @@ func animate_card_to_position(card: Card, target_position: Vector3, new_parent: 
 	card.setPositionWithoutMovingRepresentation(target_position, true)
 	
 	card.cardControlState = Card.CardControlState.MOVED_BY_GAME
-	card.makeSmall()
 	# Reset rotations
 	card.rotation_degrees = Vector3(0, 0, 0)
 	card.card_representation.rotation_degrees = Vector3(0, 0, 0)
@@ -202,7 +201,6 @@ func animate_card_to_rest_position(card: Card):
 	# Wait for animation to complete
 	await tween.finished
 
-
 func animate_card_to_cast_position(card: Card, isTurnedOver):
 	"""Smoothly animate a card to the cast preparation position (shown immediately when casting starts)"""
 	if not card:
@@ -220,10 +218,8 @@ func animate_card_to_cast_position(card: Card, isTurnedOver):
 	var preparation_position = Vector3(2.5, 1.4, 1)
 	tween.tween_property(card.card_representation, "global_position", preparation_position, 0.6)
 	# Wait for animation to complete
-	print("Animate cast " + card.name, ", Time " + str(Time.get_ticks_msec()))
 	await tween.finished
 	card.cardControlState = Card.CardControlState.FREE
-	print("Cast finished " + card.name, ", Time " + str(Time.get_ticks_msec()))
 	
 func animate_card_to_card_selection_position(card: Card):
 	"""Smoothly animate a card to the right and alow player to chose cards"""
