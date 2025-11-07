@@ -142,3 +142,8 @@ func add_location_capture_value(damage: int, is_player_damage: bool, combatZone:
 	var data: CombatLocationData = get_combat_zone_data(combatZone)
 	var capture = data.player_capture_current if is_player_damage else data.opponent_capture_current
 	capture.setValue(capture.getValue() + damage)
+
+func reset_combat_zone_data(combat_zone):
+	var data = get_combat_zone_data(combat_zone)
+	data.opponent_capture_current.setValue(0)
+	data.player_capture_current.setValue(0)
