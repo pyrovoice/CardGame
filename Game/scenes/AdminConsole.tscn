@@ -1,0 +1,65 @@
+[gd_scene load_steps=2 format=3 uid="uid://c5pxc4w4crh11"]
+
+[ext_resource type="Script" uid="uid://dprhapgxs5m7n" path="res://Game/scripts/AdminConsole.gd" id="1_8x7v2"]
+
+[node name="Control" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_8x7v2")
+
+[node name="ColorRect" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 318.0
+offset_top = 174.0
+offset_right = -388.0
+offset_bottom = -259.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0.21950102, 0.21950102, 0.21950102, 1)
+
+[node name="AddPlayerGold" type="Button" parent="."]
+layout_mode = 0
+offset_left = 430.0
+offset_top = 239.0
+offset_right = 506.0
+offset_bottom = 267.0
+text = "Add Gold"
+
+[node name="TextEdit" type="TextEdit" parent="."]
+layout_mode = 0
+offset_left = 533.0
+offset_top = 281.0
+offset_right = 678.0
+offset_bottom = 313.0
+placeholder_text = "Card Name"
+
+[node name="AddCardToPlayerHand" type="Button" parent="."]
+layout_mode = 0
+offset_left = 552.0
+offset_top = 237.0
+offset_right = 629.0
+offset_bottom = 265.0
+text = "Add Card"
+
+[node name="CloseButton" type="Button" parent="."]
+layout_mode = 0
+offset_left = 430.0
+offset_top = 281.0
+offset_right = 506.0
+offset_bottom = 309.0
+text = "Close"
+
+[node name="Draw" type="Button" parent="."]
+layout_mode = 0
+offset_left = 651.0
+offset_top = 234.0
+offset_right = 737.0
+offset_bottom = 262.0
+text = "Draw Card"

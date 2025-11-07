@@ -18,6 +18,7 @@ var playerControlLock:PlayerControlLock = PlayerControlLock.new()
 @onready var graveyard: Graveyard = $graveyard
 @onready var extra_deck: CardContainer = $extraDeck
 @onready var draw: Button = $UI/draw
+@onready var admin_button: Button = $UI/AdminButton
 @onready var selection_manager: SelectionManager = $SelectionManager
 var highlightManager: HighlightManager
 # Game data and state management
@@ -26,6 +27,10 @@ var game_data: GameData
 var doStartGame = true
 # Opponent AI system
 var opponent_ai: OpponentAI
+
+# Admin console management
+@onready var admin_scene: AdminConsole = $UI/AdminScene
+
 
 # Casting state tracking
 var current_casting_card: Card = null
@@ -72,6 +77,7 @@ func _ready() -> void:
 		if is_outside_hand:
 			tryMoveCard(card, targetLocation))
 	draw.pressed.connect(onTurnStart)
+	admin_button.pressed.connect(func(): admin_scene.show())
 	if doStartGame:
 		setupGame()
 		
@@ -374,7 +380,7 @@ func resolve_unresolved_combats():
 	var lock = playerControlLock.addLock()
 	for cld in game_data.combatLocationDatas:
 		if !cld.isCombatResolved.value:
-			resolve_combat_for_zone(cld.relatedLocation)
+			await resolve_combat_for_zone(cld.relatedLocation)
 	
 	playerControlLock.removeLock(lock)
 
@@ -767,7 +773,7 @@ func _on_left_click(objectUnderMouse):
 		selection_manager.handle_card_click(objectUnderMouse as Card)
 	elif objectUnderMouse is ResolveFightButton:
 		resolve_combat_for_zone(objectUnderMouse.get_parent())
-	
+
 func showCardPopup(card: Card):
 	"""Show popup for a card"""
 	if card == null:

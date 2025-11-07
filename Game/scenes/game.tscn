@@ -1,4 +1,4 @@
-[gd_scene load_steps=17 format=3 uid="uid://bkqg746td2asx"]
+[gd_scene load_steps=18 format=3 uid="uid://bkqg746td2asx"]
 
 [ext_resource type="Script" uid="uid://dsb1ch8a7q1og" path="res://Game/scripts/game.gd" id="1_7475e"]
 [ext_resource type="PackedScene" uid="uid://dnt4p0i1i5qk1" path="res://Game/scenes/Deck.tscn" id="1_ds5t7"]
@@ -10,6 +10,7 @@
 [ext_resource type="Texture2D" uid="uid://dkmniw1rj2l6i" path="res://Assets/Images/gold_coin_detailed.png" id="8_cc2av"]
 [ext_resource type="PackedScene" uid="uid://dq0b45a6txn6s" path="res://Game/scenes/extra_deck.tscn" id="10_5jp4b"]
 [ext_resource type="PackedScene" uid="uid://cmkvxbcovv25x" path="res://Game/scenes/SelectionUI.tscn" id="10_nijrt"]
+[ext_resource type="PackedScene" uid="uid://c5pxc4w4crh11" path="res://Game/scenes/AdminConsole.tscn" id="11_4d8k0"]
 [ext_resource type="Script" uid="uid://djvgmgqknsvcs" path="res://Game/scripts/GameUI.gd" id="12_gameui"]
 [ext_resource type="Script" uid="uid://dhq14u8nrm6wt" path="res://Game/scripts/SelectionManager.gd" id="12_w5dfm"]
 
@@ -196,6 +197,23 @@ anchor_bottom = 16.175
 offset_left = -1.0
 offset_top = -6.10352e-05
 offset_bottom = -6.10352e-05
+
+[node name="AdminButton" type="Button" parent="UI"]
+layout_mode = 1
+anchors_preset = -1
+anchor_right = 28.707
+anchor_bottom = 16.186
+offset_left = 1061.0
+offset_top = 280.0
+offset_right = -30.28003
+offset_bottom = -339.44006
+text = "Admin
+"
+
+[node name="AdminScene" parent="UI" node_paths=PackedStringArray("game") instance=ExtResource("11_4d8k0")]
+visible = false
+layout_mode = 1
+game = NodePath("../..")
 
 [node name="extraDeck" parent="." instance=ExtResource("10_5jp4b")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4.036, 0, 2.04433)
