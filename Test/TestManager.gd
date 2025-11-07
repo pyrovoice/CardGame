@@ -272,3 +272,42 @@ func test_goblin_boss_extra_deck_casting():
 	
 	assert(boss_found, "Goblin Boss should be in play")
 	assert(final_cards.size() == 1, "Should have exactly 1 card in play: Goblin Boss")
+
+func test_combat_zone_button_click():
+	"""Test clicking combat zone resolve button changes zone resolution state"""
+	# Setup: Create a creature and place it in a combat zone
+	var card = createTestCard("goblin pair")
+	setPlayerGold(99)
+	
+	# Get the first combat zone and place the card there
+	var combat_zone = game.combatZones[0] as CombatZone
+	var first_ally_spot = combat_zone.getFirstEmptyLocation(true)
+	assert(first_ally_spot != null, "Should have an empty ally spot available")
+	
+	# Place the card directly in the combat zone
+	first_ally_spot.setCard(card)
+	await get_tree().process_frame  # Wait for the UI to update
+	
+	# Verify the card is in the combat zone
+	assert(first_ally_spot.getCard() == card, "Card should be placed in the combat zone")
+	
+	# Check initial state - combat should not be resolved
+	assert(!game.game_data.is_combat_resolved(combat_zone), "Combat should initially be unresolved")
+	
+	# Get the resolve fight button from the combat zone
+	var resolve_button = combat_zone.resolve_fight_button
+	assert(resolve_button != null, "Combat zone should have a resolve fight button")
+	assert(resolve_button is ResolveFightButton, "Button should be a ResolveFightButton")
+	
+	# Simulate clicking the button by calling _on_left_click with the button
+	game._on_left_click(resolve_button)
+	
+	# Wait for any animations or processing to complete
+	await get_tree().create_timer(5).timeout
+	
+	# Verify the combat zone state has changed - it should now be resolved
+	assert(game.game_data.is_combat_resolved(combat_zone), "Combat should be resolved after clicking the button")
+	
+	# Verify the button display has been updated
+	assert(resolve_button.resolve_fight.text == "DONE", "Button text should change to DONE after resolution")
+	assert(resolve_button.resolve_fight.modulate == Color.GREEN, "Button color should change to green after resolution")
