@@ -32,7 +32,7 @@ func draw_specific_card(card_data: CardData, card_type: CardData.CardType = Card
 		update_size()
 		# Create card instance from the card data
 		var card = (get_parent() as Game).createCardFromData(card_data, card_type)
-		self.add_child(card)
+		card.reparent(self)
 		return card
 	return null
 

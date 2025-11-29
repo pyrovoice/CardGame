@@ -1,0 +1,5 @@
+Name:Punglynd Hersir
+ManaCost:2
+Types:Creature Punglynd
+Power:2
+CardText:While in combat, I receive combat damage that would be dealt to other 1 or lower creatures in the same combat.

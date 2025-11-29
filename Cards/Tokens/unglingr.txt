@@ -1,0 +1,5 @@
+Name:Unglingr
+Types:Creature Punglynd
+ManaCost:0
+Power:0
+CardText:At the beginning of turn, I grow into an adult Punglynd.

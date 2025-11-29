@@ -1,8 +1,9 @@
-[gd_scene load_steps=8 format=4 uid="uid://dr51qu20aa77"]
+[gd_scene load_steps=9 format=4 uid="uid://dr51qu20aa77"]
 
 [ext_resource type="Script" uid="uid://m81mshlqb0l7" path="res://Game/scripts/Card.gd" id="1_p5v87"]
 [ext_resource type="PackedScene" uid="uid://d3lfyqqnp8p75" path="res://Shared/scenes/Card2D.tscn" id="2_card2d"]
 [ext_resource type="Texture2D" uid="uid://b83fgso4e737m" path="res://Shared/resources/card-back.png" id="4_g4dbd"]
+[ext_resource type="Script" uid="uid://crvy3nprwr6aw" path="res://Game/scripts/CardAnimator.gd" id="4_wt28i"]
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_card"]
 size = Vector3(0.66, 2.015, 0.27)
@@ -74,3 +75,7 @@ transform = Transform3D(1.05, 0, 0, 0, -1, 9.00455e-08, 0, -8.74228e-08, -1.03, 
 visible = false
 mesh = SubResource("ArrayMesh_g4dbd")
 surface_material_override/0 = SubResource("StandardMaterial3D_wt28i")
+
+[node name="CardAnimator" type="Node" parent="."]
+script = ExtResource("4_wt28i")
+metadata/_custom_type_script = "uid://crvy3nprwr6aw"

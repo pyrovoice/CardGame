@@ -8,17 +8,30 @@ var drag_outside_hand: bool = false
 
 func _init(_game):
 	game = _game
-	# Connect to player control drag events
-	if game and game.player_control:
-		# Connect the cardDragPositionChanged signal to onCardDragged
-		game.player_control.cardDragPositionChanged.connect(onCardDragged)
+	# Connect to CardAnimator signals through all cards when they're created
+	# This will be handled by connecting to individual card animators
 
-func onCardDragged(card: Card, is_outside_hand: bool, _pos):
-	"""Handle card drag with highlighting - blue or red depending on hand zone"""
-	currently_dragged_card = card
-	drag_outside_hand = is_outside_hand
+func connect_to_card_animator(card: Card):
+	"""Connect to a card's animator signals for drag notifications"""
+	if not card or not card.getAnimator():
+		return
 	
-	# Update highlights based on drag state
+	var animator = card.getAnimator()
+	animator.drag_started.connect(_on_card_drag_started)
+	animator.drag_position_changed.connect(_on_card_drag_position_changed) 
+	animator.drag_ended.connect(_on_card_drag_ended)
+
+func _on_card_drag_started(card: Card):
+	"""Handle card drag start"""
+	start_card_drag(card)
+
+func _on_card_drag_position_changed(card: Card, is_outside_hand: bool):
+	"""Handle card drag position changes"""
+	update_card_drag_position(card, is_outside_hand)
+
+func _on_card_drag_ended(card: Card):
+	"""Handle card drag end"""
+	end_card_drag(card)
 	_update_drag_highlights()
 
 func onHighlight():
@@ -98,10 +111,10 @@ func _highlightHandCards():
 
 func _highlightExtraDeckDisplayCards():
 	"""Toggle highlight on extra deck display cards based on castability"""
-	if not game or not game.extra_deck_display:
+	if not game or not game.extra_hand:
 		return
 		
-	var display_cards = game.extra_deck_display.get_children()
+	var display_cards = game.extra_hand.get_children()
 	for card: Card in display_cards:
 		if card is Card:
 			var is_castable = CardPaymentManagerAL.isCardCastable(card)

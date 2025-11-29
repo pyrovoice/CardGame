@@ -41,6 +41,9 @@ static func createCardFromData(game: Game, cardData: CardData, player_controlled
 	card_instance.name = cardData.cardName + "_" + str(Game.getObjectCountAndIncrement())
 	
 	card_instance.isToken = isToken
+	
+	# Connect card to highlight manager for drag notifications
+	game.connect_card_to_highlight_manager(card_instance)
 	return card_instance
 
 static func getCardZone(game: Game, card: Card) -> GameZone.e:
@@ -66,7 +69,7 @@ static func getCardZone(game: Game, card: Card) -> GameZone.e:
 		return GameZone.e.GRAVEYARD
 	elif parent_name == "Deck" or parent_name == "DeckOpponent" or (parent.get_script() != null and parent.get_script().get_global_name() == "Deck"):
 		return GameZone.e.DECK
-	elif parent_name == "extraDeck" or parent_name == "extra_deck_display" or (parent.get_script() != null and parent.get_script().get_global_name() == "CardContainer"):
+	elif parent_name == "extraDeck" or parent_name == "ExtraDeckDisplay" or (parent.get_script() != null and parent.get_script().get_global_name() == "CardContainer"):
 		return GameZone.e.EXTRA_DECK
 		
 	# Default fallback

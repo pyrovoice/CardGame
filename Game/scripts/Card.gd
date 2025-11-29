@@ -1,12 +1,14 @@
 extends Node3D
 class_name Card
 
+
 @onready var card_representation: MeshInstance3D = $CardRepresentation
 @onready var sub_viewport: SubViewport = $CardRepresentation/SubViewport
 @onready var card_2d: Card2D = $CardRepresentation/SubViewport/Card2D
 @onready var card_cover: TextureRect = $CardRepresentation/SubViewport/Control/cardCover
 @onready var collision_shape_3d: CollisionShape3D = $CollisionShape3D
 @onready var highlight_mesh: MeshInstance3D = $CardRepresentation/outline
+@onready var animator: CardAnimator = $CardAnimator
 
 # Card size state
 var is_small: bool = false
@@ -15,18 +17,9 @@ var is_selectable: bool = false
 var is_selected: bool = false
 var is_drag_outside_hand: bool = false
 var is_facedown: bool = true
-var tween_change_size: Tween = null
-const TRANSITION_DURATION = 0.1
-
-enum CardControlState{
-	FREE,
-	MOVED_BY_PLAYER,
-	MOVED_BY_GAME
-}
 
 var cardData: CardData
 var objectID
-var cardControlState: CardControlState = CardControlState.FREE
 var damage = 0
 var isToken = false
 
@@ -74,41 +67,6 @@ func updateDisplay():
 
 func describe() -> String:
 	return objectID + cardData.describe()
-
-func makeSmall():
-	if is_small:
-		return
-	if tween_change_size && tween_change_size.is_running():
-		await tween_change_size.finished
-	is_small = true
-	highlight_mesh.scale = Vector3(1.05, 1, 0.65)  # Adjust Y scale to match card ratio
-	tween_change_size = get_tree().create_tween()
-	tween_change_size.set_parallel()
-	tween_change_size.tween_property(card_representation.mesh, "size", Vector2(0.55, 0.55), TRANSITION_DURATION)
-	tween_change_size.tween_property(sub_viewport, "size", Vector2i(150, 150), TRANSITION_DURATION)
-	tween_change_size.tween_property(self, "scale", Vector3(1, 1, 1), TRANSITION_DURATION)
-	tween_change_size.tween_property(card_2d, "position", Vector2(-25, 0), TRANSITION_DURATION)
-	
-	# Adjust SubViewport size to match small card size
-	(collision_shape_3d.shape as BoxShape3D).size.z = 0.55
-	
-func makeBig():
-	if not is_small:
-		return
-	if tween_change_size && tween_change_size.is_running():
-		await tween_change_size.finished
-	is_small = false
-	tween_change_size = get_tree().create_tween()
-	tween_change_size.set_parallel()
-	tween_change_size.tween_property(card_representation.mesh, "size", Vector2(0.55, 0.89), TRANSITION_DURATION)
-	tween_change_size.tween_property(sub_viewport, "size", Vector2i(198, 267), TRANSITION_DURATION)
-	tween_change_size.tween_property(self, "scale", Vector3(1.5, 1.5, 1.5), TRANSITION_DURATION)
-	tween_change_size.tween_property(card_2d, "position", Vector2(0, 0), TRANSITION_DURATION)
-	await tween_change_size.finished
-	# Reset SubViewport size for full card
-	(collision_shape_3d.shape as BoxShape3D).size.y = 0.89
-	
-	highlight_mesh.scale = Vector3(1.03, 1, 1.02)  # Back to normal scale
 
 func getPower():
 	return cardData.power
@@ -196,12 +154,6 @@ func set_drag_outside_hand(drag_outside: bool):
 	is_drag_outside_hand = drag_outside
 	update_highlight_display()
 
-func controlled_by_current_player() -> bool:
-	"""Check if this card is controlled by the current player"""
-	# For now, assume all cards are controlled by the player
-	# This should be updated when multiplayer is implemented
-	return true
-
 # Update highlight mesh to match card dimensions
 func update_highlight_mesh_size(card_height: float):
 	if not highlight_mesh or not highlight_mesh.mesh:
@@ -228,4 +180,25 @@ func setPositionWithoutMovingRepresentation(newPos: Vector3, isGlobal = false):
 		global_position = newPos
 	else:
 		position = newPos
+	
+	# Don't restore position if card is being dragged by player
+	if animator and animator.is_being_dragged():
+		return
+	
 	card_representation.global_position = representationPosBefore
+
+# Get the animator component for direct animation control
+func getAnimator() -> CardAnimator:
+	return animator
+
+# Get the current animation state
+func getAnimationState() -> CardAnimator.AnimationState:
+	return animator.current_state
+
+# Check if the card is currently being animated by the game
+func is_being_animated() -> bool:
+	return animator.current_state == CardAnimator.AnimationState.ANIMATING
+
+# Check if the card is under player control
+func is_player_controlled() -> bool:
+	return animator.current_state == CardAnimator.AnimationState.PLAYER_CONTROLLED

@@ -1,0 +1,14 @@
+Archetype: Aggro
+Gimmick: 1-cost creature matters, and creature a lot of them. Goblin youngs evolve at the beginning of turn/on fight won? and can then be used to play adult goblins (from the graveyard? Once per turn ability? How to keep it 1-vost focused while not being parasitic? Maybe goblin token spawn as 0-cost and evolve to 1-cost?)
+Lore: Rapidly dying race that focus on the next generation and fight to protect its territory. The youngs must be protected, each of their life is precious while each soldier life is expendable. TODO Find a funny way to make mothers fight while carrying/give birth on battlefields, Slavic inspiration?
+
+
+Save the Youngs: Cast only if you control a creature with cost 2+. Prevent all damages done to creatures with cost 1 or less you control. Creatures with 2+ cost gain "sacrifice me at the end of turn"
+
+Power in Numbers: Creature a Goblin token, then deal damage to target creature equal to the amount of creature you control
+
+For those who come after: Permanent card that counts how many goblins grow, when enough charges, sacrifice/exile for big damage boost.
+
+Extras:
+
+Goblin Legend: Upgrade a 1-cost creature that fought a creature and survived.

@@ -1,6 +1,8 @@
 extends CardContainer
 class_name ExtraDeck
 
+@onready var outline: MeshInstance3D = $MeshInstance3D/Outline
+
 # Set the default visibility for extra deck
 func _ready():
 	is_hidden_for_owner = false

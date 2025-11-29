@@ -4,8 +4,9 @@ class_name Game
 const OpponentAIScript = preload("res://Game/scripts/OpponentAI.gd")
 
 @onready var player_control: PlayerControl = $playerControl
-@onready var player_hand: Node3D = $Camera3D/PlayerHand
-@onready var opponent_hand: Node3D = $opponentHand
+@onready var player_hand: CardHand = $PlayerHand
+@onready var extra_hand: CardHand = $ExtraHand
+@onready var opponent_hand: CardHand = $OpponentHand
 @onready var deck: Deck = $"Deck"
 @onready var deck_opponent: Deck = $DeckOpponent
 @onready var combatZones: Array[CombatZone] = [$combatZone, $combatZone2, $combatZone3]
@@ -39,13 +40,15 @@ var casting_card_original_parent: Node = null
 # Card library loaded from files
 var loaded_card_data: Array[CardData] = []
 
-# Container for castable extra deck cards (displayed to the right of hand)
-@onready var extra_deck_display: Node3D = $Camera3D/extra_deck_display
-
 func _ready() -> void:
 	# Initialize game data
 	game_data = GameData.new()
-	game_data.playerDeckList.deck_cards = CardLoaderAL.cardData.duplicate(true)
+	game_data.playerDeckList.deck_cards = [CardLoaderAL.getCardByName("Goblin Emblem"), 
+		CardLoaderAL.getCardByName("Goblin Kid"),
+		CardLoaderAL.getCardByName("Goblin Warchief"),
+		CardLoaderAL.getCardByName("Goblin Pair"),
+		CardLoaderAL.getCardByName("Bolt")
+		]
 	game_data.playerDeckList.extra_deck_cards = CardLoaderAL.extraDeckCardData.duplicate(true)
 	game_data.opponentDeckList.deck_cards = CardLoaderAL.opponentCards.duplicate(true)
 	# Setup UI to follow SignalInt signals
@@ -68,14 +71,7 @@ func _ready() -> void:
 	player_control.tryMoveCard.connect(tryMoveCard)
 	player_control.rightClick.connect(_on_right_click)
 	player_control.leftClick.connect(_on_left_click)
-	player_control.cardDragStarted.connect(func(card): if highlightManager: highlightManager.start_card_drag(card))
-	player_control.cardDragPositionChanged.connect(func(card, is_outside_hand, pos):
-		highlightManager.update_card_drag_position(card, is_outside_hand)
-		AnimationsManagerAL.animate_card_dragged(card, pos))
-	player_control.cardDragEnded.connect(func(card, is_outside_hand, targetLocation): 
-		highlightManager.end_card_drag(card)
-		if is_outside_hand:
-			tryMoveCard(card, targetLocation))
+	# Drag handling now done directly by PlayerControl -> CardAnimator
 	draw.pressed.connect(onTurnStart)
 	admin_button.pressed.connect(func(): admin_scene.show())
 	if doStartGame:
@@ -88,6 +84,7 @@ func setupGame():
 	await onTurnStart(true)
 	
 func populate_decks():
+	refilLDeck(deck, game_data.playerDeckList.deck_cards.duplicate(true), true)
 	refilLDeck(deck, game_data.playerDeckList.deck_cards.duplicate(true), true)
 	refilLDeck(extra_deck, game_data.playerDeckList.extra_deck_cards.duplicate(true), true)
 	refilLDeck(deck_opponent, game_data.opponentDeckList.deck_cards.duplicate(true), false)
@@ -109,6 +106,10 @@ func tryMoveCard(card: Card, target_location: Node3D) -> void:
 	"""Attempt to move a card to the specified location - handles different movement types based on source zone"""
 	if not card:
 		return
+	
+	# Default to PlayerBase if no target specified
+	if not target_location:
+		target_location = player_base
 	
 	var source_zone = getCardZone(card)
 	var target_zone = _get_target_zone(target_location)
@@ -155,8 +156,14 @@ func tryPlayCard(card: Card, target_location: Node3D, selection_data: Dictionary
 	
 	# Only process additional selections if playing from hand or extra deck
 	if source_zone == GameZone.e.HAND or source_zone == GameZone.e.EXTRA_DECK:
+		# Determine correct hand based on source zone
+		var correct_hand = player_hand if source_zone == GameZone.e.HAND else extra_hand
+		current_casting_card = card
+		casting_card_original_parent = correct_hand
+		
+		card.reparent(self)
 		# Move card to cast preparation position to show casting has started
-		await AnimationsManagerAL.animate_card_to_cast_position(card, card.is_facedown)
+		await card.getAnimator().cast_position(card.is_facedown).finished
 		if !card.cardData.playerControlled:
 			await get_tree().create_timer(0.5).timeout
 		
@@ -167,6 +174,14 @@ func tryPlayCard(card: Card, target_location: Node3D, selection_data: Dictionary
 		# If any selection was cancelled, abort the play
 		if selection_data.cancelled:
 			print("❌ Selection was cancelled")
+			print("[DEBUG] Restoring card to original parent: ", casting_card_original_parent.name if casting_card_original_parent else "null")
+			# Return card to its original parent
+			if casting_card_original_parent:
+				card.reparent(casting_card_original_parent)
+				card.getAnimator().go_to_rest()
+			# Clear casting state
+			current_casting_card = null
+			casting_card_original_parent = null
 			return
 		
 		# Execute the card play with all collected selections
@@ -281,7 +296,7 @@ func executeCardAttacks(card: Card, combat_spot: CombatantFightingSpot):
 		print("No empty slot found" + card.name + " of " + str(card.cardData.playerControlled))
 		return
 	# Move the card to combat zone
-	var attack_successful = await moveCardToCombatZone(card, combat_spot)
+	var attack_successful = moveCardToCombatZone(card, combat_spot)
 	
 	if not attack_successful:
 		print("❌ Failed to move card to combat zone")
@@ -299,9 +314,8 @@ func moveCardToCombatZone(card: Card, zone: CombatantFightingSpot) -> bool:
 	# Mark card as moved and update tracking
 	card.cardData.mark_as_moved()
 	
+	# Let setCard handle the positioning and reparenting
 	zone.setCard(card)
-	var t = await AnimationsManagerAL.animate_card_to_position(card, zone.global_position + Vector3(0, 0.1, 0))
-	await t.finished
 	return true
 
 func moveCardToPlayerBase(card: Card) -> bool:
@@ -313,58 +327,56 @@ func moveCardToPlayerBase(card: Card) -> bool:
 	# Mark card as moved and update tracking
 	card.cardData.mark_as_moved()
 	
-	# Convert local position to global position
-	var global_target = player_base.global_position + target_position + Vector3(0, 0.1, 0)
+	# Use local position since card will be reparented to player_base
+	var local_target = target_position + Vector3(0, 0.2, 0)
 	
 	# Use the enhanced animate_card_to_position with reparenting
-	var tween = await AnimationsManagerAL.animate_card_to_position(card, global_target, player_base)
-	await tween.finished
+	card.getAnimator().move_to_position(local_target, 0.8, player_base)
 	return true
 
 func drawCard(howMany: int = 1, player = true):
 	var _deck = deck if player else deck_opponent
 	var cards = _deck.draw_card_from_top(howMany)
-	var mtm = MultiTweenManager.createManager()
-	add_child(mtm)
-	arrange_cards_fan(player, cards)
-	for c in cards:
-		#Put card in hand, modify other cards placements, place new card in hand
-		#Animate card from deck to front then pos 0
-		var drawAnimationTween = await AnimationsManagerAL.animateDraw(c, _deck.global_position, player, cards)
-		mtm.addTween(drawAnimationTween)
-		drawAnimationTween.finished.connect(func(): 
-			c.makeSmall()
-			var action = GameAction.new(TriggerType.Type.CARD_DRAWN, c, GameZone.e.DECK, GameZone.e.HAND)
-			AbilityManagerAL.triggerGameAction(self, action))
-		await get_tree().create_timer(0.15).timeout
-	await mtm.waitComplete()
-	# Resolve state-based actions after drawing card
-	resolveStateBasedAction()
-
-func arrange_cards_fan(isPlayerHand = true, addedCards: Array[Card] = []):
-	var hand = player_hand if isPlayerHand else opponent_hand
-	for c in addedCards:
-		c.reparent(hand)
-	var cards = hand.get_children()
-	var count = cards.size()
-	if count == 0:
-		return
+	var hand = player_hand if player else opponent_hand
 	
-	var spacing = 0.60       # Horizontal space between cards
+	# Store deck position for animations
+	var deck_position = _deck.global_position
 	
-	# Calculate starting offset to center the cards
-	var total_width = spacing * (count - 1)
-	var start_x = -total_width / 2
+	# Add all cards to hand at once - this triggers arrange_cards_fan
+	# which positions existing cards and sets logical positions for new cards
+	hand.addCards(cards)
 	
-	for i in range(count):
-		var card: Card = cards[i]
-		if not card is Card:
-			continue
+	# Keep all newly added cards' representations at deck position
+	for card in cards:
+		card.card_representation.global_position = deck_position
+	
+	# Now animate each card with 0.2s delay between them
+	var draw_position = Vector3(0, 2, 1)
+	for i in range(cards.size()):
+		var card = cards[i]
+		var animator = card.getAnimator()
 		
-		# Position cards spread horizontally
-		card.setPositionWithoutMovingRepresentation(Vector3(start_x + spacing * i, 0, 0))
-		if addedCards.find(card) == -1:
-			AnimationsManagerAL.animate_card_to_rest_position(card)
+		# Calculate offset for multiple cards (spread them out during draw)
+		var spacing = 0.56
+		var offset = Vector3(-(spacing * (cards.size() - 1)) / 2 + spacing * i, 0, 0)
+		var target_draw_pos = draw_position + offset
+		
+		# Use draw animation with 0.2s delay between cards
+		animator.draw_card(
+			deck_position,                # from_position
+			target_draw_pos,              # draw_position  
+			card.global_position,             # final_position (hand position + card local position)
+			i * 0.1,                      # delay of 0.2s between cards
+			player and card.is_facedown   # flip_card
+		)
+	
+	# Wait for all animations to complete (longest delay + animation time)
+	await get_tree().create_timer(cards.size() * 0.2 + 0.6).timeout
+	
+	# Resolve state-based actions after drawing card
+	var action = GameAction.new(TriggerType.Type.CARD_DRAWN, null, GameZone.e.DECK, GameZone.e.HAND, {"cards" = cards})
+	AbilityManagerAL.triggerGameAction(self, action)
+	resolveStateBasedAction()
 
 func resolveCombats():
 	var lock = playerControlLock.addLock()
@@ -449,14 +461,19 @@ func resolveCombatInZone(combatZone: CombatZone):
 		
 		# Apply damage between facing creatures first
 		if player_card and opponent_card:
-			# Animate combat
-			await AnimationsManagerAL.animate_combat_strike(player_card, opponent_card)
-			await AnimationsManagerAL.animate_combat_strike(opponent_card, player_card)
+			# Animate combat strikes and wait for them to complete
+			var player_strike = AnimationsManagerAL.animate_combat_strike_awaitable(player_card, opponent_card)
+			var opponent_strike = AnimationsManagerAL.animate_combat_strike_awaitable(opponent_card, player_card)
 			
-			# Apply damage to both creatures
+			# Wait for both animations to complete
+			if player_strike:
+				await player_strike.finished
+			if opponent_strike:
+				await opponent_strike.finished
+			
+			# Apply damage to both creatures after animations
 			player_card.receiveDamage(opponent_damage)
 			opponent_card.receiveDamage(player_damage)
-		
 		# Handle unopposed damage to location
 		elif player_card and not opponent_card:
 			_apply_damage_to_location(player_damage, true, combatZone)
@@ -523,7 +540,6 @@ func resolveStateBasedAction():
 	_check_locations_capture()
 	# Check and highlight castable cards
 	updateDecks()
-	_displayCastableExtraDeckCards()
 	highlightCastableCards()
 
 func updateDecks():
@@ -571,9 +587,7 @@ func putInOwnerGraveyard(cards):
 	for card in cards_array:
 		if card and is_instance_valid(card):
 			card.reparent(self)
-			var tween = await AnimationsManagerAL.animate_card_to_position(card, graveyard.global_position)
-			if tween:
-				tweens.append(tween)
+			card.getAnimator().move_to_position(graveyard.global_position)
 	
 	# Wait for all animations to complete in parallel
 	if tweens.size() > 0:
@@ -603,8 +617,8 @@ func createToken(cardData: CardData, player_controlled: bool) -> Card:
 func executeCardEnters(card: Card, source_zone: GameZone.e, target_zone: GameZone.e):
 	"""Execute the card entering the battlefield - handles movement and triggers"""
 	# Move the card to player base
-	card.makeSmall()
-	var play_successful = await moveCardToPlayerBase(card)
+	card.getAnimator().make_small()
+	var play_successful = moveCardToPlayerBase(card)
 	
 	if not play_successful:
 		print("❌ Failed to move card to player base")
@@ -620,6 +634,15 @@ func executeCardEnters(card: Card, source_zone: GameZone.e, target_zone: GameZon
 func getCardZone(card: Card) -> GameZone.e:
 	"""Determine what zone a card is currently in based on its parent and controller"""
 	return GameUtility.getCardZone(self, card)
+
+func get_highlight_manager() -> HighlightManager:
+	"""Get the highlight manager for direct access"""
+	return highlightManager
+
+func connect_card_to_highlight_manager(card: Card):
+	"""Connect a card's animator to the highlight manager for drag notifications"""
+	if highlightManager:
+		highlightManager.connect_to_card_animator(card)
 
 # Helper functions for finding cards by control/ownership
 func getAllPlayerControlledCards() -> Array[Card]:
@@ -676,64 +699,65 @@ func highlightCastableCards():
 	"""Check cards in hand and extra deck for castability and update their display"""
 	if highlightManager:
 		highlightManager.onHighlight()
-
-# Helper functions for extra deck display (used by HighlightManager)
-func _createExtraDeckDisplay():
-	"""Create the container for extra deck card display"""
-	extra_deck_display = Node3D.new()
-	extra_deck_display.name = "ExtraDeckDisplay"
-	player_hand.get_parent().add_child(extra_deck_display)
 	
-	# Position it to the right of the hand area
-	extra_deck_display.position = Vector3(8, 0, 0)  # Adjust position as needed
+	# Update extra deck outline based on castable cards
+	_updateExtraDeckOutline()
 
-func _clearExtraDeckDisplay():
-	"""Clear all cards from the extra deck display"""
-	if extra_deck_display:
-		for child in extra_deck_display.get_children():
-			child.queue_free()
-
-func _displayCastableExtraDeckCards():
-	"""Display castable extra deck cards to the right of the hand"""
-	
-	if not extra_deck_display:
-		return
-	
-	for child in extra_deck_display.get_children():
-		if child is Card:
-			var card = child as Card
-			# Check if this card can still be played
-			if card.cardData and not CardPaymentManagerAL.isCardDataCastable(card.cardData):
-				# Re-add cardData back to extra_deck since it's no longer castable
-				extra_deck.add_card(card.cardData)
-				card.queue_free()
-	# Check for new castable cards in the extra_deck and move them to display
+func _updateExtraDeckOutline():
+	"""Update extra deck outline visibility based on whether there are castable cards"""
+	var has_castable_cards = false
 	
 	for card_data: CardData in extra_deck.cards:
-		var is_castable = CardPaymentManagerAL.isCardDataCastable(card_data)
-		
-		if is_castable:
-			var card = extra_deck.draw_specific_card(card_data, CardData.CardType.BOSS)
-			card.reparent(extra_deck_display)
-			card.setFlip(true)
+		if CardPaymentManagerAL.isCardDataCastable(card_data):
+			has_castable_cards = true
+			break
 	
-	# Move castable cards from extra_deck to display
+	if has_castable_cards:
+		extra_deck.get_node("MeshInstance3D/Outline").show()
+	else:
+		extra_deck.get_node("MeshInstance3D/Outline").hide()
+
+
+func _toggleExtraDeckView():
+	"""Show extra deck view - hide hand and show all extra deck cards"""
+	if extra_hand.visible:
+		extra_hand.hide()
+		player_hand.show()
+	elif extra_deck.outline.visible:
+		player_hand.hide()
+		extra_hand.show()
+		_extra_deck_hand_arrange()
+
+func _extra_deck_hand_arrange():
+	# Show only castable extra deck cards
 	var spacing = 0.8  # Horizontal spacing between cards
 	var loopC = 0
-	var cards = extra_deck_display.get_children().filter(func(child): return child is Card)
-	for c: Card in cards:
-		# Position the card
-		c.position.x = spacing * loopC
-		c.position.y = 0
-		c.position.z = 0
-		
-		c.makeSmall()
-		# Add visual indication that it's from extra deck
-		c.set_outline_color(Color.GOLD)
-		loopC += 1
+	
+	for card_data: CardData in extra_deck.cards:
+		# Only display castable cards
+		if CardPaymentManagerAL.isCardDataCastable(card_data):
+			# Create a card for display (don't remove from extra_deck)
+			var card = createCardFromData(card_data, true)
+			card.reparent(extra_hand)
+			card.setFlip(true)
+			
+			# Position the card
+			card.position.x = spacing * loopC
+			card.position.y = 0
+			card.position.z = 0
+			
+			card.getAnimator().make_small()
+			
+			# Set outline color for castable cards
+			card.set_outline_color(Color.GOLD)
+			
+			loopC += 1
+
 
 func cancelSelection():
-	"""Handle selection cancellation - called when cancel button is pressed or right-click cancels"""
+	print("[DEBUG] cancelSelection called")
+	print("[DEBUG] current_casting_card: ", current_casting_card.name if current_casting_card else "null")
+	print("[DEBUG] casting_card_original_parent: ", casting_card_original_parent.name if casting_card_original_parent else "null")
 	
 	# Clean up the selection state in SelectionManager
 	if selection_manager.is_selecting():
@@ -742,10 +766,7 @@ func cancelSelection():
 	# Restore casting card to its original location if there was one
 	if current_casting_card and casting_card_original_parent:
 		current_casting_card.reparent(casting_card_original_parent)
-		
-		# If the card was in hand, rearrange the hand
-		if casting_card_original_parent.name == "PlayerHand":
-			arrange_cards_fan()
+		current_casting_card.getAnimator().go_to_rest()
 	
 	# Clear casting state
 	current_casting_card = null
@@ -770,6 +791,9 @@ func _on_left_click(objectUnderMouse):
 		selection_manager.handle_card_click(objectUnderMouse as Card)
 	elif objectUnderMouse is ResolveFightButton:
 		resolve_combat_for_zone(objectUnderMouse.get_parent())
+	elif objectUnderMouse == extra_deck:
+		# Clicked on extra deck - show the extra deck view
+		_toggleExtraDeckView()
 
 func showCardPopup(card: Card):
 	"""Show popup for a card"""
@@ -794,6 +818,7 @@ func start_card_selection(requirement: Dictionary, possible_cards: Array[Card], 
 	if casting_card:
 		current_casting_card = casting_card
 		casting_card_original_parent = casting_card.get_parent()
+		# Move to card selection position - using legacy method for now
 		await AnimationsManagerAL.animate_card_to_card_selection_position(casting_card)
 	
 	# Start the selection process
@@ -913,7 +938,9 @@ func tryPayAndSelectsForCardPlay(card: Card, source_zone: GameZone.e, target_loc
 		return
 	
 	# Determine target zone and execute the play
-	var spell_targets: Array[Card] = selection_data.spell_targets if selection_data.spell_targets != null else []
+	var spell_targets: Array[Card] = []
+	if selection_data.spell_targets != null:
+		spell_targets.assign(selection_data.spell_targets)
 	
 	# Validate spell targets are still valid
 	var valid_spell_targets: Array[Card] = []

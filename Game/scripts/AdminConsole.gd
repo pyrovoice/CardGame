@@ -23,7 +23,7 @@ func _on_add_gold_pressed():
 		print("Admin: Set player gold to 99")
 
 func _on_draw_card():
-	game.drawCard(1)
+	game.drawCard(3)
 	
 func _on_add_card_pressed():
 	"""Add a card to player hand based on the input text"""
@@ -44,9 +44,9 @@ func _on_add_card_pressed():
 	
 	# Create card from data
 	var card: Card = game.createCardFromData(card_data, true)
-	card.makeSmall()
+	card.getAnimator().make_small()
 	card.setFlip(true)
-	await card.tween_change_size.finished
+	# Note: Size animation now handled internally by CardAnimator
 	card.reparent(game.player_hand)
 	game.arrange_cards_fan(true)
 

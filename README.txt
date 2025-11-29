@@ -37,6 +37,8 @@ Archetypes:
 - Circus act: alternate between balls, diabolo and something else. have a number of item set or flying, with cards setting or using flying items for effects depending on the type of Act, and cards to switch between acts. act difficulty?
 - Pokemon: Capture opponent monsters and play them somehow
 - Boss maker: Turn regular monster into Boss cards that go in the extra deck
+- Spy archetype that can play cards in the opponent's zone (move oppoennt for easier attack, gets bonus when spying...)
+- Make AHA! card: Target Boss monster do not deal damage this turn, if something I control is destroyed by opponent effect, return it to hand with -N cost...
 
 Game rules:
 
@@ -85,5 +87,5 @@ Other stuff:
 - Make battlefield resolve separately
 Find a way to have a Sphere mask transition: https://www.reddit.com/r/unrealengine/comments/lrd086/landscape_transition_effect_using_sphere_masks/ or https://www.reddit.com/r/godot/comments/1nidl3l/worldmerging_shader/ or https://github.com/lukky-nl/Stencil-Buffer-Holographic-Display
 Make each location resolved on player choice, with possibility to play in-between each fight? Offers more startegy to the player, less confusion, gameplay possibility of repeating a battle...
-
+- Difficulty levels like StS: Opponent gets extra resource, danger level grows faster, specific events on specific turns...
 - How to manage flying units? Evasive

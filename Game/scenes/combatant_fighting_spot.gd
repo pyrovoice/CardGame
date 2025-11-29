@@ -20,8 +20,8 @@ func setCard(c: Card):
 	if !c.cardData:
 		print("Cannot assign %s to %s, cardData not set"%[c.name, name])
 		return
-	# Use global_position instead of position for correct positioning
-	AnimationsManagerAL.animate_card_to_position(c, self.global_position, self)
+	# Use local position since card will be reparented to this zone
+	c.getAnimator().move_to_position(Vector3(0, 0.2, 0), 0.4, self)
 
 func getCard() -> Card:
 	# Method 1: Try find_children with different parameters

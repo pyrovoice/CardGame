@@ -26,6 +26,10 @@ CardLoaderAL="*res://Game/scripts/CardLoader.gd"
 
 settings/addon_root_folder="res://addons/debug_draw_3d"
 
+[editor_plugins]
+
+enabled=PackedStringArray()
+
 [filesystem]
 
 import/reimport_missing_imported_files=true

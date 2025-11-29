@@ -1,0 +1,4 @@
+Name:Goblin Kid
+ManaCost:0
+Types:Creature Goblin
+Power:1
