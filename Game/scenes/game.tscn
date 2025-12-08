@@ -224,7 +224,8 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4.165329, -0.001, -1.4649769)
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.07212627, 1.720877, 2.1647723)
 
 [node name="ExtraHand" parent="." instance=ExtResource("15_0qpk8")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.0860103, 0, 2.2062776)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.072, 1.721, 2.165)
+visible = false
 
 [node name="OpponentHand" parent="." instance=ExtResource("15_0qpk8")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.97, -0.7)

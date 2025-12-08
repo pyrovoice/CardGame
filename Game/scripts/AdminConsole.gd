@@ -47,8 +47,8 @@ func _on_add_card_pressed():
 	card.getAnimator().make_small()
 	card.setFlip(true)
 	# Note: Size animation now handled internally by CardAnimator
-	card.reparent(game.player_hand)
-	game.arrange_cards_fan(true)
+	GameUtility.reparentWithoutMoving(card, game.player_hand)
+	game.activeHand.arrange_cards_fan()
 
 func _on_close_pressed():
 	"""Close the admin console"""

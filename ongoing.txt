@@ -1,4 +1,4 @@
-- Imrpve extra deck cast:
+- Improve extra deck cast:
 	Make a Hand object and switch active hand between normal and extra for controlers and hightlights
 	Ensure the extra hand works correctly
 - Make battlefield not use specific spaces, but an array of null values filled with creatures when they move in and around, leaving possibility for empty spaces. Organize view depending on that array

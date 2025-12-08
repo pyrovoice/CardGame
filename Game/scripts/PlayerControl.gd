@@ -4,7 +4,8 @@ class_name PlayerControl
 # Reference to the CardPopupManager in the UI
 @onready var card_popup_manager: CardPopupManager = $"../UI/CardPopupManager"
 
-@onready var player_hand: Node3D = $"../PlayerHand"
+# Reference to active hand - set by Game
+var activeHand: CardHand
 @onready var mouse_intercept_plane: StaticBody3D = $"../Camera3D/mouseInterceptPlane"
 @onready var camera: Camera3D = $"../Camera3D"
 
@@ -130,7 +131,7 @@ func _input(event):
 			var hover_range = 70
 			var _lift_amount = 1
 			var closest_dist = hover_range + 1  # start bigger than range
-			var cards = player_hand.get_children()
+			var cards = activeHand.get_children() if activeHand else []
 			var mouse_pos = get_viewport().get_mouse_position()
 			var closest_card: Card
 			for card: Card in cards:

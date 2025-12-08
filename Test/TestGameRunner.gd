@@ -44,4 +44,6 @@ func cleanup_game():
 	if game_instance:
 		print("Cleaning up game instance...")
 		game_instance.queue_free()
+		# Wait a frame to ensure complete cleanup
+		await get_tree().process_frame
 		print("Game instance destroyed - state reset to initial")

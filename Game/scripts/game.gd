@@ -32,6 +32,14 @@ var opponent_ai: OpponentAI
 # Admin console management
 @onready var admin_scene: AdminConsole = $UI/AdminScene
 
+# Active hand for PlayerControl
+var activeHand: CardHand
+
+func setActiveHand(hand: CardHand):
+	"""Set the active hand for PlayerControl to interact with"""
+	activeHand = hand
+	player_control.activeHand = hand
+
 
 # Casting state tracking
 var current_casting_card: Card = null
@@ -43,6 +51,10 @@ var loaded_card_data: Array[CardData] = []
 func _ready() -> void:
 	# Initialize game data
 	game_data = GameData.new()
+	# Initialize activeHand to default player_hand
+	activeHand = player_hand
+	# Set PlayerControl reference to activeHand
+	player_control.activeHand = activeHand
 	game_data.playerDeckList.deck_cards = [CardLoaderAL.getCardByName("Goblin Emblem"), 
 		CardLoaderAL.getCardByName("Goblin Kid"),
 		CardLoaderAL.getCardByName("Goblin Warchief"),
@@ -156,12 +168,19 @@ func tryPlayCard(card: Card, target_location: Node3D, selection_data: Dictionary
 	
 	# Only process additional selections if playing from hand or extra deck
 	if source_zone == GameZone.e.HAND or source_zone == GameZone.e.EXTRA_DECK:
-		# Determine correct hand based on source zone
-		var correct_hand = player_hand if source_zone == GameZone.e.HAND else extra_hand
+		var correct_hand
+		if card.cardData.playerControlled:
+			if source_zone == GameZone.e.HAND:
+				correct_hand = player_hand
+			elif source_zone == GameZone.e.EXTRA_DECK:
+				correct_hand = extra_hand
+		else:
+			correct_hand = opponent_hand
 		current_casting_card = card
 		casting_card_original_parent = correct_hand
 		
-		card.reparent(self)
+		GameUtility.reparentCardWithoutMovingRepresentation(card, self)
+		
 		# Move card to cast preparation position to show casting has started
 		await card.getAnimator().cast_position(card.is_facedown).finished
 		if !card.cardData.playerControlled:
@@ -173,20 +192,14 @@ func tryPlayCard(card: Card, target_location: Node3D, selection_data: Dictionary
 		
 		# If any selection was cancelled, abort the play
 		if selection_data.cancelled:
-			print("❌ Selection was cancelled")
-			print("[DEBUG] Restoring card to original parent: ", casting_card_original_parent.name if casting_card_original_parent else "null")
-			# Return card to its original parent
-			if casting_card_original_parent:
-				card.reparent(casting_card_original_parent)
-				card.getAnimator().go_to_rest()
-			# Clear casting state
-			current_casting_card = null
-			casting_card_original_parent = null
+			print("[CANCEL DEBUG] Selection cancelled, restoring card: ", card.cardData.cardName)
+			print("[CANCEL DEBUG] current_casting_card: ", current_casting_card)
+			print("[CANCEL DEBUG] casting_card_original_parent: ", casting_card_original_parent)
+			_restore_cancelled_card()
 			return
 		
 		# Execute the card play with all collected selections
 		await tryPayAndSelectsForCardPlay(card, source_zone, target_location, selection_data)
-	
 	# If target was combat location, also execute the attack
 	if target_location is CombatantFightingSpot:
 		await executeCardAttacks(card, target_location as CombatantFightingSpot)
@@ -318,11 +331,11 @@ func moveCardToCombatZone(card: Card, zone: CombatantFightingSpot) -> bool:
 	zone.setCard(card)
 	return true
 
-func moveCardToPlayerBase(card: Card) -> bool:
+func moveCardToPlayerBase(card: Card) -> Tween:
 	"""Move card to PlayerBase with smooth animation from current position"""
 	var target_position = player_base.getNextEmptyLocation()
 	if target_position == Vector3.INF:  # No empty location available
-		return false
+		return null
 	
 	# Mark card as moved and update tracking
 	card.cardData.mark_as_moved()
@@ -331,8 +344,7 @@ func moveCardToPlayerBase(card: Card) -> bool:
 	var local_target = target_position + Vector3(0, 0.2, 0)
 	
 	# Use the enhanced animate_card_to_position with reparenting
-	card.getAnimator().move_to_position(local_target, 0.8, player_base)
-	return true
+	return card.getAnimator().move_to_position(local_target, 0.8, player_base)
 
 func drawCard(howMany: int = 1, player = true):
 	var _deck = deck if player else deck_opponent
@@ -344,7 +356,7 @@ func drawCard(howMany: int = 1, player = true):
 	
 	# Add all cards to hand at once - this triggers arrange_cards_fan
 	# which positions existing cards and sets logical positions for new cards
-	hand.addCards(cards)
+	hand.arrange_cards_fan(cards)
 	
 	# Keep all newly added cards' representations at deck position
 	for card in cards:
@@ -407,13 +419,10 @@ func resolve_combat_for_zone(combat_zone: CombatZone):
 	playerControlLock.removeLock(lock)
 
 func reset_all_card_movement_tracking():
-	"""Reset movement tracking for all cards at start of turn"""
-	# Reset for all cards in player areas
 	for card in _get_all_player_cards():
 		card.cardData.reset_movement_tracking()
 
 func _get_all_player_cards() -> Array[Card]:
-	"""Get all player-controlled cards in play areas"""
 	var all_cards: Array[Card] = []
 	
 	# Cards in hand
@@ -436,7 +445,6 @@ func _get_all_player_cards() -> Array[Card]:
 	return all_cards
 
 func _get_target_zone(target_location: Node3D) -> GameZone.e:
-	"""Determine the GameZone enum for a target location"""
 	if target_location is CombatantFightingSpot:
 		return GameZone.e.COMBAT_ZONE
 	elif target_location is PlayerBase:
@@ -447,41 +455,31 @@ func _get_target_zone(target_location: Node3D) -> GameZone.e:
 		return GameZone.e.UNKNOWN
 	
 func resolveCombatInZone(combatZone: CombatZone):
-	"""Resolve combat in a zone using the new slot-based damage system"""
 	print("🔥 === Resolving Combat in Zone ===")
-	
-	# Loop over each card slot (1-3 for each side)
 	for slot_index in range(1, 4):
 		var player_card = combatZone.getCardSlot(slot_index, true).getCard()
 		var opponent_card = combatZone.getCardSlot(slot_index, false).getCard()
 		
-		# Calculate damage dealt by each card
 		var player_damage = player_card.getPower() if player_card else 0
 		var opponent_damage = opponent_card.getPower() if opponent_card else 0
 		
-		# Apply damage between facing creatures first
 		if player_card and opponent_card:
-			# Animate combat strikes and wait for them to complete
 			var player_strike = AnimationsManagerAL.animate_combat_strike_awaitable(player_card, opponent_card)
 			var opponent_strike = AnimationsManagerAL.animate_combat_strike_awaitable(opponent_card, player_card)
 			
-			# Wait for both animations to complete
 			if player_strike:
 				await player_strike.finished
 			if opponent_strike:
 				await opponent_strike.finished
 			
-			# Apply damage to both creatures after animations
 			player_card.receiveDamage(opponent_damage)
 			opponent_card.receiveDamage(player_damage)
-		# Handle unopposed damage to location
 		elif player_card and not opponent_card:
 			_apply_damage_to_location(player_damage, true, combatZone)
 			
 		elif opponent_card and not player_card:
 			_apply_damage_to_location(opponent_damage, false, combatZone)
-	
-	# Resolve state-based actions after all combat damage
+			
 	resolveStateBasedAction()
 
 func _apply_damage_to_location(damage: int, is_player_damage: bool, combatZone: CombatZone):
@@ -505,21 +503,16 @@ func _check_locations_capture():
 			_handle_location_captured(combatZone, true)
 
 func _handle_location_captured(combatZone: CombatZone, captured_by_player: bool):
-	"""Handle when a location is captured"""
-	
-	# Show dramatic capture effect
 	var capture_text = combatZone.name + " CAPTURED!"
 	var capture_color = Color.GOLD if captured_by_player else Color.PURPLE
 	AnimationsManagerAL.show_floating_text(self, combatZone.global_position, capture_text, capture_color)
 	
 	if captured_by_player:
-		# Player captures location - award points and benefits
 		game_data.add_player_points(1)
 		game_data.get_combat_zone_data(combatZone).player_capture_threshold.value += 5
 	else:
-		# Opponent captures location - player loses life but gains resources
 		game_data.damage_player(1)
-		game_data.add_gold(1)  # Compensation for losing location
+		game_data.add_gold(1)
 		game_data.get_combat_zone_data(combatZone).opponent_capture_threshold.value += 5
 		
 	game_data.reset_combat_zone_data(combatZone)
@@ -557,7 +550,6 @@ func refilLDeck(deckToRefill: CardContainer, cards: Array[CardData], isPlayerOwn
 	deckToRefill.add_cards(cards)
 	
 func opponentMainOne():
-	"""Delegate to OpponentAI for opponent's main phase logic"""
 	if opponent_ai:
 		await opponent_ai.execute_main_phase()
 	else:
@@ -586,7 +578,7 @@ func putInOwnerGraveyard(cards):
 	var tweens = []
 	for card in cards_array:
 		if card and is_instance_valid(card):
-			card.reparent(self)
+			GameUtility.reparentCardWithoutMovingRepresentation(card, self)
 			card.getAnimator().move_to_position(graveyard.global_position)
 	
 	# Wait for all animations to complete in parallel
@@ -617,13 +609,15 @@ func createToken(cardData: CardData, player_controlled: bool) -> Card:
 func executeCardEnters(card: Card, source_zone: GameZone.e, target_zone: GameZone.e):
 	"""Execute the card entering the battlefield - handles movement and triggers"""
 	# Move the card to player base
+	card.setFlip(true)
 	card.getAnimator().make_small()
-	var play_successful = moveCardToPlayerBase(card)
+	var tween = moveCardToPlayerBase(card)
 	
-	if not play_successful:
+	if not tween:
 		print("❌ Failed to move card to player base")
 		return
-	card.setFlip(true)
+	else:
+		await tween.finished
 	# Trigger CARD_ENTERS action after the card has moved to battlefield
 	var enters_action = GameAction.new(TriggerType.Type.CARD_ENTERS, card, source_zone, target_zone)
 	AbilityManagerAL.triggerGameAction(self, enters_action)
@@ -648,7 +642,7 @@ func connect_card_to_highlight_manager(card: Card):
 func getAllPlayerControlledCards() -> Array[Card]:
 	"""Get all cards currently controlled by the player"""
 	var all_cards = getAllCardsInPlay()
-	return all_cards.filter(func(card): return card.is_player_controlled())
+	return all_cards.filter(func(card): return card.cardData.playerControlled)
 
 func getAllOpponentControlledCards() -> Array[Card]:
 	"""Get all cards currently controlled by the opponent"""
@@ -719,13 +713,14 @@ func _updateExtraDeckOutline():
 
 
 func _toggleExtraDeckView():
-	"""Show extra deck view - hide hand and show all extra deck cards"""
 	if extra_hand.visible:
 		extra_hand.hide()
 		player_hand.show()
+		setActiveHand(player_hand)
 	elif extra_deck.outline.visible:
 		player_hand.hide()
 		extra_hand.show()
+		setActiveHand(extra_hand)
 		_extra_deck_hand_arrange()
 
 func _extra_deck_hand_arrange():
@@ -733,44 +728,49 @@ func _extra_deck_hand_arrange():
 	var spacing = 0.8  # Horizontal spacing between cards
 	var loopC = 0
 	
+	for c in extra_hand.get_children():
+		c.queue_free()
+	await get_tree().process_frame
 	for card_data: CardData in extra_deck.cards:
 		# Only display castable cards
 		if CardPaymentManagerAL.isCardDataCastable(card_data):
 			# Create a card for display (don't remove from extra_deck)
 			var card = createCardFromData(card_data, true)
-			card.reparent(extra_hand)
+			GameUtility.reparentCardWithoutMovingRepresentation(card, extra_hand)
 			card.setFlip(true)
 			
 			# Position the card
 			card.position.x = spacing * loopC
 			card.position.y = 0
 			card.position.z = 0
+			card.card_representation.position = Vector3.ZERO
 			
 			card.getAnimator().make_small()
 			
-			# Set outline color for castable cards
-			card.set_outline_color(Color.GOLD)
-			
 			loopC += 1
+	extra_hand.arrange_cards_fan()
 
 
-func cancelSelection():
-	print("[DEBUG] cancelSelection called")
-	print("[DEBUG] current_casting_card: ", current_casting_card.name if current_casting_card else "null")
-	print("[DEBUG] casting_card_original_parent: ", casting_card_original_parent.name if casting_card_original_parent else "null")
-	
-	# Clean up the selection state in SelectionManager
-	if selection_manager.is_selecting():
-		selection_manager._end_selection()
-	
-	# Restore casting card to its original location if there was one
+func _restore_cancelled_card():
+	"""Restore casting card to its original location and clean up casting state"""
 	if current_casting_card and casting_card_original_parent:
-		current_casting_card.reparent(casting_card_original_parent)
-		current_casting_card.getAnimator().go_to_rest()
+		
+		# Reset visual properties before reparenting
+		current_casting_card.getAnimator().make_small()
+		casting_card_original_parent.arrange_card_fan(current_casting_card)
 	
 	# Clear casting state
 	current_casting_card = null
 	casting_card_original_parent = null
+
+func cancelSelection():
+	"""Handle UI/interaction cancellation and restore the card"""
+	# Clean up the selection state in SelectionManager
+	if selection_manager.is_selecting():
+		selection_manager._end_selection()
+	
+	# Restore the casting card using shared logic
+	_restore_cancelled_card()
 
 func _on_right_click(card: Card):
 	"""Handle right-click on a card"""
@@ -817,7 +817,6 @@ func start_card_selection(requirement: Dictionary, possible_cards: Array[Card], 
 	# If we have a casting card, set up animation and state tracking
 	if casting_card:
 		current_casting_card = casting_card
-		casting_card_original_parent = casting_card.get_parent()
 		# Move to card selection position - using legacy method for now
 		await AnimationsManagerAL.animate_card_to_card_selection_position(casting_card)
 	
@@ -859,9 +858,23 @@ func _collectAllPlayerSelections(card: Card) -> Dictionary:
 		if spell_targets == null:  # null means selection was cancelled
 			selection_data.cancelled = true
 			return selection_data
+		# Only check for empty targets if the spell actually requires targeting
+		if spell_targets is Array and spell_targets.is_empty() and _spellRequiresTargeting(card):
+			print("❌ No valid targets available - cancelling spell")
+			selection_data.cancelled = true
+			return selection_data
 		selection_data.spell_targets = spell_targets
 	
 	return selection_data
+
+func _spellRequiresTargeting(card: Card) -> bool:
+	"""Check if a spell has any effects that require targeting"""
+	for ability in card.cardData.abilities:
+		if ability.get("type") == "SpellEffect":
+			var effect_type = ability.get("effect_type", "")
+			if effect_type == "DealDamage":  # Add other targeting effects here
+				return true
+	return false
 
 func _getSpellTargetsIfRequired(card: Card) -> Variant:
 	"""Get spell targets if the spell requires targeting, returns null if cancelled"""
@@ -1003,7 +1016,7 @@ func exchange_card_in_spots(from: CombatantFightingSpot, to: CombatantFightingSp
 		return
 	var fromCard = from.getCard()
 	if fromCard:
-		fromCard.reparent(self)
+		GameUtility.reparentWithoutMoving(fromCard, self)
 	if to.getCard() != null:
 		from.setCard(to.getCard())
 	if fromCard:

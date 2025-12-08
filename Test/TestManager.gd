@@ -61,23 +61,19 @@ func _ready():
 
 func _on_run_all_tests():
 	"""Button handler to run all tests"""
-	if test_runner:
-		game = test_runner.ensure_game_loaded()
 	await runTests()
 	_update_test_button_states()
 	if test_runner:
-		test_runner.cleanup_game()  # Destroy game after all tests complete
+		await test_runner.cleanup_game()  # Final cleanup after all tests
 		game = null  # Clear reference to destroyed game
 		test_runner.show_test_manager()
 
 func _on_run_failed_tests():
 	"""Button handler to run only failed tests"""
-	if test_runner:
-		game = test_runner.ensure_game_loaded()
 	await runFailedTests()
 	_update_test_button_states()
 	if test_runner:
-		test_runner.cleanup_game()  # Destroy game after failed tests complete
+		await test_runner.cleanup_game()  # Final cleanup after failed tests
 		game = null  # Clear reference to destroyed game
 		test_runner.show_test_manager()
 
@@ -108,9 +104,6 @@ func _on_individual_test_pressed(test_method: String):
 	"""Run a single test when its button is pressed"""
 	print("=== Running Individual Test: ", test_method, " ===")
 	
-	if test_runner:
-		game = test_runner.ensure_game_loaded()
-	
 	var result = await _run_single_test(test_method)
 	
 	# Update session results
@@ -128,7 +121,7 @@ func _on_individual_test_pressed(test_method: String):
 		print("   Error: ", result.error)
 	
 	if test_runner:
-		test_runner.cleanup_game()  # Destroy game after individual test completes
+		await test_runner.cleanup_game()  # Final cleanup after individual test
 		game = null  # Clear reference to destroyed game
 		test_runner.show_test_manager()
 
@@ -250,6 +243,11 @@ func _run_single_test(test_method: String) -> Dictionary:
 	current_test_failed = false
 	current_test_error = ""
 	
+	# Create fresh game instance for this test
+	if test_runner:
+		await test_runner.cleanup_game()
+		game = test_runner.ensure_game_loaded()
+	
 	# Run beforeEach setup
 	await beforeEach()
 	
@@ -336,14 +334,29 @@ func createTestCard(card_name: String, player_controlled: bool = true) -> Card:
 	var card_data = CardLoaderAL.getCardByName(card_name)
 	if not assert_test_not_null(card_data, "Card not found: " + card_name):
 		return null
-	return game.createCardFromData(card_data, player_controlled)
+	var card = game.createCardFromData(card_data, player_controlled)
+	
+	# Set animator state correctly for player-controlled cards
+	if player_controlled and card:
+		card.getAnimator().start_player_control()
+	
+	return card
 
 func addCardToHand(card: Card):
 	"""Helper to add card to player hand"""
-	card.reparent(game.player_hand)
+	GameUtility.reparentWithoutMoving(card, game.player_hand)
 	
 func addCardToExtraDeck(card: CardData):
 	game.extra_deck.cards.push_back(card)
+
+func addCardToDeck(card_data: CardData, player_deck: bool = true):
+	"""Helper to add card to deck"""
+	var deck = game.deck if player_deck else game.deck_opponent
+	# Set proper control flags for the card data
+	card_data.playerControlled = player_deck
+	card_data.playerOwned = player_deck
+	deck.cards.push_back(card_data)
+	deck.update_size()
 	
 func setPlayerGold(amount: int):
 	"""Helper to set player gold"""
@@ -361,6 +374,8 @@ func assertCardCount(expected: int, zone: String = "play") -> bool:
 			actual = getCardsInPlay().size()
 		"hand":
 			actual = game.player_hand.get_child_count()
+		"graveyard":
+			actual = game.get_cards_in_player_graveyard().size()
 		_:
 			return assert_test(false, "Unknown zone: " + zone)
 	
@@ -372,12 +387,18 @@ func assertCardExists(card_name: String, zone: String = "play") -> bool:
 	match zone:
 		"play":
 			for card in getCardsInPlay():
-				if card.cardData.cardName == card_name:
+				if card.cardData.cardName.to_lower() == card_name.to_lower():
 					found = true
 					break
 		"hand":
 			for card in game.player_hand.get_children():
-				if card is Card and card.cardData.cardName == card_name:
+				if card is Card and card.cardData.cardName.to_lower() == card_name.to_lower():
+					found = true
+					break
+		"graveyard":
+			var graveyard_cards = game.get_cards_in_player_graveyard()
+			for card_data in graveyard_cards:
+				if card_data.cardName.to_lower() == card_name.to_lower():
 					found = true
 					break
 	
@@ -486,22 +507,25 @@ func test_goblin_boss_extra_deck_casting():
 	if not assertCardCount(2, "play"):  # Should have 2 goblins now
 		return false
 	
+	# Step 2: Trigger extra deck view to show available cards
+	game._toggleExtraDeckView()
+	await get_tree().process_frame  # Wait for extra hand to be populated
 	
-	# Step 2: Assert that Goblin Boss appears in extra deck display
-	var extra_deck_cards = game.extra_deck_display.get_children().filter(func(child): return child is Card)
+	# Step 3: Assert that Goblin Boss appears in extra hand display
+	var extra_hand_cards = game.extra_hand.get_children().filter(func(child): return child is Card)
 	var goblin_boss_found = false
 	var goblin_boss_card: Card = null
 	
-	for card in extra_deck_cards:
+	for card in extra_hand_cards:
 		if card.cardData.cardName == "Goblin Boss":
 			goblin_boss_found = true
 			goblin_boss_card = card
 			break
 	
-	if not assert_test_true(goblin_boss_found, "Goblin Boss should be displayed in extra deck when 2+ goblins are in play"):
+	if not assert_test_true(goblin_boss_found, "Goblin Boss should be displayed in extra hand when 2+ goblins are in play"):
 		return false
 	
-	# Step 3: Attempt to play Goblin Boss from extra deck
+	# Step 4: Attempt to play Goblin Boss from extra deck
 	# This should trigger selection for the additional cost (sacrifice 2 goblins)
 	var goblins_before = getCardsInPlay().filter(func(card:Card): return card.cardData.hasSubtype("Goblin")).size()
 	if not assert_test(goblins_before >= 2, "Should have at least 2 goblins before casting boss"):
@@ -521,7 +545,7 @@ func test_goblin_boss_extra_deck_casting():
 	
 	await game.tryPlayCard(goblin_boss_card, game.player_base, selection_data)
 	
-	# Step 4: Assert final state
+	# Step 5: Assert final state
 	var final_cards = getCardsInPlay()
 	var boss_found = final_cards.filter(func(c: Card): return c.cardData.cardName == "Goblin Boss").size() >= 1
 	
@@ -634,3 +658,279 @@ func test_combat_location_independence():
 	if not assert_test_equal(final_zone_2_data.player_capture_current, initial_player_capture_current, 
 		"Second combat zone's player_capture_current should not have changed"):
 		return false
+
+func test_bolt_spell_with_valid_target():
+	"""Test casting Bolt spell with a legal target - bolt and target should end up in graveyard"""
+	# Setup: Create Bolt spell and a target creature
+	var bolt_card = createTestCard("Bolt")
+	var target_creature = createTestCard("goblin")
+	
+	addCardToHand(bolt_card)
+	addCardToHand(target_creature)
+	setPlayerGold(99)
+	
+	# Play the target creature first
+	await game.tryPlayCard(target_creature, game.player_base)
+	if not assertCardExists("goblin", "play"):
+		return false
+	if not assertCardCount(1, "play"):
+		return false
+	
+	# Prepare selection data with the target creature
+	var selection_data = {
+		"additional_cost_selections": [] as Array[Card],
+		"spell_targets": [target_creature] as Array[Card],
+		"cancelled": false
+	}
+	
+	# Cast Bolt targeting the creature
+	await game.tryPlayCard(bolt_card, game.player_base, selection_data)
+	
+	# Verify final state: both bolt and target should be in graveyard
+	if not assertCardExists("Bolt", "graveyard"):
+		return false
+	if not assertCardExists("Goblin", "graveyard"):
+		return false
+	if not assertCardCount(0, "play"):  # No creatures left in play
+		return false
+	if not assertCardCount(0, "hand"):  # No cards left in hand
+		return false
+
+func test_bolt_spell_cancelled_with_target():
+	"""Test casting Bolt with target selected but then cancelled - spell should return to hand, creature should stay in play"""
+	# Setup: Create Bolt spell and a target creature
+	var bolt_card = createTestCard("Bolt")
+	var target_creature = createTestCard("goblin")
+	
+	addCardToHand(bolt_card)
+	addCardToHand(target_creature)
+	setPlayerGold(99)
+	
+	# Play the target creature first
+	await game.tryPlayCard(target_creature, game.player_base)
+	if not assertCardExists("Goblin", "play"):
+		return false
+	if not assertCardCount(1, "play"):
+		return false
+	
+	# Prepare selection data showing cancellation
+	var selection_data = {
+		"additional_cost_selections": [] as Array[Card],
+		"spell_targets": [target_creature] as Array[Card],
+		"cancelled": true
+	}
+	
+	# Store the card before attempting to play it
+	var initial_hand_cards = game.player_hand.get_children().filter(func(c): return c is Card)
+	var bolt_in_hand = null
+	for card in initial_hand_cards:
+		if card.cardData.cardName == "Bolt":
+			bolt_in_hand = card
+			break
+	
+	if not assert_test_not_null(bolt_in_hand, "Bolt should be in hand before casting"):
+		return false
+	
+	# Attempt to cast Bolt but cancel
+	await game.tryPlayCard(bolt_in_hand, game.player_base, selection_data)
+	
+	# Wait a frame for any reparenting to complete
+	await get_tree().process_frame
+	
+	# Debug: Print what cards are actually in hand
+	print("DEBUG: Cards in hand after cancellation:")
+	for i in range(game.player_hand.get_child_count()):
+		var card = game.player_hand.get_child(i)
+		if card is Card:
+			print("  - ", card.cardData.cardName)
+	
+	# Verify final state: bolt should be back in hand, creature should still be in play
+	if not assertCardExists("Bolt", "hand"):
+		return false
+	if not assertCardExists("Goblin", "play"):
+		return false
+	if not assertCardCount(1, "play"):  # Creature still in play
+		return false
+	if not assertCardCount(1, "hand"):  # Bolt back in hand
+		return false
+	if not assertCardCount(0, "graveyard"):  # Nothing in graveyard
+		return false
+	
+	return true
+
+func test_bolt_spell_empty_board():
+	"""Test casting Bolt on empty board - spell should be returned to hand"""
+	# Setup: Create Bolt spell only, no target creatures
+	var bolt_card = createTestCard("Bolt")
+	addCardToHand(bolt_card)
+	setPlayerGold(99)
+	
+	# Verify board is empty
+	if not assertCardCount(0, "play"):
+		return false
+	if not assertCardCount(1, "hand"):
+		return false
+	
+	# Attempt to cast Bolt with no targets available
+	await game.tryPlayCard(bolt_card, game.player_base)
+	
+	# Verify final state: bolt should be back in hand since no valid targets
+	if not assertCardExists("Bolt", "hand"):
+		return false
+	if not assertCardCount(0, "play"):  # Board still empty
+		return false
+	if not assertCardCount(1, "hand"):  # Bolt back in hand
+		return false
+	if not assertCardCount(0, "graveyard"):  # Nothing in graveyard
+		return false
+
+func test_deck_card_player_control():
+	"""Test that cards drawn from deck have correct player control"""
+	# Add a card to player deck
+	var test_card_data = CardLoaderAL.getCardByName("Goblin")
+	addCardToDeck(test_card_data, true)  # Add to player deck
+	
+	# Get initial hand count
+	var initial_hand_count = game.player_hand.get_child_count()
+	
+	# Draw one card from player deck
+	await game.drawCard(1, true)
+	
+	# Verify hand increased by one
+	if not assertCardCount(initial_hand_count + 1, "hand"):
+		return false
+	
+	# Get the newly drawn card (last child in hand)
+	var drawn_card = game.player_hand.get_children()[-1] as Card
+	if not assert_test_not_null(drawn_card, "Should have drawn a card"):
+		return false
+	
+	# Verify the card is player controlled
+	if not assert_test_true(drawn_card.cardData.playerControlled, "Drawn card should be player controlled"):
+		return false
+	
+	# Verify the card is player owned
+	if not assert_test_true(drawn_card.cardData.playerOwned, "Drawn card should be player owned"):
+		return false
+	
+	return true
+
+func test_deck_card_opponent_control():
+	"""Test that cards drawn from opponent deck have correct opponent control"""
+	# Add a card to opponent deck
+	var test_card_data = CardLoaderAL.getCardByName("Goblin")
+	addCardToDeck(test_card_data, false)  # Add to opponent deck
+	
+	# Get initial opponent hand count
+	var initial_hand_count = game.opponent_hand.get_child_count()
+	
+	# Draw one card from opponent deck
+	await game.drawCard(1, false)
+	
+	# Verify opponent hand increased by one
+	var actual_hand_count = game.opponent_hand.get_child_count()
+	if not assert_test_equal(actual_hand_count, initial_hand_count + 1, "Opponent hand should increase by one"):
+		return false
+	
+	# Get the newly drawn card (last child in opponent hand)
+	var drawn_card = game.opponent_hand.get_children()[-1] as Card
+	if not assert_test_not_null(drawn_card, "Should have drawn a card to opponent hand"):
+		return false
+	
+	# Verify the card is NOT player controlled
+	if not assert_test_false(drawn_card.cardData.playerControlled, "Drawn card should NOT be player controlled"):
+		return false
+	
+	# Verify the card is NOT player owned
+	if not assert_test_false(drawn_card.cardData.playerOwned, "Drawn card should NOT be player owned"):
+		return false
+	
+	return true
+
+func test_player_card_payment():
+	"""Test that player controlled cards use player gold for payment"""
+	# Add a card to player deck and draw it
+	var test_card_data = CardLoaderAL.getCardByName("Goblin Pair")  # Costs 1 gold
+	addCardToDeck(test_card_data, true)
+	
+	# Set initial gold
+	setPlayerGold(3)
+	var initial_gold = game.game_data.player_gold.getValue()
+	
+	# Draw the card
+	await game.drawCard(1, true)
+	
+	# Get the drawn card
+	var drawn_card = game.player_hand.get_children()[-1] as Card
+	if not assert_test_not_null(drawn_card, "Should have drawn a card"):
+		return false
+	
+	# Verify the card is player controlled before playing
+	if not assert_test_true(drawn_card.cardData.playerControlled, "Drawn card should be player controlled"):
+		return false
+	
+	# Play the card
+	await game.tryPlayCard(drawn_card, game.player_base)
+	
+	# Verify gold was deducted from player gold
+	var final_gold = game.game_data.player_gold.getValue()
+	var expected_gold = initial_gold - drawn_card.cardData.goldCost
+	if not assert_test_equal(final_gold, expected_gold, "Player gold should decrease by card cost"):
+		return false
+	
+	return true
+
+func test_deck_draw_order():
+	"""Test that cards are drawn from the top of the deck (index 0) in correct order"""
+	# Clear deck first to ensure clean test
+	game.deck.cards.clear()
+	game.deck.update_size()
+	
+	# Add three different cards to deck in specific order
+	var card1_data = CardLoaderAL.getCardByName("Goblin")
+	var card2_data = CardLoaderAL.getCardByName("Goblin Pair") 
+	var card3_data = CardLoaderAL.getCardByName("Bolt")
+	
+	# Add cards to deck using helper method - card1 should be at index 0 (top), card3 at index 2 (bottom)
+	addCardToDeck(card1_data, true)  # Index 0 - should be drawn first
+	addCardToDeck(card2_data, true)  # Index 1 - should be drawn second
+	addCardToDeck(card3_data, true)  # Index 2 - should be drawn third
+	
+	# Verify deck has 3 cards
+	if not assert_test_equal(game.deck.get_card_count(), 3, "Deck should have 3 cards"):
+		return false
+	
+	# Verify the top card (index 0) is Goblin
+	if not assert_test_equal(game.deck.cards[0].cardName, "goblin", "Top card should be Goblin"):
+		return false
+	
+	# Draw one card
+	var initial_hand_count = game.player_hand.get_child_count()
+	await game.drawCard(1, true)
+	
+	# Verify hand increased by one
+	if not assert_test_equal(game.player_hand.get_child_count(), initial_hand_count + 1, "Hand should increase by 1"):
+		return false
+	
+	# Get the drawn card (last child in hand)
+	var drawn_card = game.player_hand.get_children()[-1] as Card
+	if not assert_test_not_null(drawn_card, "Should have drawn a card"):
+		return false
+		
+	if !drawn_card.cardData.playerControlled:
+		print("Card should be player controlled")
+		return false
+	
+	# Verify the drawn card is the Goblin (was at index 0)
+	if not assert_test_equal(drawn_card.cardData.cardName, "goblin", "Drawn card should be Goblin (from top of deck)"):
+		return false
+	
+	# Verify the new top card (index 0) is now Goblin Pair (was index 1)
+	if not assert_test_equal(game.deck.cards[0].cardName, "Goblin pair", "New top card should be Goblin Pair"):
+		return false
+	
+	# Verify the remaining bottom card (index 1) is Bolt (was index 2)
+	if not assert_test_equal(game.deck.cards[1].cardName, "Bolt", "Bottom card should be Bolt"):
+		return false
+	
+	return true

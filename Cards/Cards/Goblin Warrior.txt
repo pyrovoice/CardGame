@@ -1,0 +1,7 @@
+Name:Goblin Warchief
+ManaCost:3
+Types:Creature Goblin
+Power:2
+T:Mode$ StartAttack | ValidCard$ Card.Self | Execute$ TrigToken | TriggerDescription$ When CARDNAME attacks, create a 1 power Goblin creature token at base.
+SVar:TrigToken:DB$ Token | TokenScript$ goblin
+CardText:Replace 0-cost creature: Reduce cost by 1. If that creature is a Grown-up Goblin, Reduce cost by 3 instead.

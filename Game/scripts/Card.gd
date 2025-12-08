@@ -176,6 +176,7 @@ func setFlip(facingUp: bool):
 
 func setPositionWithoutMovingRepresentation(newPos: Vector3, isGlobal = false):
 	var representationPosBefore = card_representation.global_position
+	
 	if isGlobal:
 		global_position = newPos
 	else:
@@ -200,5 +201,5 @@ func is_being_animated() -> bool:
 	return animator.current_state == CardAnimator.AnimationState.ANIMATING
 
 # Check if the card is under player control
-func is_player_controlled() -> bool:
+func is_player_manipulated() -> bool:
 	return animator.current_state == CardAnimator.AnimationState.PLAYER_CONTROLLED

@@ -56,21 +56,26 @@ static func getCardZone(game: Game, card: Card) -> GameZone.e:
 	if not parent:
 		return GameZone.e.DECK # Default fallback
 	
-	var parent_name = parent.name
-	
-	# Check parent name/type to determine zone, considering both player and opponent zones
-	if parent_name == "PlayerHand" or parent_name == "opponentHand":
+	# Check against actual game zone variables instead of hardcoded strings
+	if parent == game.player_hand or parent == game.opponent_hand :
 		return GameZone.e.HAND
-	elif parent_name == "playerBase" or (parent.get_script() != null and parent.get_script().get_global_name() == "PlayerBase"):
+	elif parent == game.player_base:
 		return GameZone.e.PLAYER_BASE
-	elif parent_name.begins_with("combatZone") or (parent.get_script() != null and parent.get_script().get_global_name() == "CombatantFightingSpot"):
-		return GameZone.e.COMBAT_ZONE
-	elif parent_name == "graveyard" or parent_name == "graveyardOpponent" or (parent.get_script() != null and parent.get_script().get_global_name() == "Graveyard"):
+	elif parent == game.graveyard or parent == game.graveyard_opponent:
 		return GameZone.e.GRAVEYARD
-	elif parent_name == "Deck" or parent_name == "DeckOpponent" or (parent.get_script() != null and parent.get_script().get_global_name() == "Deck"):
+	elif parent == game.deck or parent == game.deck_opponent:
 		return GameZone.e.DECK
-	elif parent_name == "extraDeck" or parent_name == "ExtraDeckDisplay" or (parent.get_script() != null and parent.get_script().get_global_name() == "CardContainer"):
+	elif parent == game.extra_hand:
 		return GameZone.e.EXTRA_DECK
+	else:
+		# Check if parent is a combat zone spot
+		for combat_zone in game.combatZones:
+			if parent in combat_zone.allySpots or parent in combat_zone.ennemySpots:
+				return GameZone.e.COMBAT_ZONE
+		
+		# Check if parent is a CombatantFightingSpot (fallback)
+		if parent is CombatantFightingSpot:
+			return GameZone.e.COMBAT_ZONE
 		
 	# Default fallback
 	return GameZone.e.UNKNOWN
@@ -146,3 +151,22 @@ static func getCardsInGraveyard(game: Game, player_controlled: bool = true) -> A
 	"""Get cards in graveyard for the specified controller"""
 	var graveyard_container = game.graveyard if player_controlled else game.graveyard_opponent
 	return graveyard_container.get_cards() if graveyard_container else []
+
+static func reparentWithoutMoving(object: Node3D, newParent: Node3D):
+	var globalPosBefore = object.global_position
+	if object.get_parent():
+		object.reparent(newParent)
+	else:
+		newParent.add_child(object)
+	object.global_position = globalPosBefore
+	
+static func reparentCardWithoutMovingRepresentation(card: Card, newParent, cardNewPosition: Vector3 = Vector3.INF):
+	var globalPosBefore = card.card_representation.global_position
+	if cardNewPosition == null || cardNewPosition == Vector3.INF:
+		cardNewPosition = card.position
+	if card.get_parent():
+		card.reparent(newParent)
+	else:
+		newParent.add_child(card)
+	card.position = cardNewPosition
+	card.card_representation.global_position = globalPosBefore

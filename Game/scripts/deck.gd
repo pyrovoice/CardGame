@@ -28,7 +28,7 @@ func shuffle():
 func draw_card_from_top(howMany = 1) -> Array[Card]:
 	var cardsDrawn:Array[Card] = []
 	for i in range(0, howMany):
-		cardsDrawn.push_back(draw_specific_card(cards[howMany-i]))
+		cardsDrawn.push_back(draw_specific_card(cards[0]))
 	return cardsDrawn
 	
 # Peek at the top N card data (does not remove or instantiate)

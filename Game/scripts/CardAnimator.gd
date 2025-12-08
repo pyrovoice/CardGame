@@ -32,11 +32,11 @@ func _ready():
 	name = "CardAnimator"
 	set_process(false)  # Only process when actively dragging
 
-func get_tween(is_blocking: bool = true, priority: int = 1) -> Tween:
+func get_tween(is_blocking: bool = true, priority: int = 1, animation_name: String = "") -> Tween:
 	"""Create and configure a tween with common settings. Priority: 0=lowest, 1=normal, 2=highest"""
 	var tween = create_tween()
 	tween.set_speed_scale(ANIMATION_SPEED)
-	
+
 	if is_blocking:
 		# Check if we should interrupt current animation based on priority
 		if current_tween and current_tween.is_valid():
@@ -69,18 +69,14 @@ func _animate_move_to_position(tween: Tween, data: Dictionary) -> Tween:
 	var duration = data.get("duration", 0.2)
 	var new_parent = data.get("new_parent", null)
 	
-	# Handle reparenting if needed
 	if new_parent:
-		card.reparent(new_parent)
+		GameUtility.reparentCardWithoutMovingRepresentation(card, new_parent, target_pos)
+	else:
+		card.setPositionWithoutMovingRepresentation(target_pos, false)
 	
-	# Move the card to the destination immediately (legacy behavior)
-	card.setPositionWithoutMovingRepresentation(target_pos, false)
-	
-	# Set card control state and reset rotations
 	card.rotation_degrees = Vector3(0, 0, 0)
 	card.card_representation.rotation_degrees = Vector3(0, 0, 0)
 	
-	# Configure tween with legacy easing for smooth animation to rest position
 	tween.set_ease(Tween.EASE_OUT)
 	tween.set_trans(Tween.TRANS_CUBIC)
 	tween.tween_property(card.card_representation, "position", Vector3(0, 0, 0), duration)
@@ -94,7 +90,7 @@ func _animate_play_to_combat(tween: Tween, data: Dictionary) -> Tween:
 	if combat_spot:
 		var target_pos = combat_spot.global_position + Vector3(0, 0.1, 0)
 		tween.tween_property(card.card_representation, "global_position", target_pos, duration)
-		tween.tween_callback(make_small)
+		tween.tween_callback(func(): make_small())
 	
 	return tween
 
@@ -111,6 +107,8 @@ func _animate_to_rest(tween: Tween, data: Dictionary) -> Tween:
 	
 	# Animate position back to local zero (legacy behavior)
 	tween.tween_property(card.card_representation, "position", Vector3.ZERO, duration)
+	
+	# Call make_small safely without expecting return value
 	make_small()
 	
 	return tween
@@ -126,7 +124,7 @@ func _check_for_rest_positioning():
 
 # Declarative animation methods
 func move_to_position(target_pos: Vector3, duration: float = 0.2, new_parent: Node3D = null) -> Tween:
-	var tween = get_tween(true, 2)  # High priority
+	var tween = get_tween(true, 2, "move_to_position")  # High priority
 	if tween:
 		return _animate_move_to_position(tween, {
 			"target_position": target_pos,
@@ -136,7 +134,7 @@ func move_to_position(target_pos: Vector3, duration: float = 0.2, new_parent: No
 	return null
 
 func play_to_combat(combat_spot: Node3D, callback: Callable = Callable()) -> Tween:
-	var tween = get_tween(true, 2)  # High priority
+	var tween = get_tween(true, 2, "play_to_combat")  # High priority
 	if tween:
 		if callback:
 			tween.finished.connect(callback)
@@ -147,7 +145,7 @@ func play_to_combat(combat_spot: Node3D, callback: Callable = Callable()) -> Twe
 	return null
 
 func return_to_hand(hand_position: Vector3) -> Tween:
-	var tween = get_tween(true, 1)  # Normal priority
+	var tween = get_tween(true, 1, "return_to_hand")  # Normal priority
 	if tween:
 		return _animate_return_to_hand(tween, {
 			"hand_position": hand_position,
@@ -157,7 +155,7 @@ func return_to_hand(hand_position: Vector3) -> Tween:
 
 func slide_to_position(target_pos: Vector3, duration: float = 0.3) -> Tween:
 	"""Slide card to new position without affecting representation or triggering rest"""
-	var tween = get_tween(true, 1)  # Normal priority
+	var tween = get_tween(true, 1, "slide_to_position")  # Normal priority
 	if tween:
 		return _animate_slide_to_position(tween, {
 			"target_position": target_pos,
@@ -170,11 +168,11 @@ func cast_position(should_turn_over: bool = false) -> Tween:
 	# Make card big and turn over if needed (parallel animations)
 	make_big()
 	if should_turn_over:
-		turn_over()
+		_perform_flip_animation()
 	
 	# Move to cast preparation position with high priority
 	var preparation_position = Vector3(2.5, 1.4, 1)
-	var tween = get_tween(true, 2)  # High priority
+	var tween = get_tween(true, 2, "cast_position")  # High priority
 	if tween:
 		return _animate_move_to_position(tween, {
 			"target_position": preparation_position,
@@ -188,10 +186,31 @@ func go_to_rest() -> Tween:
 	if is_being_dragged():
 		return null
 	
-	var tween = get_tween(true, 0)  # Lowest priority
+	var tween = get_tween(true, 0, "go_to_rest")  # Lowest priority
 	if tween:
 		return _animate_to_rest(tween, {})
 	return null
+
+func go_to_logical_position() -> Tween:
+	"""Animate card representation to match its logical position with lowest priority - won't interrupt ongoing animations"""
+	var tween = get_tween(true, 0, "go_to_logical_position")  # Lowest priority - won't interrupt drawing animations
+	if tween:
+		return _animate_representation_to_logical_position(tween, {
+			"duration": 0.3
+		})
+	return null
+	return null
+
+func _animate_representation_to_logical_position(tween: Tween, data: Dictionary) -> Tween:
+	"""Animate card representation to match the card's logical position"""
+	var duration = data.get("duration", 0.3)
+	
+	# Animate the visual representation to match the logical position
+	tween.set_ease(Tween.EASE_OUT)
+	tween.set_trans(Tween.TRANS_CUBIC)
+	tween.tween_property(card.card_representation, "position", Vector3.ZERO, duration)
+	
+	return tween
 
 func can_go_to_rest() -> bool:
 	return current_state == AnimationState.IDLE
@@ -283,8 +302,8 @@ func _animate_combat_strike(tween: Tween, data: Dictionary) -> Tween:
 	return tween
 
 func animate_combat_strike(target_card: Card, callback: Callable = Callable()) -> Tween:
-	"""Animate card striking another card in combat"""
-	var tween = get_tween(true, 2)  # High priority
+	"""Animate card striking another card in combat - returns awaitable tween"""
+	var tween = get_tween(true, 2, "animate_combat_strike")  # High priority
 	if tween:
 		if callback:
 			tween.finished.connect(callback)
@@ -295,47 +314,32 @@ func animate_combat_strike(target_card: Card, callback: Callable = Callable()) -
 		})
 	return null
 
-func animate_combat_strike_awaitable(target_card: Card) -> Tween:
-	"""Animate card striking another card in combat - returns awaitable tween"""
-	var data = {
-		"target_card": target_card,
-		"duration": 0.3,
-		"return_duration": 0.2
-	}
-	
-	# Create tween directly for awaitable version
-	var tween = create_tween()
-	tween.set_speed_scale(ANIMATION_SPEED)
-	return _animate_combat_strike(tween, data)
-
 func make_small() -> Tween:
 	"""Make card small with animation"""
 	if card.is_small:
 		return null
 	
-	# Kill any existing size animation
+	return _animate_make_small(null, {})
+
+func _setup_size_tween() -> Tween:
+	"""Helper to create and setup size tween, killing any existing one"""
 	if size_tween and size_tween.is_valid():
 		size_tween.kill()
 	
-	var tween = get_tween(false)  # Non-blocking parallel animation
-	return _animate_make_small(tween, {})
+	size_tween = create_tween()
+	size_tween.set_parallel()
+	return size_tween
 
 func make_big() -> Tween:
 	"""Make card big with animation"""
 	if not card.is_small:
 		return null
 	
-	# Kill any existing size animation
-	if size_tween and size_tween.is_valid():
-		size_tween.kill()
-	
-	var tween = get_tween(false)  # Non-blocking parallel animation
-	return _animate_make_big(tween, {})
+	return _animate_make_big(null, {})
 
 func lift_and_scale() -> Tween:
 	"""Lift card upward and make it big - used for hover/highlight effects"""
-	print("[DEBUG] lift_and_scale called on card: ", card.name)
-	var tween = get_tween(true, 0)  # Lowest priority
+	var tween = get_tween(true, 0, "lift_and_scale")  # Lowest priority
 	if tween:
 		return _animate_lift_and_scale(tween, {})
 	return null
@@ -344,45 +348,43 @@ const makeSmallTime = 0.02
 func _animate_make_small(tween: Tween, _data: Dictionary) -> Tween:
 	"""Animate card to small size"""
 	if card.is_small:
-		return tween
+		return null
 	
 	card.is_small = true
 	card.highlight_mesh.scale = Vector3(1.05, 1, 0.65)  # Adjust Y scale to match card ratio
 	
-	# Use dedicated size_tween instead of passed tween
-	size_tween = create_tween()
-	size_tween.set_parallel()
-	size_tween.tween_property(card.card_representation.mesh, "size", Vector2(0.55, 0.55), makeSmallTime)
-	size_tween.tween_property(card.sub_viewport, "size", Vector2i(150, 150), makeSmallTime)
-	size_tween.tween_property(card, "scale", Vector3(1, 1, 1), makeSmallTime)
-	size_tween.tween_property(card.card_2d, "position", Vector2(-25, 0), makeSmallTime)
+	# Use helper to setup size tween
+	var size_animation = _setup_size_tween()
+	size_animation.tween_property(card.card_representation.mesh, "size", Vector2(0.55, 0.55), makeSmallTime)
+	size_animation.tween_property(card.sub_viewport, "size", Vector2i(150, 150), makeSmallTime)
+	size_animation.tween_property(card, "scale", Vector3(1, 1, 1), makeSmallTime)
+	size_animation.tween_property(card.card_2d, "position", Vector2(-25, 0), makeSmallTime)
 	
 	# Adjust collision shape
-	size_tween.tween_callback(func(): (card.collision_shape_3d.shape as BoxShape3D).size.z = 0.55)
-	return tween
+	size_animation.tween_callback(func(): (card.collision_shape_3d.shape as BoxShape3D).size.z = 0.55)
+	return size_animation
 
 const makeBigTime = 0.1
 func _animate_make_big(tween: Tween, _data: Dictionary) -> Tween:
 	"""Animate card to big size"""
 	if not card.is_small:
-		return tween
+		return null
 	
 	card.is_small = false
 	
-	# Use dedicated size_tween instead of passed tween
-	size_tween = create_tween()
-	size_tween.set_parallel()
-	size_tween.tween_property(card.card_representation.mesh, "size", Vector2(0.55, 0.89),makeBigTime)
-	size_tween.tween_property(card.sub_viewport, "size", Vector2i(198, 267), makeBigTime)
-	size_tween.tween_property(card, "scale", Vector3(1.5, 1.5, 1.5), makeBigTime)
-	size_tween.tween_property(card.card_2d, "position", Vector2(0, 0), makeBigTime)
+	# Use helper to setup size tween
+	var size_animation = _setup_size_tween()
+	size_animation.tween_property(card.card_representation.mesh, "size", Vector2(0.55, 0.89),makeBigTime)
+	size_animation.tween_property(card.sub_viewport, "size", Vector2i(198, 267), makeBigTime)
+	size_animation.tween_property(card, "scale", Vector3(1.5, 1.5, 1.5), makeBigTime)
+	size_animation.tween_property(card.card_2d, "position", Vector2(0, 0), makeBigTime)
 	
 	# Connect to finished signal to execute cleanup after parallel animations complete
-	size_tween.finished.connect(func():
+	size_animation.finished.connect(func():
 		(card.collision_shape_3d.shape as BoxShape3D).size.y = 0.89
 		card.highlight_mesh.scale = Vector3(1.03, 1, 1.02)  # Back to normal scale
 	)
-	return tween
+	return size_animation
 
 func _animate_lift_and_scale(tween: Tween, _data: Dictionary) -> Tween:
 	"""Animate card lift upward and scale - for hover/highlight effects"""
@@ -414,7 +416,7 @@ func _animate_slide_to_position(tween: Tween, data: Dictionary) -> Tween:
 
 func draw_card(from_position: Vector3, draw_position: Vector3, final_position: Vector3, delay: float = 0.0, flip_card: bool = false) -> Tween:
 	"""Animate card being drawn from deck to hand through intermediate draw position"""
-	var tween = get_tween(true, 1)  # Normal priority
+	var tween = get_tween(true, 1, "draw_card")  # Normal priority
 	if tween:
 		return _animate_draw_card(tween, {
 			"from_position": from_position,
@@ -424,16 +426,11 @@ func draw_card(from_position: Vector3, draw_position: Vector3, final_position: V
 			"flip_card": flip_card
 		})
 	return null
-
-func turn_over() -> Tween:
-	"""Turn card over (flip animation)"""
-	var tween = get_tween(false)  # Non-blocking parallel animation
-	return _animate_turn_over(tween, {})
-
+	
 func _animate_turn_over(tween: Tween, _data: Dictionary) -> Tween:
 	"""Animate card flip over"""
 	tween.set_parallel()
-	tween.tween_property(card, "rotation_degrees:y", 180, 0.3)
+	tween.tween_property(card.card_representation, "rotation_degrees:y", 180, 0.3)
 	tween.tween_callback(func():
 		card.setFlip(not card.is_facedown)
 		card.rotation_degrees.y = 0
