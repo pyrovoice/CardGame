@@ -1,6 +1,0 @@
-Name:Search Goblin
-Types:Legend Spell 
-ManaCost:1
-
-CardText: Cast only if you control a Grown-up goblin
-Seek a random Goblin that has "Replace: Goblin" from your deck.

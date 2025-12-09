@@ -1,0 +1,6 @@
+Name:They grow up so fast
+Types:Legend Spell 
+ManaCost:1
+
+CardText: Cast only if you control a Punglynd Grown-up.
+Seek a random Punglynd that has "Replace: 1-cost" from your deck.

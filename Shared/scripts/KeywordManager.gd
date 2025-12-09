@@ -17,6 +17,10 @@ static func initialize_keywords():
 	keywords["Vigilance"] = "Vigilance is a key word with an effect"
 	keywords["Lifelink"] = "Lifelink is a key word with an effect"
 	keywords["Deathtouch"] = "Deathtouch is a key word with an effect"
+	keywords["Replace"] = "Play on top of another card to reduce my cost by the replaced card's cost."
+	keywords["Grown-up"] = "This creature is ready to be replaced! (no direct effect)"
+	keywords["Defensive"] = "This creature dies by receiving N additional damages than its might."
+	keywords["Offensive"] = "This creature deals N additional damages when attacking."
 
 static func get_keyword_text(keyword: String) -> String:
 	if keywords.has(keyword):

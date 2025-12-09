@@ -1,0 +1,4 @@
+Name:Punglynd Warcamp
+Types:Legendary Relic
+CardText:As additional cost to play me, sacrifice 3 Punglynd Grown-ups.  
+Once per turn, when you attack with 3 or more creature, draw a card and create a Punglynd Child token.

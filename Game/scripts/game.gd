@@ -462,23 +462,23 @@ func resolveCombatInZone(combatZone: CombatZone):
 		
 		var player_damage = player_card.getPower() if player_card else 0
 		var opponent_damage = opponent_card.getPower() if opponent_card else 0
-		
-		if player_card and opponent_card:
-			var player_strike = AnimationsManagerAL.animate_combat_strike_awaitable(player_card, opponent_card)
-			var opponent_strike = AnimationsManagerAL.animate_combat_strike_awaitable(opponent_card, player_card)
-			
-			if player_strike:
-				await player_strike.finished
-			if opponent_strike:
-				await opponent_strike.finished
-			
-			player_card.receiveDamage(opponent_damage)
-			opponent_card.receiveDamage(player_damage)
-		elif player_card and not opponent_card:
+		var player_strike
+		var opponent_strike
+		if player_card:
+			player_strike = player_card.getAnimator().animate_combat_strike(opponent_card)
+		if opponent_card:
+			opponent_strike = opponent_card.getAnimator().animate_combat_strike(player_card)
+		if player_card:
+			await player_strike.finished
+		if opponent_card:
+			await opponent_strike.finished
+		if player_card and not opponent_card:
 			_apply_damage_to_location(player_damage, true, combatZone)
-			
 		elif opponent_card and not player_card:
 			_apply_damage_to_location(opponent_damage, false, combatZone)
+		else:
+			player_card.receiveDamage(player_damage)
+			opponent_card.receiveDamage(player_damage)
 			
 	resolveStateBasedAction()
 

@@ -1,5 +1,5 @@
-Name:Unglingr
+Name:Punglynd Unglingr
 Types:Creature Punglynd
 ManaCost:0
 Power:0
-CardText:At the beginning of turn, I grow into an adult Punglynd.
+CardText:At the end of each turn, if I attacked this turn, I Grow-up.

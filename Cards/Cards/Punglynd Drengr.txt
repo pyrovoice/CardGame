@@ -1,0 +1,6 @@
+Name:Punglynd Drengr
+ManaCost:3
+Types:Creature Punglynd
+Power:3
+CardText:Replace 1-Cost. If the replaced creature was a Punglynd Grown-up, my cost is reduced by an additional 2.
+Offensive X, where X is the number of other creatures attacking with me.

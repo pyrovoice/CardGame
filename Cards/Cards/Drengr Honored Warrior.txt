@@ -1,4 +1,0 @@
-Name:Punglynd Drengr
-ManaCost:2
-Types:Creature Punglynd
-Power:2
