@@ -1,6 +1,10 @@
 - Improve extra deck cast:
+Fix code
+Add script for everything
+Do something that manipulates the graveyard
 	Make a Hand object and switch active hand between normal and extra for controlers and hightlights
 	Ensure the extra hand works correctly
 - Make battlefield not use specific spaces, but an array of null values filled with creatures when they move in and around, leaving possibility for empty spaces. Organize view depending on that array
 - Start adding some fucking gameplay
 - Fix goblin token being a card
+- Deck view with cards listed, how many are there of each and animation on refill

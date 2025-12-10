@@ -1,0 +1,4 @@
+Name:Unnatural Incubator
+ManaCost:1
+Types:Relic
+CardText:When I die, draw a card and gain 1 gold. If I was sacrificed for the summoning of a creature, exile me and when that creature dies, return me to base as a Bursting Incubator containing that creature.

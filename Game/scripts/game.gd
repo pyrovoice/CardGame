@@ -28,6 +28,7 @@ var game_data: GameData
 var doStartGame = true
 # Opponent AI system
 var opponent_ai: OpponentAI
+@onready var alternative_cast_choice: Control = $UI/AlternativeCastChoice
 
 # Admin console management
 @onready var admin_scene: AdminConsole = $UI/AdminScene
@@ -105,9 +106,13 @@ func onTurnStart(skipFirstTurn = false):
 	# Start a new turn (increases danger level via SignalInt)
 	if !skipFirstTurn:
 		await resolve_unresolved_combats()
+		# Trigger end of turn phase
+		trigger_phase("EndOfTurn")
 		game_data.start_new_turn()
-		reset_all_card_movement_tracking()
+		reset_all_card_turn_tracking()
 		game_data.reset_combat_resolution_flags()
+		# Trigger beginning of turn phase
+		trigger_phase("BeginningOfTurn")
 	await drawCard()
 	@warning_ignore("integer_division")
 	await drawCard(game_data.danger_level.getValue()/3, false)
@@ -186,15 +191,12 @@ func tryPlayCard(card: Card, target_location: Node3D, selection_data: Dictionary
 		if !card.cardData.playerControlled:
 			await get_tree().create_timer(0.5).timeout
 		
-		# Collect all required player selections upfront
+		# Collect all required player selections upfront (including casting choice)
 		if selection_data == {}:
 			selection_data = await _collectAllPlayerSelections(card)
 		
 		# If any selection was cancelled, abort the play
 		if selection_data.cancelled:
-			print("[CANCEL DEBUG] Selection cancelled, restoring card: ", card.cardData.cardName)
-			print("[CANCEL DEBUG] current_casting_card: ", current_casting_card)
-			print("[CANCEL DEBUG] casting_card_original_parent: ", casting_card_original_parent)
 			_restore_cancelled_card()
 			return
 		
@@ -324,8 +326,9 @@ func executeCardAttacks(card: Card, combat_spot: CombatantFightingSpot):
 	
 
 func moveCardToCombatZone(card: Card, zone: CombatantFightingSpot) -> bool:
-	# Mark card as moved and update tracking
+	# Mark card as moved and attacked this turn
 	card.cardData.mark_as_moved()
+	card.cardData.mark_as_attacked()
 	
 	# Let setCard handle the positioning and reparenting
 	zone.setCard(card)
@@ -418,9 +421,10 @@ func resolve_combat_for_zone(combat_zone: CombatZone):
 	game_data.set_combat_resolved(combat_zone, true)
 	playerControlLock.removeLock(lock)
 
-func reset_all_card_movement_tracking():
+func reset_all_card_turn_tracking():
+	"""Reset all turn-based tracking for all player cards (movement, attacks, etc.)"""
 	for card in _get_all_player_cards():
-		card.cardData.reset_movement_tracking()
+		card.cardData.reset_turn_tracking()
 
 func _get_all_player_cards() -> Array[Card]:
 	var all_cards: Array[Card] = []
@@ -459,26 +463,23 @@ func resolveCombatInZone(combatZone: CombatZone):
 	for slot_index in range(1, 4):
 		var player_card = combatZone.getCardSlot(slot_index, true).getCard()
 		var opponent_card = combatZone.getCardSlot(slot_index, false).getCard()
-		
+		if not player_card and not opponent_card:
+			return
 		var player_damage = player_card.getPower() if player_card else 0
 		var opponent_damage = opponent_card.getPower() if opponent_card else 0
 		var player_strike
 		var opponent_strike
-		if player_card:
+		if player_card and opponent_card:
 			player_strike = player_card.getAnimator().animate_combat_strike(opponent_card)
-		if opponent_card:
 			opponent_strike = opponent_card.getAnimator().animate_combat_strike(player_card)
-		if player_card:
 			await player_strike.finished
-		if opponent_card:
 			await opponent_strike.finished
+			player_card.receiveDamage(opponent_damage)
+			opponent_card.receiveDamage(player_damage)
 		if player_card and not opponent_card:
 			_apply_damage_to_location(player_damage, true, combatZone)
 		elif opponent_card and not player_card:
 			_apply_damage_to_location(opponent_damage, false, combatZone)
-		else:
-			player_card.receiveDamage(player_damage)
-			opponent_card.receiveDamage(player_damage)
 			
 	resolveStateBasedAction()
 
@@ -524,7 +525,7 @@ func resolveStateBasedAction():
 		var damage = c.getDamage()
 		var power = c.getPower()
 		
-		if damage >= power:
+		if damage > 0 && damage >= power:
 			putInOwnerGraveyard(c)
 	if game_data.player_life.getValue() <= 0:
 		get_tree().change_scene_to_file("res://MainMenu/scenes/MainMenu.tscn")
@@ -839,10 +840,53 @@ func _collectAllPlayerSelections(card: Card) -> Dictionary:
 	var selection_data = {
 		"additional_cost_selections": [] as Array[Card],
 		"spell_targets": [] as Array[Card],
+		"casting_choice": "normal", # "normal" or "replace"
+		"replace_target": null, # Selected replacement card if Replace chosen
 		"cancelled": false
 	}
 	
-	# Step 1: Check for additional costs that require selection
+	# Step 1: Check for alternative casting options (Replace)
+	var has_replace = CardPaymentManagerAL.hasReplaceOption(card)
+	if has_replace:
+		print("🎯 [CASTING CHOICE] Card ", card.cardData.cardName, " has Replace option available!")
+		
+		# Get valid replacement targets for selection
+		var replace_cost_data = null
+		for cost_data in card.cardData.additionalCosts:
+			if cost_data.get("cost_type", "") == "Replace":
+				replace_cost_data = cost_data
+				break
+		
+		if replace_cost_data:
+			var valid_targets = CardPaymentManagerAL.getValidReplaceTargets(card, replace_cost_data)
+			if valid_targets.size() > 0:
+				# TODO: Show CastChoice.tscn UI here - for now use selection manager
+				var requirement = {
+					"valid_card": "Any", # Already filtered
+					"count": 1,
+					"optional": true # Player can choose nothing to cast normally
+				}
+				
+				var selected_replace_target = await start_card_selection(
+					requirement, 
+					valid_targets, 
+					"replace_for_" + card.cardData.cardName, 
+					card
+				)
+				
+				if selected_replace_target == null:
+					selection_data.cancelled = true
+					return selection_data
+				elif selected_replace_target.size() > 0:
+					selection_data.casting_choice = "replace"
+					selection_data.replace_target = selected_replace_target[0]
+					print("🎯 [CASTING CHOICE] Player chose Replace with: ", selected_replace_target[0].cardData.cardName)
+				else:
+					print("🎯 [CASTING CHOICE] Player chose normal casting")
+		else:
+			print("🎯 [CASTING CHOICE] Card ", card.cardData.cardName, " has no alternative casting options")
+	
+	# Step 2: Check for additional costs that require selection
 	if card.cardData.hasAdditionalCosts():
 		var additional_costs = card.cardData.getAdditionalCosts()
 		if _requiresPlayerSelection(additional_costs):
@@ -852,7 +896,7 @@ func _collectAllPlayerSelections(card: Card) -> Dictionary:
 				return selection_data
 			selection_data.additional_cost_selections = selected_cards
 	
-	# Step 2: Check if spell requires targeting
+	# Step 3: Check if spell requires targeting
 	if card.cardData.hasType(CardData.CardType.SPELL):
 		var spell_targets = await _getSpellTargetsIfRequired(card)
 		if spell_targets == null:  # null means selection was cancelled
@@ -935,6 +979,17 @@ func tryPayAndSelectsForCardPlay(card: Card, source_zone: GameZone.e, target_loc
 	
 	# Pay costs first
 	var additional_cost_cards: Array[Card] = selection_data.additional_cost_selections
+	
+	# Handle Replace casting choice
+	if selection_data.get("casting_choice", "normal") == "replace":
+		var replace_target = selection_data.get("replace_target", null)
+		if replace_target and is_instance_valid(replace_target):
+			print("💰 [REPLACE PAYMENT] Using Replace - sacrificing: ", replace_target.cardData.cardName)
+			# Add the replacement target to the sacrifice list
+			additional_cost_cards.append(replace_target)
+		else:
+			print("❌ Replace target is invalid")
+			return
 	
 	# Validate additional cost cards are still valid before payment
 	var valid_additional_cards: Array[Card] = []
@@ -1021,3 +1076,9 @@ func exchange_card_in_spots(from: CombatantFightingSpot, to: CombatantFightingSp
 		from.setCard(to.getCard())
 	if fromCard:
 		to.setCard(fromCard)
+
+func trigger_phase(phase_name: String):
+	"""Trigger all phase-based abilities for a specific phase"""
+	var phase_action = GameAction.new(TriggerType.Type.PHASE)
+	phase_action.additional_data = {"phase": phase_name}
+	AbilityManagerAL.triggerGameAction(self, phase_action)

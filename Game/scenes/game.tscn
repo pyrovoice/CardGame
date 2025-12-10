@@ -1,4 +1,4 @@
-[gd_scene load_steps=19 format=3 uid="uid://bkqg746td2asx"]
+[gd_scene load_steps=20 format=3 uid="uid://bkqg746td2asx"]
 
 [ext_resource type="Script" uid="uid://dsb1ch8a7q1og" path="res://Game/scripts/game.gd" id="1_7475e"]
 [ext_resource type="PackedScene" uid="uid://dnt4p0i1i5qk1" path="res://Game/scenes/Deck.tscn" id="1_ds5t7"]
@@ -11,6 +11,7 @@
 [ext_resource type="PackedScene" uid="uid://dq0b45a6txn6s" path="res://Game/scenes/extra_deck.tscn" id="10_5jp4b"]
 [ext_resource type="PackedScene" uid="uid://cmkvxbcovv25x" path="res://Game/scenes/SelectionUI.tscn" id="10_nijrt"]
 [ext_resource type="PackedScene" uid="uid://c5pxc4w4crh11" path="res://Game/scenes/AdminConsole.tscn" id="11_4d8k0"]
+[ext_resource type="PackedScene" uid="uid://yr6d1yj2coaa" path="res://Game/scenes/CastChoice.tscn" id="12_e287m"]
 [ext_resource type="Script" uid="uid://djvgmgqknsvcs" path="res://Game/scripts/GameUI.gd" id="12_gameui"]
 [ext_resource type="Script" uid="uid://dhq14u8nrm6wt" path="res://Game/scripts/SelectionManager.gd" id="12_w5dfm"]
 [ext_resource type="PackedScene" uid="uid://b23h2nqcsg3ha" path="res://Game/scenes/card_hand.tscn" id="15_0qpk8"]
@@ -209,6 +210,10 @@ text = "Admin
 visible = false
 layout_mode = 1
 game = NodePath("../..")
+
+[node name="AlternativeCastChoice" parent="UI" instance=ExtResource("12_e287m")]
+visible = false
+layout_mode = 1
 
 [node name="extraDeck" parent="." instance=ExtResource("10_5jp4b")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4.036, 0, 2.04433)

@@ -1,0 +1,5 @@
+Name:Unnatural Incubator
+ManaCost:0
+Types:Relic
+CardText:Dustaway
+Countdown 3: Put the incubated card into play.

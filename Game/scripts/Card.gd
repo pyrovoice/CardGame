@@ -51,6 +51,8 @@ func setData(_cardData):
 	cardData = _cardData
 	objectID = getNextID()
 	card_2d.set_card(cardData)
+	# Connect to CardData signal to update display when data changes
+	cardData.dirty_data.connect(_on_card_data_changed)
 	updateDisplay()
 	
 func updateDisplay():
@@ -76,6 +78,9 @@ func getDamage():
 	
 func receiveDamage(v: int):
 	damage += v
+	# Emit dirty_data signal since damage affects display
+	if cardData:
+		cardData.dirty_data.emit()
 	updateDisplay()
 	
 	# Find the Game node and resolve state-based actions
@@ -96,6 +101,11 @@ func highlight(_enabled: bool):
 	"""Enable or disable the hover highlight effect - DISABLED: using different hover system"""
 	# No longer using outline highlights for hover
 	pass
+
+func _on_card_data_changed():
+	"""Called when CardData types or subtypes change"""
+	if card_2d:
+		card_2d.update_display()
 
 func update_highlight_display():
 	"""Update the visual highlight based on selection states only"""

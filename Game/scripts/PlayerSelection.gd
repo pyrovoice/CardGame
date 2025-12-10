@@ -56,30 +56,3 @@ func get_requirement_description() -> String:
 			return "Target " + str(count) + " " + card_filter
 		_:
 			return "Choose " + str(count) + " " + card_filter
-
-# Check if a specific card meets the requirement filter
-static func card_matches_filter(card: Card, filter: String, casting_player_controlled: bool = true) -> bool:
-	if filter == "Any":
-		return true
-	
-	# Parse filter like "Card.YouCtrl+Goblin"
-	var conditions = filter.split("+")
-	
-	for condition in conditions:
-		condition = condition.strip_edges()
-		
-		if condition == "Card.YouCtrl":
-			# Check if card is controlled by the same player who is casting
-			if card.cardData.playerControlled != casting_player_controlled:
-				return false
-		elif condition == "Goblin":
-			# Check if card has Goblin subtype
-			if not card.cardData.subtypes.has("Goblin"):
-				return false
-		elif condition == "Creature":
-			# Check if card is a creature
-			if not card.cardData.hasType(CardData.CardType.CREATURE):
-				return false
-		# Add more filter conditions as needed
-	
-	return true

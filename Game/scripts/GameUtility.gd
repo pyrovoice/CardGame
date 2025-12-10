@@ -103,8 +103,13 @@ static func _calculate_game_popup_position(game: Game) -> Vector2:
 
 static func _card_matches_requirement(card: Card, requirement: Dictionary) -> bool:
 	var valid_card_filter = requirement.get("valid_card", "Any")
-	var player_selection_script = load("res://Game/scripts/PlayerSelection.gd")
-	return player_selection_script.card_matches_filter(card, valid_card_filter)
+	if valid_card_filter == "Any":
+		return true
+	
+	# Use the universal filtering method from CardPaymentManager
+	var cards_to_filter = [card]
+	var filtered_cards = CardPaymentManagerAL.filterCardsByParameters(cards_to_filter, valid_card_filter, CardPaymentManagerAL.current_game)
+	return filtered_cards.size() > 0
 
 static func _requiresPlayerSelection(additional_costs: Array[Dictionary]) -> bool:
 	"""Check if any additional costs require player selection (like sacrifice)"""

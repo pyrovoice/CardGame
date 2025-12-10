@@ -6,7 +6,8 @@ enum Type {
 	CARD_DRAWN,
 	CARD_PLAYED,  # Card played from hand
 	CARD_ENTERS,  # Card entering the battlefield (played from hand or created by effects)
-	CARD_ATTACKS  # Card moving from PlayerBase to CombatLocation
+	CARD_ATTACKS,  # Card moving from PlayerBase to CombatLocation
+	PHASE  # Phase-based triggers (beginning of turn, combat, end of turn)
 }
 
 # Convert trigger type enum to string representation
@@ -20,6 +21,8 @@ static func type_to_string(trigger_type: Type) -> String:
 			return "CardEnters"
 		Type.CARD_ATTACKS:
 			return "StartAttack"
+		Type.PHASE:
+			return "Phase"
 		_:
 			return "UNKNOWN"
 
@@ -34,7 +37,11 @@ static func string_to_type(trigger_string: String) -> Type:
 			return Type.CARD_ENTERS
 		"StartAttack":
 			return Type.CARD_ATTACKS
+		"Phase":
+			return Type.PHASE
 		# Support old format for backwards compatibility
+		"ChangesZone":
+			return Type.CARD_ENTERS  # Legacy mapping
 		"CARD_DRAWN":
 			return Type.CARD_DRAWN
 		"CARD_PLAYED":
@@ -49,7 +56,7 @@ static func string_to_type(trigger_string: String) -> Type:
 
 # Get all available trigger type strings (in card file format)
 static func get_all_strings() -> Array[String]:
-	return ["CardDraw", "CardPlayed", "CardEnters", "StartAttack"]
+	return ["CardDraw", "CardPlayed", "CardEnters", "StartAttack", "Phase"]
 
 # Check if a trigger type represents a card entering the battlefield
 static func is_battlefield_entry(trigger_type: Type) -> bool:
@@ -66,3 +73,7 @@ static func is_card_attacks(trigger_type: Type) -> bool:
 # Check if a trigger type represents a card being drawn
 static func is_card_drawn(trigger_type: Type) -> bool:
 	return trigger_type == Type.CARD_DRAWN
+
+# Check if a trigger type represents a phase trigger
+static func is_phase_trigger(trigger_type: Type) -> bool:
+	return trigger_type == Type.PHASE

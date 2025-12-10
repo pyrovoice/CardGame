@@ -50,14 +50,10 @@ func parse_card_data(card_text: String) -> CardData:
 		# Parse all types (can have multiple types like "Boss Creature")
 		for i in range(type_parts.size()):
 			var type_part = type_parts[i].strip_edges()
-			if "Creature" in type_part:
-				card_data.addType(CardData.CardType.CREATURE)
-			elif "Spell" in type_part:
-				card_data.addType(CardData.CardType.SPELL)
-			elif "Permanent" in type_part:
-				card_data.addType(CardData.CardType.PERMANENT)
-			elif "Boss" in type_part:
-				card_data.addType(CardData.CardType.BOSS)
+			if CardData.isValidCardTypeString(type_part):
+				# Use centralized conversion method
+				var card_type = CardData.stringToCardType(type_part)
+				card_data.addType(card_type)
 			else:
 				# If it's not a main type, treat it as a subtype
 				if type_part != "" and card_data.subtypes.size() < 3:
@@ -156,7 +152,7 @@ func parse_abilities(properties: Dictionary) -> Array[Dictionary]:
 func parse_triggered_ability(trigger_text: String, svar_effects: Dictionary) -> Dictionary:
 	var ability_data = {
 		"type": "TriggeredAbility",
-		"trigger_type": "CHANGES_ZONE",  # Default
+		"trigger_type": TriggerType.Type.CARD_ENTERS,  # Store enum value, not string
 		"trigger_conditions": {},
 		"effect_name": "",
 		"effect_parameters": {},
@@ -170,20 +166,8 @@ func parse_triggered_ability(trigger_text: String, svar_effects: Dictionary) -> 
 		part = part.strip_edges()
 		if part.begins_with("Mode$"):
 			var mode = part.substr(6)  # Remove "Mode$ "
-			# Use TriggerType enum for consistent mapping
-			ability_data.trigger_type = mode  # Store the original string
-			# Map mode to trigger type using TriggerType enum
-			match mode:
-				"ChangesZone":
-					ability_data.trigger_type = "CardEnters"  # Map old ChangesZone to CardEnters
-				"CardPlayed":
-					ability_data.trigger_type = "CardPlayed"
-				"CardEnters":
-					ability_data.trigger_type = "CardEnters"
-				"StartAttack":
-					ability_data.trigger_type = "StartAttack"
-				"CardDraw":
-					ability_data.trigger_type = "CardDraw"
+			# Convert string to enum immediately during parsing using centralized method
+			ability_data.trigger_type = TriggerType.string_to_type(mode)
 		elif part.begins_with("Origin$"):
 			ability_data.trigger_conditions["Origin"] = part.substr(8)
 		elif part.begins_with("Destination$"):
@@ -194,6 +178,10 @@ func parse_triggered_ability(trigger_text: String, svar_effects: Dictionary) -> 
 			ability_data.trigger_conditions["ValidActivatingPlayer"] = part.substr(23)
 		elif part.begins_with("TriggerZones$"):
 			ability_data.trigger_conditions["TriggerZones"] = part.substr(14)
+		elif part.begins_with("Phase$"):
+			ability_data.trigger_conditions["Phase"] = part.substr(7)
+		elif part.begins_with("Condition$"):
+			ability_data.trigger_conditions["Condition"] = part.substr(11)
 		elif part.begins_with("Execute$"):
 			ability_data.effect_name = part.substr(9)
 		elif part.begins_with("TriggerDescription$"):
@@ -264,6 +252,12 @@ func parse_effect_parameters(effect_text: String) -> Dictionary:
 			parameters["Type"] = part.substr(6)
 		elif part.begins_with("Amount$"):
 			parameters["Amount"] = part.substr(8)
+		elif part.begins_with("Target$"):
+			parameters["Target"] = part.substr(8)
+		elif part.begins_with("Types$"):
+			parameters["Types"] = part.substr(7)
+		elif part.begins_with("Duration$"):
+			parameters["Duration"] = part.substr(10)
 		# Add more parameter parsing as needed
 	
 	return parameters
@@ -290,19 +284,22 @@ func parse_single_additional_cost(cost_text: String) -> Dictionary:
 	for part in parts:
 		part = part.strip_edges()
 		
-		# Check for exact match first
-		if part == "SacrificePermanent":
+		# Cost types
+		if part == "SacrificePermanent" or part == "$ SacrificePermanent":
 			cost_data["cost_type"] = "SacrificePermanent"
-		elif part == "$ SacrificePermanent":
-			cost_data["cost_type"] = "SacrificePermanent"
-		elif part.begins_with("SacrificePermanent"):
-			cost_data["cost_type"] = "SacrificePermanent"
+		elif part == "Replace" or part == "$ Replace":
+			cost_data["cost_type"] = "Replace"
+		# Parameters
 		elif part.begins_with("ValidCard$"):
 			cost_data["valid_card"] = part.substr(11)
+		elif part.begins_with("ValidCardAlt$"):
+			cost_data["valid_card_alt"] = part.substr(14)
 		elif part.begins_with("Count "):
 			cost_data["count"] = int(part.substr(6))
 		elif part.begins_with("MinCount "):
 			cost_data["min_count"] = int(part.substr(9))
+		elif part.begins_with("AddReduction "):
+			cost_data["add_reduction"] = int(part.substr(13))
 		# Add more cost types as needed (PayLife, DiscardCard, etc.)
 	
 	return cost_data
@@ -336,7 +333,7 @@ func load_card_from_file(file_path: String) -> CardData:
 	if card_data and card_data.cardName:
 		card_data.cardArt = load_card_art(card_data.cardName)
 	
-	if card_data.hasType(CardData.CardType.BOSS):
+	if card_data.hasType(CardData.CardType.LEGENDARY):
 		extraDeckCardData.push_back(card_data)
 	else:
 		cardData.push_back(card_data)

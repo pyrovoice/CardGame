@@ -76,6 +76,76 @@ func execute_draw_card(parameters: Dictionary, source_card: Card, game_context: 
 	for i in range(cards_to_draw):
 		game_context.drawCard()
 
+func execute_add_type(parameters: Dictionary, source_card: Card, game_context: Game):
+	"""Execute AddType effect - add types/subtypes to target cards"""
+	
+	# Parse target - defaults to Self
+	var target_param = parameters.get("Target", "Self")
+	var target_cards: Array[Card] = []
+	
+	match target_param:
+		"Self":
+			target_cards = [source_card]
+		_:
+			print("❌ Unsupported AddType target: ", target_param)
+			return
+	
+	# Parse types to add
+	var types_to_add = parameters.get("Types", "")
+	if types_to_add.is_empty():
+		print("❌ No types specified for AddType effect")
+		return
+	
+	# Parse duration
+	var duration = parameters.get("Duration", "Permanent")
+	
+	# Add the types to each target card
+	for target_card in target_cards:
+		add_type_to_card(target_card, types_to_add, duration, game_context)
+
+func add_type_to_card(target_card: Card, types_string: String, duration: String, game_context: Game):
+	"""Add types/subtypes to a card with specified duration"""
+	
+	# Split types by space if multiple types specified
+	var type_parts = types_string.split(" ")
+	
+	for type_part in type_parts:
+		type_part = type_part.strip_edges()
+		if type_part.is_empty():
+			continue
+		
+		# Check if it's a main card type or subtype
+		if CardData.isValidCardTypeString(type_part):
+			# It's a main card type - use CardData's addType method
+			var card_type = CardData.stringToCardType(type_part)
+			target_card.cardData.addType(card_type)
+			print("✨ Added type ", type_part, " to ", target_card.cardData.cardName)
+		else:
+			# It's a subtype - use CardData's addSubtype method
+			target_card.cardData.addSubtype(type_part)
+			print("✨ Added subtype ", type_part, " to ", target_card.cardData.cardName)
+		
+		# Handle duration-based removal
+		match duration:
+			"Permanent":
+				# Nothing to do - changes are permanent
+				pass
+			"EndOfTurn":
+				# Schedule removal at end of turn
+				schedule_type_removal(target_card, type_part, "EndOfTurn", game_context)
+			"WhileInPlay":
+				# Schedule removal when card leaves play
+				schedule_type_removal(target_card, type_part, "WhileInPlay", game_context)
+			_:
+				print("❌ Unsupported AddType duration: ", duration)
+
+func schedule_type_removal(target_card: Card, type_to_remove: String, duration: String, game_context: Game):
+	"""Schedule type removal based on duration"""
+	# TODO: Implement duration-based type removal system
+	# This would require a more sophisticated effect tracking system
+	print("⏰ Scheduled removal of ", type_to_remove, " from ", target_card.cardData.cardName, " at ", duration)
+	print("  (Duration-based removal not yet implemented)")
+
 func onEffectTrigger(effect_context: Dictionary, game_context: Game) -> Dictionary:
 	"""Check for replacement effects that modify the given effect"""
 	var modified_context = effect_context.duplicate()
@@ -274,7 +344,7 @@ func isCorrectTriggerLocation(triggeringObject: Card, current_zone: GameZone.e):
 func getTriggeredAbilities(cards: Array[Card], action: GameAction) -> Array:
 	"""Return an array of {card: Card, ability: Dictionary} pairs for abilities that should trigger"""
 	var triggeredAbilities = []
-	var triggerType = action.get_trigger_type_string()  # Use GameAction's trigger type
+	var actionTriggerType = action.trigger_type  # Use enum value directly
 	
 	for triggeringObject in cards:
 		# Check if the card has any triggered abilities
@@ -286,11 +356,11 @@ func getTriggeredAbilities(cards: Array[Card], action: GameAction) -> Array:
 				continue
 			
 			# Check if this ability's trigger type matches the current trigger
-			var ability_trigger_type = ability.get("trigger_type", "")
+			var ability_trigger_type = ability.get("trigger_type", TriggerType.Type.CARD_ENTERS)
 			
-			if ability_trigger_type == triggerType:
+			if ability_trigger_type == actionTriggerType:
 				# Additional validation for specific trigger types
-				if triggerType == "CardEnters":
+				if actionTriggerType == TriggerType.Type.CARD_ENTERS:
 					# Check Origin and Destination conditions for card enters
 					var origin_condition = ability.get("trigger_conditions", {}).get("Origin", "Any")
 					var destination_condition = ability.get("trigger_conditions", {}).get("Destination", "Any")
@@ -303,7 +373,7 @@ func getTriggeredAbilities(cards: Array[Card], action: GameAction) -> Array:
 					if not _isZoneConditionMet(destination_condition, action.to_zone):
 						continue
 				
-				elif triggerType == "CardPlayed":
+				elif actionTriggerType == TriggerType.Type.CARD_PLAYED:
 					# Check if there's a specific Origin condition
 					var origin_condition = ability.get("trigger_conditions", {}).get("Origin", "Any")
 					if not _isZoneConditionMet(origin_condition, action.from_zone):
@@ -311,6 +381,18 @@ func getTriggeredAbilities(cards: Array[Card], action: GameAction) -> Array:
 					
 					# Validate destination is battlefield (where cards are "played" to)
 					if not action.is_battlefield_entry():
+						continue
+				
+				elif actionTriggerType == TriggerType.Type.PHASE:
+					# Check if the phase matches the specified phase condition
+					var phase_condition = ability.get("trigger_conditions", {}).get("Phase", "")
+					var action_phase = action.additional_data.get("phase", "")
+					
+					# Normalize phase names for comparison
+					var normalized_condition = phase_condition.replace(" ", "").replace("of", "").replace("Of", "")
+					var normalized_action = action_phase.replace(" ", "").replace("of", "").replace("Of", "")
+					
+					if phase_condition.is_empty() or normalized_condition != normalized_action:
 						continue
 				
 				# Check ValidCard condition
@@ -327,6 +409,12 @@ func getTriggeredAbilities(cards: Array[Card], action: GameAction) -> Array:
 				elif valid_player_condition == "Opponent":
 					# Skip for now since we don't have opponent actions
 					continue
+				
+				# Check additional trigger condition
+				var trigger_condition = ability.get("trigger_conditions", {}).get("Condition", "")
+				if not trigger_condition.is_empty():
+					if not evaluateCondition(trigger_condition, triggeringObject, action):
+						continue
 				
 				# If we get here, the ability should trigger
 				triggeredAbilities.append({"card": triggeringObject, "ability": ability})
@@ -345,6 +433,9 @@ func executeAbility(triggeringCard: Card, ability: Dictionary, game_context: Gam
 		"TrigDraw", "Draw":
 			# Call the existing draw card logic
 			execute_draw_card(effect_parameters, triggeringCard, game_context)
+		"TrigGrowup":
+			# Call the add type logic
+			execute_add_type(effect_parameters, triggeringCard, game_context)
 		_:
 			print("❌ Unknown effect: ", effect_name)
 
@@ -448,5 +539,50 @@ func isValidCardCondition(condition: String, triggerSource: Card, abilityOwner: 
 		# Check if it's a subtype condition (e.g., "Goblin")
 		if triggerSource.cardData and triggerSource.cardData.subtypes:
 			return condition in triggerSource.cardData.subtypes
+	
+	return false
+
+func evaluateCondition(condition: String, triggeringCard: Card, action: GameAction) -> bool:
+	"""Evaluate trigger conditions like Self.Attacked+ThisTurn"""
+	# Parse condition format: Target.Property+Timing
+	# Example: Self.Attacked+ThisTurn
+	
+	var condition_parts = condition.split(".")
+	if condition_parts.size() != 2:
+		push_warning("Invalid condition format: " + condition)
+		return false
+	
+	var target = condition_parts[0]
+	var property_and_timing = condition_parts[1]
+	
+	# Split property and timing by +
+	var property_parts = property_and_timing.split("+")
+	if property_parts.size() != 2:
+		push_warning("Invalid condition property format: " + property_and_timing)
+		return false
+	
+	var property = property_parts[0]
+	var timing = property_parts[1]
+	
+	# Resolve the target card
+	var target_card: Card = null
+	match target:
+		"Self":
+			target_card = triggeringCard
+		_:
+			push_warning("Unsupported condition target: " + target)
+			return false
+	
+	# Check the property with timing
+	match property:
+		"Attacked":
+			if timing == "ThisTurn":
+				return target_card.cardData.hasAttackedThisTurn
+			else:
+				push_warning("Unsupported timing for Attacked: " + timing)
+				return false
+		_:
+			push_warning("Unsupported condition property: " + property)
+			return false
 	
 	return false

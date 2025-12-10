@@ -1,0 +1,19 @@
+[gd_scene load_steps=2 format=3 uid="uid://yr6d1yj2coaa"]
+
+[ext_resource type="PackedScene" uid="uid://d3lfyqqnp8p75" path="res://Shared/scenes/Card2D.tscn" id="1_io562"]
+
+[node name="Control" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Option1" parent="." instance=ExtResource("1_io562")]
+layout_mode = 0
+
+[node name="Option2" parent="." instance=ExtResource("1_io562")]
+layout_mode = 0
+offset_left = 228.0
+offset_right = 426.0

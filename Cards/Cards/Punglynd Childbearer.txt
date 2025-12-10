@@ -4,6 +4,6 @@ Types:Creature Punglynd
 Power:2
 T:Mode$ CardEnters | Origin$ Any | Destination$ Battlefield | ValidCard$ Card.Self | Execute$ TrigToken | TriggerDescription$ When CARDNAME enters, create a 1 power Goblin creature token at the same location.
 T:Mode$ StartAttack | ValidCard$ Card.Self | Execute$ TrigToken | TriggerDescription$ When CARDNAME attacks, create a 1 power Goblin creature token at base.
-SVar:TrigToken:DB$ Token | TokenScript$ goblin
+SVar:TrigToken:DB$ Token | TokenScript$ Punglynd Child
 CardText: Replace 1-Cost. If the replaced creature was a Punglynd Grown-up, my cost is reduced by an additional 2.
 Whenever CARDNAME enters or attack, a Punglynd Unglingr is born.

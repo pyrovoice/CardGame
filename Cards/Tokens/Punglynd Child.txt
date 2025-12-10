@@ -1,6 +1,6 @@
 Name:Punglynd Child
 Types:Creature Punglynd
-ManaCost:0
+ManaCost:1
 Power:0
 T:Mode$ Phase | Phase$ End of Turn | Execute$ TrigGrowup | TriggerZones$ Battlefield | Condition$ Self.Attacked+ThisTurn
 SVar:TrigGrowup:DB$ AddType | Target$ Self | Types$ Grown-up | Duration$ Permanent

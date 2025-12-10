@@ -1,7 +1,10 @@
 class_name CardData extends Resource
 
+# Signal emitted when card data changes (types, subtypes, damage, etc.)
+signal dirty_data
+
 # Define the card types
-enum CardType { CREATURE, SPELL, PERMANENT, BOSS, TOKEN }
+enum CardType { CREATURE, SPELL, RELIC, LEGENDARY, TOKEN }
 	
 var cardName: String
 var goldCost: int
@@ -22,6 +25,8 @@ var playerOwned: bool       # Whether this card is owned by the player
 
 # Movement tracking
 var hasMoved: bool = false  # Track if the card has moved this turn
+# Attack tracking
+var hasAttackedThisTurn: bool = false  # Track if the card attacked this turn
 
 	
 func describe() -> String:
@@ -52,12 +57,40 @@ func describe() -> String:
 	
 func getTypeAsString(card_type: CardType) -> String:
 	"""Convert a single CardType enum to string"""
+	return CardData.cardTypeToString(card_type)
+
+# Static utility methods for CardType conversions
+static func cardTypeToString(card_type: CardType) -> String:
+	"""Convert a CardType enum to string - centralized conversion"""
 	match card_type:
 		CardType.CREATURE: return "Creature"
 		CardType.SPELL: return "Spell"
-		CardType.PERMANENT: return "Permanent"
-		CardType.BOSS: return "Boss"
-	return "TYPE"
+		CardType.RELIC: return "Relic"
+		CardType.LEGENDARY: return "Legendary"
+		CardType.TOKEN: return "Token"
+	return "Unknown"
+
+static func stringToCardType(type_string: String) -> CardType:
+	"""Convert a string to CardType enum - centralized conversion"""
+	match type_string.strip_edges():
+		"Creature": return CardType.CREATURE
+		"Spell": return CardType.SPELL
+		"Relic": return CardType.RELIC
+		"Legendary": return CardType.LEGENDARY
+		"Token": return CardType.TOKEN
+	push_error("Unknown card type string: " + type_string)
+	return CardType.CREATURE  # Default fallback
+
+static func isValidCardTypeString(type_string: String) -> bool:
+	"""Check if a string represents a valid card type"""
+	match type_string.strip_edges():
+		"Creature", "Spell", "Relic", "Legendary", "Token":
+			return true
+	return false
+
+static func getAllCardTypeStrings() -> Array[String]:
+	"""Get all valid card type strings for validation/UI purposes"""
+	return ["Creature", "Spell", "Relic", "Legendary", "Token"]
 
 func getTypesAsString() -> String:
 	"""Get all types as a space-separated string"""
@@ -94,30 +127,19 @@ func addType(card_type: CardType):
 	"""Add a type to this card if it doesn't already have it"""
 	if card_type not in types:
 		types.append(card_type)
+		dirty_data.emit()
+
+func addSubtype(subtype: String):
+	"""Add a subtype to this card if it doesn't already have it"""
+	if subtype not in subtypes:
+		subtypes.append(subtype)
+		dirty_data.emit()
 
 func removeType(card_type: CardType):
 	"""Remove a type from this card"""
-	types.erase(card_type)
-
-func isBossCreature() -> bool:
-	"""Check if this card is both a Boss and a Creature"""
-	return hasType(CardType.BOSS) and hasType(CardType.CREATURE)
-
-func isSpell() -> bool:
-	"""Check if this card is a Spell"""
-	return hasType(CardType.SPELL)
-
-func isCreature() -> bool:
-	"""Check if this card is a Creature"""
-	return hasType(CardType.CREATURE)
-
-func isPermanent() -> bool:
-	"""Check if this card is a Permanent"""
-	return hasType(CardType.PERMANENT)
-
-func isBoss() -> bool:
-	"""Check if this card is a Boss"""
-	return hasType(CardType.BOSS)
+	if card_type in types:
+		types.erase(card_type)
+		dirty_data.emit()
 
 func hasAdditionalCosts() -> bool:
 	"""Check if this card has any additional costs beyond gold"""
@@ -176,7 +198,7 @@ func _formatValidCardDescription(valid_card: String) -> String:
 	
 	return result
 
-# Movement tracking methods
+# Movement and attack tracking methods
 func reset_movement_tracking():
 	"""Reset movement tracking at the start of turn"""
 	hasMoved = false
@@ -184,3 +206,16 @@ func reset_movement_tracking():
 func mark_as_moved():
 	"""Mark this card as having moved this turn"""
 	hasMoved = true
+
+func reset_attack_tracking():
+	"""Reset attack tracking at the start of turn"""
+	hasAttackedThisTurn = false
+
+func mark_as_attacked():
+	"""Mark this card as having attacked this turn"""
+	hasAttackedThisTurn = true
+
+func reset_turn_tracking():
+	"""Reset all turn-based tracking (movement, attacks, etc.) at start of turn"""
+	reset_movement_tracking()
+	reset_attack_tracking()

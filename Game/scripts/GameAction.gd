@@ -8,7 +8,7 @@ var from_zone: GameZone.e
 var to_zone: GameZone.e
 var additional_data: Dictionary = {}  # For any extra context needed
 
-func _init(type: int, source: Card, from: GameZone.e = GameZone.e.HAND, to: GameZone.e = GameZone.e.HAND, data: Dictionary = {}):
+func _init(type: int, source: Card = null, from: GameZone.e = GameZone.e.HAND, to: GameZone.e = GameZone.e.HAND, data: Dictionary = {}):
 	trigger_type = type
 	trigger_source = source
 	from_zone = from

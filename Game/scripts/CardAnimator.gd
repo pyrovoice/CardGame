@@ -26,7 +26,7 @@ enum AnimationState {
 
 
 # Global animation speed multiplier - 1.0 is normal speed, 2.0 is double speed, 0.5 is half speed
-const ANIMATION_SPEED: float = 1.0
+static var ANIMATION_SPEED: float = 1.0
 func _ready():
 	card = get_parent() as Card
 	name = "CardAnimator"
@@ -273,7 +273,10 @@ func _animate_combat_strike(tween: Tween, data: Dictionary) -> Tween:
 	var duration = data.get("duration", 0.3)
 	var return_duration = data.get("return_duration", 0.2)
 	
+	print("🎯 Starting combat strike animation from ", card.getName(), " to ", (target_card.getName() if target_card else "null"))
+	
 	if not target_card:
+		print("❌ No target card for combat strike animation")
 		return tween
 	
 	# Store original position
@@ -282,7 +285,9 @@ func _animate_combat_strike(tween: Tween, data: Dictionary) -> Tween:
 	# Calculate strike position
 	var target_position = target_card.global_position
 	var direction = (target_position - original_position).normalized()
-	var strike_position = original_position + direction * 0.5
+	var strike_position = original_position + direction * 50  # Move 50 pixels toward target
+	
+	print("📍 Strike positions: Original=", original_position, " Target=", target_position, " Strike=", strike_position)
 	
 	# Configure tween for strike
 	tween.set_ease(Tween.EASE_OUT)
@@ -298,6 +303,10 @@ func _animate_combat_strike(tween: Tween, data: Dictionary) -> Tween:
 	tween.set_ease(Tween.EASE_IN)
 	tween.set_trans(Tween.TRANS_QUART)
 	tween.tween_property(card, "global_position", original_position, return_duration)
+	
+	print("✅ Combat strike tween configured - total duration: ", (duration + 0.1 + return_duration))
+	
+	return tween
 	
 	return tween
 
@@ -473,6 +482,7 @@ func _animate_draw_card(tween: Tween, data: Dictionary) -> Tween:
 func _perform_flip_animation():
 	"""Helper method to perform card flip animation during draw sequence"""
 	var flip_tween = create_tween()
+	flip_tween.set_speed_scale(ANIMATION_SPEED)
 	flip_tween.tween_property(card.card_representation, "rotation_degrees:z", -90, 0.2)
 	flip_tween.tween_callback(func(): card.setFlip(true))
 	flip_tween.tween_callback(func(): card.card_representation.rotation_degrees.z = 90)

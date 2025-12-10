@@ -1,10 +1,11 @@
-[gd_scene load_steps=8 format=3 uid="uid://d3lfyqqnp8p75"]
+[gd_scene load_steps=9 format=3 uid="uid://d3lfyqqnp8p75"]
 
 [ext_resource type="Script" uid="uid://ci3bqdvknwjrq" path="res://Shared/scripts/Card2D.gd" id="1_card2d"]
 [ext_resource type="Texture2D" uid="uid://cjd50rcaq4yb3" path="res://Assets/Images/card_background_thin.png" id="2_fan0f"]
 [ext_resource type="Texture2D" uid="uid://bvhgqh6fy2vbd" path="res://icon.svg" id="2_icon"]
 [ext_resource type="FontVariation" uid="uid://cjtrikaejtvs3" path="res://Shared/Fonts/font.tres" id="3_foy7b"]
 [ext_resource type="Texture2D" uid="uid://dkmniw1rj2l6i" path="res://Assets/Images/gold_coin_detailed.png" id="4_tgpg6"]
+[ext_resource type="Script" uid="uid://ccg1dce1grnid" path="res://Shared/scripts/AutoSizeLabel.gd" id="5_cd6va"]
 [ext_resource type="Texture2D" uid="uid://ddfj24ua4c2wf" path="res://Assets/Images/greyRound.png" id="6_tgpg6"]
 
 [sub_resource type="MeshTexture" id="MeshTexture_q3asr"]
@@ -120,15 +121,19 @@ anchor_right = 1.0
 anchor_bottom = 0.5
 offset_left = -194.0
 offset_top = 17.5
-offset_right = 180.0
-offset_bottom = 53.5
+offset_right = 188.0
+offset_bottom = 51.5
 grow_horizontal = 0
 grow_vertical = 2
 scale = Vector2(0.5, 0.5)
 theme_override_colors/font_color = Color(0, 0, 0, 1)
-theme_override_font_sizes/font_size = 28
-text = "Creature: Goblin Warchief"
+theme_override_font_sizes/font_size = 26
+text = "Creature:  Goblin Warchief "
 autowrap_mode = 2
+clip_text = true
+script = ExtResource("5_cd6va")
+max_font_size = 26
+metadata/_custom_type_script = "uid://ccg1dce1grnid"
 
 [node name="TextLabel" type="RichTextLabel" parent="Background"]
 layout_mode = 1

@@ -52,6 +52,10 @@ func assert_test_false(condition: bool, message: String = "") -> bool:
 	return assert_test(not condition, error_msg)
 
 func _ready():
+	# Set fast animation speed for testing (10x normal speed)
+	CardAnimator.ANIMATION_SPEED = 10.0
+	print("🏃 Set animation speed to 10x for testing")
+	
 	# Connect buttons
 	run_all_button.pressed.connect(_on_run_all_tests)
 	run_failed_button.pressed.connect(_on_run_failed_tests)
@@ -63,6 +67,7 @@ func _on_run_all_tests():
 	"""Button handler to run all tests"""
 	await runTests()
 	_update_test_button_states()
+	_restore_animation_speed()
 	if test_runner:
 		await test_runner.cleanup_game()  # Final cleanup after all tests
 		game = null  # Clear reference to destroyed game
@@ -72,10 +77,16 @@ func _on_run_failed_tests():
 	"""Button handler to run only failed tests"""
 	await runFailedTests()
 	_update_test_button_states()
+	_restore_animation_speed()
 	if test_runner:
 		await test_runner.cleanup_game()  # Final cleanup after failed tests
 		game = null  # Clear reference to destroyed game
 		test_runner.show_test_manager()
+
+func _restore_animation_speed():
+	"""Restore normal animation speed after testing"""
+	CardAnimator.ANIMATION_SPEED = 1.0
+	print("🐌 Restored animation speed to normal (1.0x)")
 
 func _populate_test_buttons():
 	"""Create individual buttons for each test method"""
@@ -334,7 +345,7 @@ func createTestCard(card_name: String, player_controlled: bool = true) -> Card:
 	var card_data = CardLoaderAL.getCardByName(card_name)
 	if not assert_test_not_null(card_data, "Card not found: " + card_name):
 		return null
-	var card = game.createCardFromData(card_data, player_controlled)
+	var card = game.createCardFromData(CardLoaderAL.duplicateCardScript(card_data), player_controlled)
 	
 	# Set animator state correctly for player-controlled cards
 	if player_controlled and card:
@@ -484,7 +495,7 @@ func test_animation_completion():
 func test_goblin_pair():
 	"""Test Goblin Pair card creation and spawning"""
 	var cardData = CardLoaderAL.getCardByName("goblin pair")
-	var c = game.createCardFromData(cardData, true)
+	var c = game.createCardFromData(CardLoaderAL.duplicateCardScript(cardData), true)
 	addCardToHand(c)
 	game.game_data.player_gold.setValue(99)
 	await game.tryPlayCard(c, game.player_base)
@@ -737,8 +748,7 @@ func test_bolt_spell_cancelled_with_target():
 	# Wait a frame for any reparenting to complete
 	await get_tree().process_frame
 	
-	# Debug: Print what cards are actually in hand
-	print("DEBUG: Cards in hand after cancellation:")
+	# Check what cards are actually in hand
 	for i in range(game.player_hand.get_child_count()):
 		var card = game.player_hand.get_child(i)
 		if card is Card:
@@ -933,4 +943,168 @@ func test_deck_draw_order():
 	if not assert_test_equal(game.deck.cards[1].cardName, "Bolt", "Bottom card should be Bolt"):
 		return false
 	
+	return true
+
+func test_replace_mechanism() -> bool:
+	"""Test Replace keyword parsing and cost calculation"""
+	print("=== Testing Replace Mechanism ===")
+	
+	# Create a mock Punglynd Drengr card with Replace
+	var drengr_card = createTestCard("Punglynd Drengr", true)
+	
+	# Verify Replace was parsed correctly
+	if not assert_test(drengr_card.cardData.additionalCosts.size() > 0, "Drengr should have additional costs"):
+		return false
+	
+	var replace_cost = null
+	for cost in drengr_card.cardData.additionalCosts:
+		if cost.get("cost_type") == "Replace":
+			replace_cost = cost
+			break
+	
+	if not assert_test(replace_cost != null, "Should find Replace cost data"):
+		return false
+	
+	if not assert_test(replace_cost.get("valid_card") == "Card.YouCtrl+Cost.1+Creature", "Should parse ValidCard$ correctly"):
+		return false
+	
+	if not assert_test(replace_cost.get("valid_card_alt") == "Card.YouCtrl+Cost.1+Grown-up", "Should parse ValidCardAlt$ correctly"):
+		return false
+	
+	if not assert_test(replace_cost.get("add_reduction") == 2, "Should parse AddReduction correctly"):
+		return false
+	
+	# Test hasReplaceOption when no valid targets
+	if not assert_test(not CardPaymentManagerAL.hasReplaceOption(drengr_card), "Should not have Replace option with no valid targets"):
+		return false
+	
+	# Create a valid target (1-cost creature) - using natural token data
+	var token_data = CardLoaderAL.load_token_by_name("Punglynd Child")
+	if not assert_test_not_null(token_data, "Should be able to load Punglynd Child token"):
+		return false
+	
+	var target_creature = game.createCardFromData(CardLoaderAL.duplicateCardScript(token_data), true)
+	if not assert_test_not_null(target_creature, "Should be able to create Punglynd Child card"):
+		return false
+	GameUtility.reparentWithoutMoving(target_creature, game.player_base)
+	# Wait a frame for the card to be properly added
+	await get_tree().process_frame
+	
+	# Now Replace should be available
+	if not assert_test(CardPaymentManagerAL.hasReplaceOption(drengr_card), "Should have Replace option with valid targets"):
+		return false
+	
+	# Test cost calculation with regular creature
+	var replace_cost_regular = CardPaymentManagerAL.calculateReplaceCost(drengr_card, target_creature)
+	if not assert_test_equal(replace_cost_regular, 2, "Replace cost with regular creature should be 3-1=2"):
+		return false
+	
+	# Test getValidReplaceTargets
+	var valid_targets = CardPaymentManagerAL.getValidReplaceTargets(drengr_card, replace_cost)
+	if not assert_test(valid_targets.size() >= 1, "Should find at least one valid target"):
+		return false
+	
+	print("✅ Replace mechanism test passed!")
+	return true
+
+func test_replace_with_additional_reduction() -> bool:
+	"""Test Replace mechanism with additional cost reduction for Grown-up targets"""
+	print("=== Testing Replace with Additional Reduction ===")
+	
+	# Create a mock Punglynd Drengr card with Replace
+	var drengr_card = createTestCard("Punglynd Drengr", true)
+	
+	# Get Replace cost data
+	var replace_cost = null
+	for cost in drengr_card.cardData.additionalCosts:
+		if cost.get("cost_type") == "Replace":
+			replace_cost = cost
+			break
+	
+	if not assert_test(replace_cost != null, "Should find Replace cost data"):
+		return false
+	
+	# Create a Grown-up target for extra reduction
+	var d = CardLoaderAL.load_token_by_name("Punglynd Child")
+	var grownup_target = game.createCardFromData(CardLoaderAL.duplicateCardScript(d), true)
+	grownup_target.cardData.subtypes.append("Grown-up")
+	GameUtility.reparentWithoutMoving(grownup_target, game.player_base)
+	await get_tree().process_frame
+	
+	# Test cost calculation with Grown-up (should get additional reduction)
+	var replace_cost_grownup = CardPaymentManagerAL.calculateReplaceCost(drengr_card, grownup_target)
+	if not assert_test_equal(replace_cost_grownup, 0, "Replace cost with Grown-up should be 3-1-2=0"):
+		return false
+	
+	# Test that getValidReplaceTargets finds the Grown-up target
+	var valid_targets = CardPaymentManagerAL.getValidReplaceTargets(drengr_card, replace_cost)
+	var found_grownup = false
+	for target in valid_targets:
+		if "Grown-up" in target.cardData.subtypes:
+			found_grownup = true
+			break
+	
+	if not assert_test(found_grownup, "Should find Grown-up target in valid targets"):
+		return false
+	
+	print("✅ Replace with additional reduction test passed!")
+	return true
+	return true
+
+func test_punglynd_child_growup():
+	"""Test that Punglynd Child gains 'Grown-up' subtype after attacking and passing turn"""
+	print("🧪 Testing Punglynd Child grow-up ability...")
+	
+	# Step 1: Create Punglynd Child token
+	var token_data = CardLoaderAL.load_token_by_name("Punglynd Child")
+	if not assert_test_not_null(token_data, "Should be able to load Punglynd Child token"):
+		return false
+	
+	var child_card = game.createCardFromData(CardLoaderAL.duplicateCardScript(token_data), true)
+	if not assert_test_not_null(child_card, "Should be able to create Punglynd Child card"):
+		return false
+	
+	# Step 2: Place card directly in player base (battlefield)
+	game.player_base.add_child(child_card)
+	
+	# Step 3: Verify initial state - should not have Grown-up subtype yet
+	if not assert_test_false("Grown-up" in child_card.cardData.subtypes, "Child should not have Grown-up subtype initially"):
+		return false
+	
+	# Also verify the initial type line display
+	var initial_type_line = child_card.card_2d.type_label.text
+	if not assert_test_false(initial_type_line.contains("Grown-up"), "Type line should not show 'Grown-up' initially"):
+		return false
+	
+	# Step 4: Make the child attack by moving it to a combat zone
+	var combat_zone = game.combatZones[0] as CombatZone
+	var attack_spot = combat_zone.getFirstEmptyLocation(true)
+	if not assert_test_not_null(attack_spot, "Should have an empty combat spot"):
+		return false
+	
+	# Move to combat zone (this triggers attack and marks hasAttackedThisTurn)
+	await game.executeCardAttacks(child_card, attack_spot)
+	
+	# Step 5: Verify the card attacked this turn
+	if not assert_test_true(child_card.cardData.hasAttackedThisTurn, "Child should be marked as having attacked this turn"):
+		return false
+	
+	# Step 6: Start new turn to trigger end-of-turn phase (simulates real game flow)
+	await game.onTurnStart()
+	
+	# Step 7: Verify the child now has the Grown-up subtype
+	if not assert_test_true("Grown-up" in child_card.cardData.subtypes, "Child should have Grown-up subtype after attacking and end-of-turn trigger"):
+		return false
+	
+	# Step 8: Verify the type line display is updated
+	var updated_type_line = child_card.card_2d.type_label.text
+	if not assert_test_true(updated_type_line.contains("Grown-up"), "Type line should show 'Grown-up' after trigger"):
+		return false
+	
+	# Verify the full type string is correct
+	var expected_type_string = child_card.cardData.getFullTypeString()
+	if not assert_test_equal(updated_type_line, expected_type_string, "Type line should match CardData.getFullTypeString()"):
+		return false
+	
+	print("✅ Punglynd Child grow-up test passed!")
 	return true
