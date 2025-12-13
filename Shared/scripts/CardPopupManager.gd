@@ -30,9 +30,17 @@ func _ready():
 	set_process_input(true)
 
 func _input(event: InputEvent):
-	if event is InputEventMouseButton and event.pressed:
-		# Close popup on any mouse click
-		hide_popup()
+	if event is InputEventMouseButton:
+		if event.pressed:
+			# Handle mouse wheel scrolling for card text
+			if event.button_index == MOUSE_BUTTON_WHEEL_UP or event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
+				if card_in_popup and is_instance_valid(card_in_popup):
+					var direction = -1 if event.button_index == MOUSE_BUTTON_WHEEL_UP else 1
+					if card_in_popup.animate_text_scroll(direction):
+						return # Don't close popup for successful wheel events
+			else:
+				# Close popup on other mouse clicks (left, right, middle)
+				hide_popup()
 
 func show_card_popup(card: Card, popup_position: Vector2 = Vector2.ZERO, display_mode: DisplayMode = DisplayMode.NORMAL):
 	if not card:

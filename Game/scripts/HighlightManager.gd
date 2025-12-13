@@ -105,6 +105,12 @@ func _highlightHandCards():
 	for card: Card in hand_cards:
 		if card is Card:
 			var is_castable = CardPaymentManagerAL.isCardCastable(card)
+			
+			# Debug logging for Punglynd Childbearer
+			if card.cardData and card.cardData.cardName == "Punglynd Childbearer":
+				print("🎯 [HIGHLIGHT DEBUG] ", card.cardData.cardName, " is_castable: ", is_castable)
+				print("🎯 [HIGHLIGHT DEBUG] Setting selectable to: ", is_castable)
+			
 			card.set_selectable(is_castable)
 			if is_castable:
 				currentlyHighlightedCards.append(card)

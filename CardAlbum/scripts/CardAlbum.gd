@@ -32,8 +32,8 @@ func _ready():
 
 func load_all_cards():
 	# Load all cards using the CardLoader
-	CardLoader.load_all_cards()
-	all_cards = CardLoader.cardData.duplicate()
+	CardLoaderAL.load_all_cards()
+	all_cards = CardLoaderAL.cardData.duplicate()
 	
 	if all_cards.size() == 0:
 		push_error("No cards found!")
@@ -104,10 +104,10 @@ func _on_back_button_pressed():
 func _on_card_clicked(card: Card2D):
 	print("Card clicked: ", card.card_data.cardName)
 
-func _on_card_right_clicked(card_data: CardData):
+func _on_card_right_clicked(card: Card):
 	if card_popup_manager and card_popup_manager.has_method("show_card_popup"):
 		var album_position = _calculate_album_popup_position()
-		card_popup_manager.show_card_popup(card_data, album_position, CardPopupManager.DisplayMode.ENLARGED)
+		card_popup_manager.show_card_popup(card, album_position, CardPopupManager.DisplayMode.ENLARGED)
 
 func _calculate_album_popup_position() -> Vector2:
 	"""Calculate the position for card popup in album view (left side of screen)"""

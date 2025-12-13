@@ -57,7 +57,7 @@ func _ready() -> void:
 	# Set PlayerControl reference to activeHand
 	player_control.activeHand = activeHand
 	game_data.playerDeckList.deck_cards = [CardLoaderAL.getCardByName("Goblin Emblem"), 
-		CardLoaderAL.getCardByName("Goblin Kid"),
+		CardLoaderAL.getCardByName("Punglynd Childbearer"),
 		CardLoaderAL.getCardByName("Goblin Warchief"),
 		CardLoaderAL.getCardByName("Goblin Pair"),
 		CardLoaderAL.getCardByName("Bolt")
@@ -160,8 +160,8 @@ func tryMoveCard(card: Card, target_location: Node3D) -> void:
 		_:
 			print("❌ Cannot move card from zone: ", source_zone)
 	
-func tryPlayCard(card: Card, target_location: Node3D, selection_data: Dictionary = {}) -> void:
-	"""Attempt to play a card to the specified location"""
+func tryPlayCard(card: Card, target_location: Node3D, pre_selections: SelectionManager.CardPlaySelections = null) -> void:
+	"""Attempt to play a card to the specified location with optional pre-specified selections"""
 	if not card:
 		return
 	
@@ -170,6 +170,14 @@ func tryPlayCard(card: Card, target_location: Node3D, selection_data: Dictionary
 	# Validate the play attempt
 	if not _canPlayCard(card, source_zone):
 		return
+	
+	# Use CardPlaySelections directly
+	var selection_data: SelectionManager.CardPlaySelections
+	if pre_selections != null and pre_selections.has_selections():
+		print("🎯 Using pre-specified selections for card play")
+		selection_data = pre_selections
+	else:
+		selection_data = null
 	
 	# Only process additional selections if playing from hand or extra deck
 	if source_zone == GameZone.e.HAND or source_zone == GameZone.e.EXTRA_DECK:
@@ -192,8 +200,10 @@ func tryPlayCard(card: Card, target_location: Node3D, selection_data: Dictionary
 			await get_tree().create_timer(0.5).timeout
 		
 		# Collect all required player selections upfront (including casting choice)
-		if selection_data == {}:
+		if selection_data == null:
 			selection_data = await _collectAllPlayerSelections(card)
+		else:
+			print("🎯 Skipping selection collection - using pre-specified selections")
 		
 		# If any selection was cancelled, abort the play
 		if selection_data.cancelled:
@@ -814,7 +824,12 @@ func _calculate_game_popup_position() -> Vector2:
 func _card_matches_requirement(card: Card, requirement: Dictionary) -> bool:
 	return GameUtility._card_matches_requirement(card, requirement)
 
-func start_card_selection(requirement: Dictionary, possible_cards: Array[Card], selection_type: String, casting_card: Card = null) -> Array[Card]:
+func start_card_selection(requirement: Dictionary, possible_cards: Array[Card], selection_type: String, casting_card: Card = null, preselected_cards: Array[Card] = []) -> Array[Card]:
+	# If we have pre-selected cards, use them directly
+	if preselected_cards.size() > 0:
+		print("🎯 Using pre-selected cards for ", selection_type, ": ", preselected_cards.size(), " cards")
+		return preselected_cards
+	
 	# If we have a casting card, set up animation and state tracking
 	if casting_card:
 		current_casting_card = casting_card
@@ -822,7 +837,7 @@ func start_card_selection(requirement: Dictionary, possible_cards: Array[Card], 
 		await AnimationsManagerAL.animate_card_to_card_selection_position(casting_card)
 	
 	# Start the selection process
-	var selected_cards = await selection_manager.start_selection_and_wait(requirement, possible_cards, selection_type, self, casting_card)
+	var selected_cards = await selection_manager.start_selection_and_wait(requirement, possible_cards, selection_type, self, casting_card, preselected_cards)
 	
 	# Clear casting state when selection completes (successfully or cancelled)
 	if casting_card:
@@ -835,20 +850,26 @@ func _requiresPlayerSelection(additional_costs: Array[Dictionary]) -> bool:
 	"""Check if any additional costs require player selection (like sacrifice)"""
 	return GameUtility._requiresPlayerSelection(additional_costs)
 
-func _collectAllPlayerSelections(card: Card) -> Dictionary:
+func _collectAllPlayerSelections(card: Card, pre_selections: SelectionManager.CardPlaySelections = null) -> SelectionManager.CardPlaySelections:
 	"""Collect all required player selections for a card before playing it"""
-	var selection_data = {
-		"additional_cost_selections": [] as Array[Card],
-		"spell_targets": [] as Array[Card],
-		"casting_choice": "normal", # "normal" or "replace"
-		"replace_target": null, # Selected replacement card if Replace chosen
-		"cancelled": false
-	}
+	var selection_data = SelectionManager.CardPlaySelections.new()
+	
+	# If pre-selections are provided, use them
+	if pre_selections != null:
+		print("🎯 Using provided pre-selections for card play")
+		return pre_selections
+	
+	# Debug logging for Punglynd Childbearer
+	if card.cardData.cardName == "Punglynd Childbearer":
+		print("🔍 [PUNGLYND DEBUG] Starting selection collection for ", card.cardData.cardName)
+		print("🔍 [PUNGLYND DEBUG] Can pay card (current check): ", CardPaymentManagerAL.canPayCard(card))
 	
 	# Step 1: Check for alternative casting options (Replace)
 	var has_replace = CardPaymentManagerAL.hasReplaceOption(card)
 	if has_replace:
 		print("🎯 [CASTING CHOICE] Card ", card.cardData.cardName, " has Replace option available!")
+		if card.cardData.cardName == "Punglynd Childbearer":
+			print("🔍 [PUNGLYND DEBUG] ✅ Replace option confirmed available")
 		
 		# Get valid replacement targets for selection
 		var replace_cost_data = null
@@ -867,19 +888,24 @@ func _collectAllPlayerSelections(card: Card) -> Dictionary:
 					"optional": true # Player can choose nothing to cast normally
 				}
 				
+				# Check if we have pre-selected replace target
+				var preselected_replace: Array[Card] = []
+				if pre_selections != null and pre_selections.replace_target != null:
+					preselected_replace = [pre_selections.replace_target]
+				
 				var selected_replace_target = await start_card_selection(
 					requirement, 
 					valid_targets, 
 					"replace_for_" + card.cardData.cardName, 
-					card
+					card,
+					preselected_replace
 				)
 				
 				if selected_replace_target == null:
 					selection_data.cancelled = true
 					return selection_data
 				elif selected_replace_target.size() > 0:
-					selection_data.casting_choice = "replace"
-					selection_data.replace_target = selected_replace_target[0]
+					selection_data.set_replace_target(selected_replace_target[0])
 					print("🎯 [CASTING CHOICE] Player chose Replace with: ", selected_replace_target[0].cardData.cardName)
 				else:
 					print("🎯 [CASTING CHOICE] Player chose normal casting")
@@ -890,15 +916,26 @@ func _collectAllPlayerSelections(card: Card) -> Dictionary:
 	if card.cardData.hasAdditionalCosts():
 		var additional_costs = card.cardData.getAdditionalCosts()
 		if _requiresPlayerSelection(additional_costs):
-			var selected_cards = await _startAdditionalCostSelection(card, additional_costs)
+			# Check for pre-selected sacrifice target cards
+			var preselected_sacrifice: Array[Card] = []
+			if pre_selections != null and pre_selections.sacrifice_targets.size() > 0:
+				preselected_sacrifice = pre_selections.sacrifice_targets
+			
+			var selected_cards = await _startAdditionalCostSelection(card, additional_costs, preselected_sacrifice)
 			if selected_cards.is_empty():
 				selection_data.cancelled = true
 				return selection_data
-			selection_data.additional_cost_selections = selected_cards
+			for card_selection in selected_cards:
+				selection_data.add_sacrifice_target(card_selection)
 	
 	# Step 3: Check if spell requires targeting
 	if card.cardData.hasType(CardData.CardType.SPELL):
-		var spell_targets = await _getSpellTargetsIfRequired(card)
+		# Check for pre-selected spell targets
+		var preselected_spell_targets: Array[Card] = []
+		if pre_selections != null and pre_selections.spell_targets.size() > 0:
+			preselected_spell_targets = pre_selections.spell_targets
+		
+		var spell_targets = await _getSpellTargetsIfRequired(card, preselected_spell_targets)
 		if spell_targets == null:  # null means selection was cancelled
 			selection_data.cancelled = true
 			return selection_data
@@ -907,7 +944,8 @@ func _collectAllPlayerSelections(card: Card) -> Dictionary:
 			print("❌ No valid targets available - cancelling spell")
 			selection_data.cancelled = true
 			return selection_data
-		selection_data.spell_targets = spell_targets
+		for target in spell_targets:
+			selection_data.add_spell_target(target)
 	
 	return selection_data
 
@@ -920,8 +958,14 @@ func _spellRequiresTargeting(card: Card) -> bool:
 				return true
 	return false
 
-func _getSpellTargetsIfRequired(card: Card) -> Variant:
+func _getSpellTargetsIfRequired(card: Card, preselected_targets: Array[Card] = []) -> Variant:
 	"""Get spell targets if the spell requires targeting, returns null if cancelled"""
+	
+	# If pre-selected targets are provided, return them
+	if preselected_targets.size() > 0:
+		print("🎯 Using pre-selected spell targets: ", preselected_targets.map(func(c): return c.cardData.cardName))
+		return preselected_targets
+	
 	# Get spell effects that require targeting
 	var targeting_effects = []
 	for ability in card.cardData.abilities:
@@ -970,7 +1014,7 @@ func _getSpellTargetsIfRequired(card: Card) -> Variant:
 	
 	return selected_targets
 
-func tryPayAndSelectsForCardPlay(card: Card, source_zone: GameZone.e, target_location: Node3D, selection_data: Dictionary):
+func tryPayAndSelectsForCardPlay(card: Card, source_zone: GameZone.e, target_location: Node3D, selection_data: SelectionManager.CardPlaySelections):
 	"""Execute card play with all selections already collected"""
 	# Validate that the card is still valid
 	if not card or not is_instance_valid(card) or not card.cardData:
@@ -978,28 +1022,50 @@ func tryPayAndSelectsForCardPlay(card: Card, source_zone: GameZone.e, target_loc
 		return
 	
 	# Pay costs first
-	var additional_cost_cards: Array[Card] = selection_data.additional_cost_selections
+	var sacrifice_targets: Array[Card] = selection_data.sacrifice_targets
 	
-	# Handle Replace casting choice
-	if selection_data.get("casting_choice", "normal") == "replace":
-		var replace_target = selection_data.get("replace_target", null)
-		if replace_target and is_instance_valid(replace_target):
-			print("💰 [REPLACE PAYMENT] Using Replace - sacrificing: ", replace_target.cardData.cardName)
-			# Add the replacement target to the sacrifice list
-			additional_cost_cards.append(replace_target)
-		else:
+	# Validate Replace casting choice if selected
+	if selection_data.replace_target != null:
+		var replace_target = selection_data.replace_target
+		if not is_instance_valid(replace_target):
 			print("❌ Replace target is invalid")
 			return
+		
+		# Verify the card actually has Replace option
+		if not CardPaymentManagerAL.hasReplaceOption(card):
+			print("❌ Card does not have Replace option")
+			return
+		
+		# Verify the target is valid for Replace
+		if not CardPaymentManagerAL.isValidReplaceTarget(card, replace_target):
+			print("❌ Replace target is not valid for this card")
+			return
+		
+		# Verify we can afford the Replace cost
+		var replace_cost = CardPaymentManagerAL.calculateReplaceCost(card, replace_target)
+		if not game_data.has_gold(replace_cost, card.cardData.playerControlled):
+			print("❌ Cannot afford Replace cost: ", replace_cost)
+			return
+		
+		print("💰 [REPLACE PAYMENT] Using Replace - sacrificing: ", replace_target.cardData.cardName, " (cost: ", replace_cost, ")")
 	
-	# Validate additional cost cards are still valid before payment
-	var valid_additional_cards: Array[Card] = []
-	for cost_card in additional_cost_cards:
+	# Validate sacrifice target cards are still valid before payment
+	var valid_sacrifice_cards: Array[Card] = []
+	for cost_card in sacrifice_targets:
 		if cost_card and is_instance_valid(cost_card) and cost_card.cardData:
-			valid_additional_cards.append(cost_card)
+			valid_sacrifice_cards.append(cost_card)
 		else:
-			print("⚠️ Skipping invalid additional cost card")
+			print("⚠️ Skipping invalid sacrifice target card")
 	
-	var payment_successful = await CardPaymentManagerAL.tryPayCard(card, valid_additional_cards)
+	# Pay for the card - include Replace target if using Replace
+	var payment_successful = false
+	if selection_data.replace_target != null:
+		# Add Replace target for payment processing
+		var payment_cards = valid_sacrifice_cards.duplicate()
+		payment_cards.append(selection_data.replace_target)
+		payment_successful = await CardPaymentManagerAL.tryPayCard(card, payment_cards)
+	else:
+		payment_successful = await CardPaymentManagerAL.tryPayCard(card, valid_sacrifice_cards)
 	
 	if not payment_successful:
 		print("❌ Failed to pay for card")
@@ -1020,8 +1086,13 @@ func tryPayAndSelectsForCardPlay(card: Card, source_zone: GameZone.e, target_loc
 	
 	await _executeCardPlay(card, source_zone, target_location, valid_spell_targets)
 
-func _startAdditionalCostSelection(card: Card, additional_costs: Array[Dictionary]) -> Array[Card]:
+func _startAdditionalCostSelection(card: Card, additional_costs: Array[Dictionary], preselected_cards: Array[Card] = []) -> Array[Card]:
 	"""Start the selection process for paying additional costs and return selected cards"""
+	
+	# If pre-selected cards are provided, return them
+	if preselected_cards.size() > 0:
+		print("🎯 Using pre-selected additional cost cards: ", preselected_cards.map(func(c): return c.cardData.cardName))
+		return preselected_cards
 	
 	# For now, handle only the first cost that requires selection
 	# TODO: Handle multiple costs in sequence

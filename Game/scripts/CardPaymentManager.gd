@@ -13,16 +13,57 @@ func set_game_context(game: Game):
 
 func canPayCard(card: Card) -> bool:
 	
-	# Check gold cost
-	var gold_cost = card.cardData.goldCost
-	if not current_game.game_data.has_gold(gold_cost, card.cardData.playerControlled):
-		return false
+	var base_cost = card.cardData.goldCost
+	var can_afford_base = current_game.game_data.has_gold(base_cost, card.cardData.playerControlled)
 	
-	# Check additional costs
-	if card.cardData.hasAdditionalCosts():
-		return canPayAdditionalCosts(card.cardData)
+	# Debug logging for Punglynd Childbearer
+	if card.cardData.cardName == "Punglynd Childbearer":
+		print("🔍 [PUNGLYND DEBUG] Checking if ", card.cardData.cardName, " can be paid")
+		print("🔍 [PUNGLYND DEBUG] Base cost: ", base_cost)
+		print("🔍 [PUNGLYND DEBUG] Player gold: ", current_game.game_data.player_gold.getValue())
+		print("🔍 [PUNGLYND DEBUG] Can afford base cost: ", can_afford_base)
 	
-	return true
+	# First check if card can be afforded at base cost
+	if can_afford_base:
+		if card.cardData.cardName == "Punglynd Childbearer":
+			print("🔍 [PUNGLYND DEBUG] ✅ Card affordable at base cost")
+		
+		# Check additional costs (but skip Replace costs - they're optional alternatives)
+		if card.cardData.hasAdditionalCosts():
+			var additional_costs_result = canPayNonReplaceAdditionalCosts(card.cardData)
+			if card.cardData.cardName == "Punglynd Childbearer":
+				print("🔍 [PUNGLYND DEBUG] Non-Replace additional costs check: ", additional_costs_result)
+			return additional_costs_result
+		return true
+	
+	# If not affordable at base cost, check if Replace can make it affordable
+	if hasReplaceOption(card):
+		if card.cardData.cardName == "Punglynd Childbearer":
+			print("🔍 [PUNGLYND DEBUG] ❌ Not affordable at base cost, checking Replace...")
+		
+		# Get valid replace targets to see if any make it affordable
+		for cost_data in card.cardData.additionalCosts:
+			if cost_data.get("cost_type", "") == "Replace":
+				var valid_targets = getValidReplaceTargets(card, cost_data)
+				if valid_targets.size() > 0:
+					# Check if any replacement would make it affordable
+					for target in valid_targets:
+						var replace_cost = calculateReplaceCost(card, target)
+						if card.cardData.cardName == "Punglynd Childbearer":
+							print("🔍 [PUNGLYND DEBUG] Replace cost with ", target.cardData.cardName, ": ", replace_cost)
+						if current_game.game_data.has_gold(replace_cost, card.cardData.playerControlled):
+							if card.cardData.cardName == "Punglynd Childbearer":
+								print("🔍 [PUNGLYND DEBUG] ✅ Card is affordable with Replace!")
+							return true
+				break
+		
+		if card.cardData.cardName == "Punglynd Childbearer":
+			print("🔍 [PUNGLYND DEBUG] ❌ Card not affordable even with Replace")
+	else:
+		if card.cardData.cardName == "Punglynd Childbearer":
+			print("🔍 [PUNGLYND DEBUG] ❌ Card not affordable and no Replace option available")
+	
+	return false
 
 func canPayCardData(card_data: CardData) -> bool:
 	"""Check if player can pay for the card data's cost (gold + additional costs)"""
@@ -77,12 +118,27 @@ func calculateActualCost(card: Card, selected_cards: Array[Card] = []) -> int:
 	
 	var base_cost = card.cardData.goldCost
 	
+	# Debug logging for Punglynd Childbearer
+	if card.cardData.cardName == "Punglynd Childbearer":
+		print("🔍 [PUNGLYND DEBUG] calculateActualCost called")
+		print("🔍 [PUNGLYND DEBUG] Base cost: ", base_cost)
+		print("🔍 [PUNGLYND DEBUG] Selected cards for costs: ", selected_cards.size())
+		for sel_card in selected_cards:
+			if sel_card and sel_card.cardData:
+				print("🔍 [PUNGLYND DEBUG] - ", sel_card.cardData.cardName)
+	
 	# Check if Replace is being used
 	var replace_target = findReplaceTarget(card, selected_cards)
 	if replace_target:
 		print("💰 [REPLACE COST] Calculating reduced cost with replacement: ", replace_target.cardData.cardName)
+		if card.cardData.cardName == "Punglynd Childbearer":
+			var reduced_cost = calculateReplaceCost(card, replace_target)
+			print("🔍 [PUNGLYND DEBUG] Reduced cost: ", reduced_cost)
+			return reduced_cost
 		return calculateReplaceCost(card, replace_target)
 	
+	if card.cardData.cardName == "Punglynd Childbearer":
+		print("🔍 [PUNGLYND DEBUG] No Replace target found, returning base cost: ", base_cost)
 	return base_cost
 
 func findReplaceTarget(card: Card, selected_cards: Array[Card]) -> Card:
@@ -103,10 +159,55 @@ func findReplaceTarget(card: Card, selected_cards: Array[Card]) -> Card:
 	
 	return null
 
+func isValidReplaceTarget(card: Card, replace_target: Card) -> bool:
+	"""Check if a specific card is a valid Replace target for the given card"""
+	if not card or not card.cardData or not replace_target or not replace_target.cardData:
+		return false
+	
+	# Check if card has Replace option and validate the target directly
+	for cost_data in card.cardData.additionalCosts:
+		if cost_data.get("cost_type", "") == "Replace":
+			# Check primary valid targets
+			var valid_card_filter = cost_data.get("valid_card", "")
+			if valid_card_filter != "":
+				var targets: Array[Card] = [replace_target]
+				var primary_valid = filterCardsByParameters(targets, valid_card_filter, current_game)
+				if primary_valid.size() > 0:
+					return true
+			
+			# Check alternative valid targets
+			var valid_card_alt_filter = cost_data.get("valid_card_alt", "")
+			if valid_card_alt_filter != "":
+				var targets: Array[Card] = [replace_target]
+				var alt_valid = filterCardsByParameters(targets, valid_card_alt_filter, current_game)
+				if alt_valid.size() > 0:
+					return true
+			
+			break
+	
+	return false
+
 func canPayAdditionalCosts(cardData: CardData) -> bool:
 	var additional_costs = cardData.additionalCosts
 	for i in range(additional_costs.size()):
 		var cost_data = additional_costs[i]
+		var can_pay = canPaySingleAdditionalCost(cost_data, cardData.playerControlled)
+		if not can_pay:
+			return false
+	
+	return true
+
+func canPayNonReplaceAdditionalCosts(cardData: CardData) -> bool:
+	"""Check if player can pay additional costs, excluding Replace costs which are optional alternatives"""
+	var additional_costs = cardData.additionalCosts
+	for i in range(additional_costs.size()):
+		var cost_data = additional_costs[i]
+		var cost_type = cost_data.get("cost_type", "")
+		
+		# Skip Replace costs - they're optional alternatives, not required costs
+		if cost_type == "Replace":
+			continue
+			
 		var can_pay = canPaySingleAdditionalCost(cost_data, cardData.playerControlled)
 		if not can_pay:
 			return false
@@ -170,10 +271,91 @@ func canUseReplace(cost_data: Dictionary, playerSide = true) -> bool:
 
 func payAdditionalCosts(additional_costs: Array[Dictionary], selected_cards: Array[Card] = []) -> bool:
 	"""Actually pay all additional costs using selected cards"""
+	# Note: This method handles both sacrifice targets and Replace targets
+	# We need to properly identify which cards are for which purpose
+	
+	# Find Replace targets based on the actual Replace cost data
+	var replace_targets: Array[Card] = []
+	var sacrifice_cards: Array[Card] = []
+	
+	# Check if we have Replace costs to identify Replace targets
+	var has_replace_cost = false
 	for cost_data in additional_costs:
-		if not await paySingleAdditionalCost(cost_data, selected_cards):
+		if cost_data.get("cost_type", "") == "Replace":
+			has_replace_cost = true
+			break
+	
+	if has_replace_cost:
+		# Use the more accurate method to find Replace targets
+		replace_targets = findActualReplaceTargets(additional_costs, selected_cards)
+	
+	# Remaining cards are for sacrifice costs
+	for card in selected_cards:
+		if not (card in replace_targets):
+			sacrifice_cards.append(card)
+	
+	# Sacrifice Replace targets first
+	for replace_target in replace_targets:
+		print("💰 [REPLACE SACRIFICE] Sacrificing Replace target: ", replace_target.cardData.cardName)
+		current_game.putInOwnerGraveyard(replace_target)
+	
+	# Process regular additional costs (like SacrificePermanent) with remaining cards
+	for cost_data in additional_costs:
+		var cost_type = cost_data.get("cost_type", "")
+		if cost_type == "Replace":
+			continue # Skip Replace costs - handled above
+			
+		if not await paySingleAdditionalCost(cost_data, sacrifice_cards):
 			return false
+	
 	return true
+
+func findActualReplaceTargets(additional_costs: Array[Dictionary], selected_cards: Array[Card]) -> Array[Card]:
+	"""Find actual Replace targets by checking against Replace cost criteria"""
+	var replace_targets: Array[Card] = []
+	
+	for cost_data in additional_costs:
+		if cost_data.get("cost_type", "") == "Replace":
+			# Check each selected card against Replace criteria
+			var valid_card_filter = cost_data.get("valid_card", "")
+			var valid_card_alt_filter = cost_data.get("valid_card_alt", "")
+			
+			for card in selected_cards:
+				if card and card.cardData:
+					# Check against primary criteria
+					if valid_card_filter != "":
+						var targets: Array[Card] = [card]
+						var primary_valid = filterCardsByParameters(targets, valid_card_filter, current_game)
+						if primary_valid.size() > 0:
+							replace_targets.append(card)
+							continue
+					
+					# Check against alternative criteria
+					if valid_card_alt_filter != "":
+						var targets: Array[Card] = [card]
+						var alt_valid = filterCardsByParameters(targets, valid_card_alt_filter, current_game)
+						if alt_valid.size() > 0:
+							replace_targets.append(card)
+			break # Only one Replace cost per card
+	
+	return replace_targets
+
+func findReplaceTargetsInCards(selected_cards: Array[Card]) -> Array[Card]:
+	"""Find Replace targets among selected cards (used when we don't have the casting card context)"""
+	var replace_targets: Array[Card] = []
+	
+	# Look for cards that could be Replace targets
+	# This is a heuristic since we don't have the casting card context here
+	for card in selected_cards:
+		if card and card.cardData:
+			# Check if this card has the typical characteristics of a Replace target
+			# (creature, reasonable cost, player controlled)
+			if (card.cardData.hasType(CardData.CardType.CREATURE) and 
+				card.cardData.playerControlled and 
+				card.cardData.goldCost <= 5): # Reasonable cost range
+				replace_targets.append(card)
+	
+	return replace_targets
 
 func paySingleAdditionalCost(cost_data: Dictionary, selected_cards: Array[Card] = []) -> bool:
 	"""Pay a single additional cost using selected cards"""
@@ -199,7 +381,7 @@ func sacrificePermanents(cost_data: Dictionary, selected_cards: Array[Card] = []
 	if selected_cards.is_empty():
 		# Auto-select cards (fallback behavior)
 		print("No cards provided for sacrifice, auto-selecting...")
-		var available_cards = current_game.getPlayerControlledCards()
+		var available_cards = current_game.getControllerCards(true) # true for player controlled
 		var valid_cards = filterCardsByParameters(available_cards, valid_card_filter, current_game)
 		
 		if valid_cards.size() < required_count:
@@ -243,6 +425,13 @@ func isCardCastable(card: Card) -> bool:
 	"""Check if a card can be cast (affordable including additional costs)"""
 	if not card or not card.cardData:
 		return false
+	
+	# Debug logging for Punglynd Childbearer
+	if card.cardData.cardName == "Punglynd Childbearer":
+		print("🎯 [CASTABLE DEBUG] Checking if ", card.cardData.cardName, " is castable")
+		var can_pay = canPayCard(card)
+		print("🎯 [CASTABLE DEBUG] canPayCard result: ", can_pay)
+		return can_pay
 	
 	# Use the same logic as canPayCard for consistency
 	return canPayCard(card)

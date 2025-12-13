@@ -4,6 +4,40 @@ class_name SelectionManager
 signal selection_completed(selection: RefCounted)
 signal selection_cancelled()
 
+# Comprehensive selection data structure for pre-specifying all card play choices
+class CardPlaySelections:
+	var additional_cost_selections: Array[Card] = []  # Cards to sacrifice/pay additional costs (deprecated - use specific arrays)
+	var replace_target: Card = null  # Target for Replace mechanism (if using Replace casting)
+	var sacrifice_targets: Array[Card] = []  # Cards to sacrifice for SacrificePermanent costs
+	var spell_targets: Array[Card] = []  # Targets for spells and abilities
+	var cancelled: bool = false
+	
+	func _init():
+		pass
+	
+	func set_replace_target(target: Card):
+		"""Set the card to replace (automatically enables Replace casting)"""
+		replace_target = target
+	
+	func add_sacrifice_target(card: Card):
+		"""Add a card to sacrifice for additional costs"""
+		sacrifice_targets.append(card)
+	
+	func add_additional_cost_selection(card: Card):
+		"""Add a card for additional cost payment (deprecated - use add_sacrifice_target instead)"""
+		add_sacrifice_target(card)
+	
+	func add_spell_target(card: Card):
+		"""Add a spell target"""
+		spell_targets.append(card)
+	
+	func has_selections() -> bool:
+		"""Check if any selections have been made"""
+		return (additional_cost_selections.size() > 0 or 
+				replace_target != null or 
+				sacrifice_targets.size() > 0 or
+				spell_targets.size() > 0)
+
 var selection_ui: Control
 var current_selection: RefCounted = null  # PlayerSelection
 var game_reference: Node = null
@@ -17,8 +51,13 @@ func _ready():
 	selection_ui.hide()
 
 # Start a new card selection process and wait for completion
-func start_selection_and_wait(requirement: Dictionary, possible_cards: Array[Card], selection_type: String, game_ref: Node, casting_card_param: Card = null) -> Array[Card]:
+func start_selection_and_wait(requirement: Dictionary, possible_cards: Array[Card], selection_type: String, game_ref: Node, casting_card_param: Card = null, preselected_cards: Array[Card] = []) -> Array[Card]:
 	print("Starting selection and waiting for completion...")
+	
+	# If pre-selections are provided, use them directly
+	if preselected_cards.size() > 0:
+		print("Using pre-selected cards: ", preselected_cards.size())
+		return preselected_cards
 	
 	# Store casting card for potential cancellation
 	casting_card = casting_card_param
@@ -43,6 +82,11 @@ func start_selection_and_wait(requirement: Dictionary, possible_cards: Array[Car
 	else:
 		print("Selection was cancelled or failed")
 		return []
+
+# Create a new empty selection set
+func create_card_play_selections() -> CardPlaySelections:
+	"""Factory method to create a new CardPlaySelections instance"""
+	return CardPlaySelections.new()
 
 # Handle card click during selection
 func handle_card_click(card: Card):

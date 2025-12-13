@@ -340,12 +340,20 @@ func beforeEach():
 
 # === TEST HELPER METHODS ===
 
-func createTestCard(card_name: String, player_controlled: bool = true) -> Card:
-	"""Helper to create a card for testing"""
-	var card_data = CardLoaderAL.getCardByName(card_name)
-	if not assert_test_not_null(card_data, "Card not found: " + card_name):
+func createCardFromName(card_name: String, player_controlled: bool = true) -> Card:
+	"""Universal helper to create a card from either token or card name"""
+	# First try to load as a token
+	var card_data = CardLoaderAL.load_token_by_name(card_name)
+	if not card_data:
+		# If token not found, try to load as regular card
+		card_data = CardLoaderAL.getCardByName(card_name)
+	
+	if not assert_test_not_null(card_data, "Card/token not found: " + card_name):
 		return null
+	
 	var card = game.createCardFromData(CardLoaderAL.duplicateCardScript(card_data), player_controlled)
+	if not assert_test_not_null(card, "Should be able to create card: " + card_name):
+		return null
 	
 	# Set animator state correctly for player-controlled cards
 	if player_controlled and card:
@@ -372,6 +380,39 @@ func addCardToDeck(card_data: CardData, player_deck: bool = true):
 func setPlayerGold(amount: int):
 	"""Helper to set player gold"""
 	game.game_data.player_gold.setValue(amount)
+
+func simulateCardSelection(target_card: Card) -> bool:
+	"""Simulate player selecting a specific card during selection process"""
+	if not game.selection_manager.is_selecting():
+		print("❌ No selection process active")
+		return false
+	
+	# Simulate clicking the target card
+	game.selection_manager.handle_card_click(target_card)
+	
+	# Wait a frame for the selection to process
+	await get_tree().process_frame
+	
+	# Check if selection is complete and validate
+	var current_selection = game.selection_manager.current_selection
+	if current_selection and current_selection.is_complete:
+		game.selection_manager._on_validate_pressed()
+		print("✅ Selection completed with: ", target_card.cardData.cardName)
+		return true
+	else:
+		print("❌ Selection not complete after clicking card")
+		return false
+
+func waitForSelectionStart(max_frames: int = 10) -> bool:
+	"""Wait for selection to start (useful for async operations)"""
+	for i in range(max_frames):
+		if game.selection_manager.is_selecting():
+			print("✅ Selection started after ", i+1, " frames")
+			return true
+		await get_tree().process_frame
+	
+	print("❌ Selection didn't start within ", max_frames, " frames")
+	return false
 
 func getCardsInPlay() -> Array[Card]:
 	"""Helper to get all cards in play"""
@@ -428,7 +469,7 @@ func clickCombatButton(combat_zone: CombatZone):
 
 func test_card_creation():
 	"""Test that cards can be created from card data"""
-	var card = createTestCard("goblin pair")
+	var card = createCardFromName("goblin pair")
 	if not assert_test_not_null(card, "Card should be created"):
 		return false
 	if not assert_test_equal(card.cardData.cardName, "Goblin pair", "Card should have correct name"):
@@ -443,7 +484,7 @@ func test_failure_example():
 
 func test_card_play_basic():
 	"""Test basic card playing functionality"""
-	var card = createTestCard("goblin pair")
+	var card = createCardFromName("goblin pair")
 	addCardToHand(card)
 	setPlayerGold(3)
 	await get_tree().process_frame
@@ -463,7 +504,7 @@ func test_card_play_basic():
 
 func test_insufficient_gold():
 	"""Test that cards can't be played without enough gold"""
-	var card = createTestCard("goblin pair")  # costs 3
+	var card = createCardFromName("goblin pair")  # costs 3
 	addCardToHand(card)
 	setPlayerGold(0)  # Not enough
 	
@@ -477,7 +518,7 @@ func test_insufficient_gold():
 	
 func test_animation_completion():
 	"""Test that card animations complete properly"""
-	var card = createTestCard("goblin pair")
+	var card = createCardFromName("goblin pair")
 	addCardToHand(card)
 	setPlayerGold(3)
 	
@@ -510,7 +551,7 @@ func test_goblin_boss_extra_deck_casting():
 	
 	# Step 1: Play 2 Goblin Pairs to get 4 goblins total (2 pairs + 2 tokens)
 	addCardToExtraDeck(CardLoaderAL.getCardByName("Goblin Boss"))
-	var goblin_pair_1 = createTestCard("goblin pair")
+	var goblin_pair_1 = createCardFromName("goblin pair")
 	addCardToHand(goblin_pair_1)
 	
 	# Play first Goblin Pair and wait for animation to complete
@@ -548,13 +589,11 @@ func test_goblin_boss_extra_deck_casting():
 		return false
 	
 	# Prepare selection data with the two goblins to sacrifice
-	var selection_data = {
-		"additional_cost_selections": [goblins_in_play[0], goblins_in_play[1]] as Array[Card],
-		"spell_targets": [] as Array[Card],
-		"cancelled": false
-	}
+	var selections = SelectionManager.CardPlaySelections.new()
+	selections.add_sacrifice_target(goblins_in_play[0])
+	selections.add_sacrifice_target(goblins_in_play[1])
 	
-	await game.tryPlayCard(goblin_boss_card, game.player_base, selection_data)
+	await game.tryPlayCard(goblin_boss_card, game.player_base, selections)
 	
 	# Step 5: Assert final state
 	var final_cards = getCardsInPlay()
@@ -568,7 +607,7 @@ func test_goblin_boss_extra_deck_casting():
 func test_combat_zone_button_click():
 	"""Test clicking combat zone resolve button changes zone resolution state"""
 	# Setup: Create a creature and place it in a combat zone
-	var card = createTestCard("goblin pair")
+	var card = createCardFromName("goblin pair")
 	setPlayerGold(99)
 	
 	# Get the first combat zone and place the card there
@@ -604,8 +643,8 @@ func test_combat_zone_button_click():
 func test_combat_location_independence():
 	"""Test that attacking one combat location doesn't affect another location's state"""
 	# Setup: Create two simple goblin cards
-	var goblin1 = createTestCard("goblin")
-	var goblin2 = createTestCard("goblin")
+	var goblin1 = createCardFromName("goblin")
+	var goblin2 = createCardFromName("goblin")
 	addCardToHand(goblin1)
 	addCardToHand(goblin2)
 	
@@ -673,8 +712,8 @@ func test_combat_location_independence():
 func test_bolt_spell_with_valid_target():
 	"""Test casting Bolt spell with a legal target - bolt and target should end up in graveyard"""
 	# Setup: Create Bolt spell and a target creature
-	var bolt_card = createTestCard("Bolt")
-	var target_creature = createTestCard("goblin")
+	var bolt_card = createCardFromName("Bolt")
+	var target_creature = createCardFromName("goblin")
 	
 	addCardToHand(bolt_card)
 	addCardToHand(target_creature)
@@ -688,14 +727,11 @@ func test_bolt_spell_with_valid_target():
 		return false
 	
 	# Prepare selection data with the target creature
-	var selection_data = {
-		"additional_cost_selections": [] as Array[Card],
-		"spell_targets": [target_creature] as Array[Card],
-		"cancelled": false
-	}
+	var selections = SelectionManager.CardPlaySelections.new()
+	selections.add_spell_target(target_creature)
 	
 	# Cast Bolt targeting the creature
-	await game.tryPlayCard(bolt_card, game.player_base, selection_data)
+	await game.tryPlayCard(bolt_card, game.player_base, selections)
 	
 	# Verify final state: both bolt and target should be in graveyard
 	if not assertCardExists("Bolt", "graveyard"):
@@ -710,8 +746,8 @@ func test_bolt_spell_with_valid_target():
 func test_bolt_spell_cancelled_with_target():
 	"""Test casting Bolt with target selected but then cancelled - spell should return to hand, creature should stay in play"""
 	# Setup: Create Bolt spell and a target creature
-	var bolt_card = createTestCard("Bolt")
-	var target_creature = createTestCard("goblin")
+	var bolt_card = createCardFromName("Bolt")
+	var target_creature = createCardFromName("goblin")
 	
 	addCardToHand(bolt_card)
 	addCardToHand(target_creature)
@@ -725,11 +761,9 @@ func test_bolt_spell_cancelled_with_target():
 		return false
 	
 	# Prepare selection data showing cancellation
-	var selection_data = {
-		"additional_cost_selections": [] as Array[Card],
-		"spell_targets": [target_creature] as Array[Card],
-		"cancelled": true
-	}
+	var selections = SelectionManager.CardPlaySelections.new()
+	selections.add_spell_target(target_creature)
+	selections.cancelled = true
 	
 	# Store the card before attempting to play it
 	var initial_hand_cards = game.player_hand.get_children().filter(func(c): return c is Card)
@@ -743,7 +777,7 @@ func test_bolt_spell_cancelled_with_target():
 		return false
 	
 	# Attempt to cast Bolt but cancel
-	await game.tryPlayCard(bolt_in_hand, game.player_base, selection_data)
+	await game.tryPlayCard(bolt_in_hand, game.player_base, selections)
 	
 	# Wait a frame for any reparenting to complete
 	await get_tree().process_frame
@@ -771,7 +805,7 @@ func test_bolt_spell_cancelled_with_target():
 func test_bolt_spell_empty_board():
 	"""Test casting Bolt on empty board - spell should be returned to hand"""
 	# Setup: Create Bolt spell only, no target creatures
-	var bolt_card = createTestCard("Bolt")
+	var bolt_card = createCardFromName("Bolt")
 	addCardToHand(bolt_card)
 	setPlayerGold(99)
 	
@@ -950,7 +984,7 @@ func test_replace_mechanism() -> bool:
 	print("=== Testing Replace Mechanism ===")
 	
 	# Create a mock Punglynd Drengr card with Replace
-	var drengr_card = createTestCard("Punglynd Drengr", true)
+	var drengr_card = createCardFromName("Punglynd Drengr", true)
 	
 	# Verify Replace was parsed correctly
 	if not assert_test(drengr_card.cardData.additionalCosts.size() > 0, "Drengr should have additional costs"):
@@ -1012,7 +1046,7 @@ func test_replace_with_additional_reduction() -> bool:
 	print("=== Testing Replace with Additional Reduction ===")
 	
 	# Create a mock Punglynd Drengr card with Replace
-	var drengr_card = createTestCard("Punglynd Drengr", true)
+	var drengr_card = createCardFromName("Punglynd Drengr", true)
 	
 	# Get Replace cost data
 	var replace_cost = null
@@ -1107,4 +1141,210 @@ func test_punglynd_child_growup():
 		return false
 	
 	print("✅ Punglynd Child grow-up test passed!")
+	return true
+
+func test_replace_with_insufficient_gold() -> bool:
+	"""Test that Replace mechanism allows playing cards when player has insufficient gold but valid targets"""
+	print("=== Testing Replace with Insufficient Gold ===")
+	
+	# Step 1: Set player gold to 0
+	setPlayerGold(0)
+	if not assert_test_equal(game.game_data.player_gold.getValue(), 0, "Player should have 0 gold"):
+		return false
+	
+	# Step 2: Create a Punglynd Child token in player base
+	var child_token_data = CardLoaderAL.load_token_by_name("Punglynd Child")
+	if not assert_test_not_null(child_token_data, "Should be able to load Punglynd Child token"):
+		return false
+	
+	var child_card = game.createCardFromData(CardLoaderAL.duplicateCardScript(child_token_data), true)
+	if not assert_test_not_null(child_card, "Should be able to create Punglynd Child card"):
+		return false
+	
+	# Add Grown-up subtype to the child to match ValidCardAlt$ filter
+	child_card.cardData.subtypes.append("Grown-up")
+	
+	# Place the child in player base
+	GameUtility.reparentWithoutMoving(child_card, game.player_base)
+	await get_tree().process_frame
+	
+	if not assert_test_true(child_card.cardData.subtypes.has("Grown-up"), "Child should have Grown-up subtype"):
+		return false
+	
+	# Step 3: Create Punglynd Childbearer and add to hand
+	var childbearer_data = CardLoaderAL.getCardByName("Punglynd Childbearer")
+	if not assert_test_not_null(childbearer_data, "Should be able to load Punglynd Childbearer"):
+		return false
+	
+	var childbearer_card = game.createCardFromData(childbearer_data, true)
+	if not assert_test_not_null(childbearer_card, "Should be able to create Punglynd Childbearer"):
+		return false
+	
+	GameUtility.reparentWithoutMoving(childbearer_card, game.player_hand)
+	await get_tree().process_frame
+	
+	# Step 4: Verify the card has Replace option available
+	if not assert_test_true(CardPaymentManagerAL.hasReplaceOption(childbearer_card), "Childbearer should have Replace option with valid targets"):
+		return false
+	
+	# Step 5: Calculate expected Replace cost (3 - 1 - 2 = 0 for Grown-up)
+	var replace_cost = CardPaymentManagerAL.calculateReplaceCost(childbearer_card, child_card)
+	if not assert_test_equal(replace_cost, 0, "Replace cost with Grown-up should be 3-1-2=0"):
+		return false
+	
+	# Step 6: Verify the card is castable (should be true even with 0 gold due to Replace)
+	if not assert_test_true(CardPaymentManagerAL.isCardCastable(childbearer_card), "Childbearer should be castable with Replace"):
+		return false
+	
+	# Step 7: Store initial counts
+	var initial_hand_count = game.player_hand.get_children().size()
+	var initial_base_count = game.player_base.getCards().size()
+	
+	# Step 8: Use pre-selection system to specify Replace target
+	print("🎮 Starting card play with Replace mechanism using pre-selection...")
+	
+	var selections = SelectionManager.CardPlaySelections.new()
+	selections.set_replace_target(child_card)
+	
+	# Step 9: Try to play the card using Replace with pre-selections
+	await game.tryPlayCard(childbearer_card, game.player_base, selections)
+	print("✅ Card play with Replace completed")
+	await get_tree().process_frame
+	var final_hand_count = game.player_hand.get_children().size()
+	var final_base_count = game.player_base.getCards().size()
+	
+	if not assert_test_equal(final_hand_count, initial_hand_count - 1, "Hand count should decrease by 1"):
+		return false
+	
+	if not assert_test_equal(final_base_count, initial_base_count, "Base count should stay the same (child replaced by childbearer)"):
+		return false
+	
+	# Step 10: Verify the Childbearer is now in play
+	var cards_in_base = game.player_base.getCards()
+	var childbearer_in_play = false
+	for card in cards_in_base:
+		if card.cardData.cardName == "Punglynd Childbearer":
+			childbearer_in_play = true
+			break
+	
+	if not assert_test_true(childbearer_in_play, "Punglynd Childbearer should be in play"):
+		return false
+	
+	# Step 11: Verify player still has 0 gold (Replace cost was 0)
+	if not assert_test_equal(game.game_data.player_gold.getValue(), 0, "Player should still have 0 gold after Replace"):
+		return false
+	
+	# Step 12: Verify the original child is no longer in play (was replaced)
+	var child_still_in_play = false
+	for card in cards_in_base:
+		if card == child_card:
+			child_still_in_play = true
+			break
+	
+	if not assert_test_false(child_still_in_play, "Original Punglynd Child should no longer be in play"):
+		return false
+	
+	print("✅ Replace with insufficient gold test passed!")
+	return true
+
+func test_replace_ui_optional_selection() -> bool:
+	"""Test that Replace UI allows optional selection - confirm button works even with no selection"""
+	print("=== Testing Replace UI Optional Selection ===")
+	
+	# Step 1: Setup - create a child in play and add grown-up type
+	var child_card = createCardFromName("Punglynd Child")
+	GameUtility.reparentWithoutMoving(child_card, game.player_base)
+	child_card.setFlip(true)
+	child_card.getAnimator().make_small()
+	if not assert_test_not_null(child_card, "Child card should be created"):
+		return false
+	
+	# Add grown-up subtype to make it a better Replace target
+	child_card.cardData.subtypes.append("Grown-up")
+	if not assert_test_true("Grown-up" in child_card.cardData.subtypes, "Child should have Grown-up subtype"):
+		return false
+	
+	# Step 2: Add childbearer to hand and set gold to normal amount
+	var childbearer_card = createCardFromName("Punglynd Childbearer")
+	addCardToHand(childbearer_card)
+	if not assert_test_not_null(childbearer_card, "Childbearer should be in hand"):
+		return false
+	
+	setPlayerGold(3) # Enough for normal casting, not enough without Replace
+	
+	# Step 3: Store initial state
+	var initial_hand_count = game.player_hand.get_children().size()
+	var initial_base_count = game.player_base.getCards().size()
+	
+	# Step 4: Start casting process without pre-selections (should trigger UI)
+	print("🎮 Starting card casting process - expecting UI to appear...")
+	
+	# Use a coroutine to handle the card play and UI interaction
+	var handle_card_play_with_ui = func():
+		print("🃏 Attempting to play card (should show selection UI)...")
+		await game.tryPlayCard(childbearer_card, game.player_base)
+		print("✅ Card play process completed")
+	
+	# Start the card play task
+	var card_play_task = handle_card_play_with_ui.call()
+	
+	# Step 5: Wait a few frames for UI to appear and check it's visible
+	var ui_appeared = false
+	var confirm_enabled = false
+	
+	for frame in range(10): # Give it time to show UI
+		await get_tree().process_frame
+		
+		if game.selection_manager.is_selecting():
+			print("✅ Selection UI appeared as expected!")
+			ui_appeared = true
+			
+			# Check if confirm button is enabled (it should be since Replace is optional)
+			if game.selection_manager.selection_ui:
+				var validate_button = game.selection_manager.selection_ui.get_node_or_null("ValidateButton")
+				if validate_button and not validate_button.disabled:
+					print("✅ Confirm button is enabled as expected!")
+					confirm_enabled = true
+					
+					# Step 6: Click the confirm button without selecting anything (choose normal casting)
+					print("🖱️ Clicking confirm button to choose normal casting...")
+					game.selection_manager._on_validate_pressed()
+					break
+				else:
+					print("❌ Confirm button is disabled or not found")
+					break
+		
+	if not assert_test_true(ui_appeared, "Selection UI should have appeared"):
+		return false
+	
+	if not assert_test_true(confirm_enabled, "Confirm button should be enabled for optional Replace"):
+		return false
+	
+	# Step 7: Wait for card play to complete
+	await card_play_task
+	await get_tree().process_frame
+	
+	# Step 8: Verify final state - both cards should be in play (normal casting)
+	var final_hand_count = game.player_hand.get_children().size()
+	var final_base_count = game.player_base.getCards().size()
+	
+	if not assert_test_equal(final_hand_count, initial_hand_count - 1, "Hand should have one less card"):
+		return false
+	
+	if not assert_test_equal(final_base_count, initial_base_count + 1, "Base should have one more card (childbearer)"):
+		return false
+	
+	# Step 9: Verify both child and childbearer are in play
+	if not assertCardExists("Punglynd Child", "play"):
+		return false
+	
+	if not assertCardExists("Punglynd Childbearer", "play"):
+		return false
+	
+	# Step 10: Verify player spent normal gold cost (3) not reduced cost
+	var expected_gold = 0  # Started with 3, spent 3 for normal casting
+	if not assert_test_equal(game.game_data.player_gold.getValue(), expected_gold, "Should have spent full cost for normal casting"):
+		return false
+	
+	print("✅ Replace UI optional selection test passed!")
 	return true

@@ -10,6 +10,7 @@ class_name Card2D
 @onready var power_label: Label = $Background/TextureRect/PowerLabel
 
 var cardData: CardData
+var scroll_tween: Tween  # For animated text scrolling
 
 signal card_clicked(card: Card2D)
 signal card_right_clicked(card_data: CardData)
@@ -72,3 +73,37 @@ func _on_mouse_entered():
 
 func _on_mouse_exited():
 	modulate = Color.WHITE
+
+func animate_text_scroll(direction: int, scroll_step: int = 50) -> bool:
+	"""Animate scrolling of the text label. Direction: -1 for up, 1 for down. Returns true if scrolling occurred."""
+	if not text_label:
+		return false
+	
+	var v_scroll = text_label.get_v_scroll_bar()
+	if not v_scroll:
+		return false
+	
+	# Stop any existing scroll animation
+	if scroll_tween:
+		scroll_tween.kill()
+	
+	# Calculate target scroll position
+	var current_value = v_scroll.value
+	var target_value
+	
+	if direction < 0:  # Scroll up
+		target_value = max(0, current_value - scroll_step)
+	else:  # Scroll down
+		target_value = min(v_scroll.max_value, current_value + scroll_step)
+	
+	# Only animate if there's actually movement to be done
+	if target_value == current_value:
+		return false
+	
+	# Create smooth scrolling animation
+	scroll_tween = create_tween()
+	scroll_tween.tween_property(v_scroll, "value", target_value, 0.15)
+	scroll_tween.set_ease(Tween.EASE_OUT)
+	scroll_tween.set_trans(Tween.TRANS_QUART)
+	
+	return true

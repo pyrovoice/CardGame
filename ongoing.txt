@@ -1,6 +1,6 @@
-- Improve extra deck cast:
-Fix code
-Add script for everything
+
+Fix card not being reset when not cast or moved
+Manually test Punglynd stuff (replace)
 Do something that manipulates the graveyard
 	Make a Hand object and switch active hand between normal and extra for controlers and hightlights
 	Ensure the extra hand works correctly

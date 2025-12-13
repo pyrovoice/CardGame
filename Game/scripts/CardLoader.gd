@@ -16,12 +16,30 @@ func parse_card_data(card_text: String) -> CardData:
 	
 	# Parse the text line by line
 	var lines = card_text.split("\n")
-	for line in lines:
-		line = line.strip_edges()
+	var card_text_started = false
+	var card_text_content = []
+	
+	for i in range(lines.size()):
+		var line = lines[i].strip_edges()
+		
+		# If we've started reading CardText, collect all remaining lines
+		if card_text_started:
+			card_text_content.append(lines[i])  # Keep original formatting/indentation
+			continue
+			
 		if line.is_empty():
 			continue
 			
-		# Parse key:value pairs
+		# Check if this line starts CardText
+		if line.begins_with("CardText:"):
+			card_text_started = true
+			# Get the text after "CardText:" on the same line (if any)
+			var first_line = line.substr(9).strip_edges()
+			if not first_line.is_empty():
+				card_text_content.append(first_line)
+			continue
+			
+		# Parse key:value pairs for non-CardText lines
 		if ":" in line:
 			var parts = line.split(":", false, 1)
 			if parts.size() >= 2:
@@ -39,8 +57,9 @@ func parse_card_data(card_text: String) -> CardData:
 	if "Power" in properties:
 		card_data.power = int(properties["Power"])
 	
-	if "CardText" in properties:
-		card_data.text_box = properties["CardText"]
+	# Set CardText from collected content
+	if card_text_content.size() > 0:
+		card_data.text_box = "\n".join(card_text_content).strip_edges()
 	
 	# Parse types and subtypes
 	if "Types" in properties:

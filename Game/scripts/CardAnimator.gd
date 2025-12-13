@@ -272,9 +272,7 @@ func _animate_combat_strike(tween: Tween, data: Dictionary) -> Tween:
 	var target_card = data.get("target_card")
 	var duration = data.get("duration", 0.3)
 	var return_duration = data.get("return_duration", 0.2)
-	
-	print("🎯 Starting combat strike animation from ", card.getName(), " to ", (target_card.getName() if target_card else "null"))
-	
+		
 	if not target_card:
 		print("❌ No target card for combat strike animation")
 		return tween
