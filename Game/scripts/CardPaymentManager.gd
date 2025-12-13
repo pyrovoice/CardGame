@@ -16,30 +16,16 @@ func canPayCard(card: Card) -> bool:
 	var base_cost = card.cardData.goldCost
 	var can_afford_base = current_game.game_data.has_gold(base_cost, card.cardData.playerControlled)
 	
-	# Debug logging for Punglynd Childbearer
-	if card.cardData.cardName == "Punglynd Childbearer":
-		print("🔍 [PUNGLYND DEBUG] Checking if ", card.cardData.cardName, " can be paid")
-		print("🔍 [PUNGLYND DEBUG] Base cost: ", base_cost)
-		print("🔍 [PUNGLYND DEBUG] Player gold: ", current_game.game_data.player_gold.getValue())
-		print("🔍 [PUNGLYND DEBUG] Can afford base cost: ", can_afford_base)
-	
 	# First check if card can be afforded at base cost
 	if can_afford_base:
-		if card.cardData.cardName == "Punglynd Childbearer":
-			print("🔍 [PUNGLYND DEBUG] ✅ Card affordable at base cost")
-		
 		# Check additional costs (but skip Replace costs - they're optional alternatives)
 		if card.cardData.hasAdditionalCosts():
 			var additional_costs_result = canPayNonReplaceAdditionalCosts(card.cardData)
-			if card.cardData.cardName == "Punglynd Childbearer":
-				print("🔍 [PUNGLYND DEBUG] Non-Replace additional costs check: ", additional_costs_result)
 			return additional_costs_result
 		return true
 	
 	# If not affordable at base cost, check if Replace can make it affordable
 	if hasReplaceOption(card):
-		if card.cardData.cardName == "Punglynd Childbearer":
-			print("🔍 [PUNGLYND DEBUG] ❌ Not affordable at base cost, checking Replace...")
 		
 		# Get valid replace targets to see if any make it affordable
 		for cost_data in card.cardData.additionalCosts:
@@ -49,19 +35,9 @@ func canPayCard(card: Card) -> bool:
 					# Check if any replacement would make it affordable
 					for target in valid_targets:
 						var replace_cost = calculateReplaceCost(card, target)
-						if card.cardData.cardName == "Punglynd Childbearer":
-							print("🔍 [PUNGLYND DEBUG] Replace cost with ", target.cardData.cardName, ": ", replace_cost)
 						if current_game.game_data.has_gold(replace_cost, card.cardData.playerControlled):
-							if card.cardData.cardName == "Punglynd Childbearer":
-								print("🔍 [PUNGLYND DEBUG] ✅ Card is affordable with Replace!")
 							return true
 				break
-		
-		if card.cardData.cardName == "Punglynd Childbearer":
-			print("🔍 [PUNGLYND DEBUG] ❌ Card not affordable even with Replace")
-	else:
-		if card.cardData.cardName == "Punglynd Childbearer":
-			print("🔍 [PUNGLYND DEBUG] ❌ Card not affordable and no Replace option available")
 	
 	return false
 
@@ -118,27 +94,12 @@ func calculateActualCost(card: Card, selected_cards: Array[Card] = []) -> int:
 	
 	var base_cost = card.cardData.goldCost
 	
-	# Debug logging for Punglynd Childbearer
-	if card.cardData.cardName == "Punglynd Childbearer":
-		print("🔍 [PUNGLYND DEBUG] calculateActualCost called")
-		print("🔍 [PUNGLYND DEBUG] Base cost: ", base_cost)
-		print("🔍 [PUNGLYND DEBUG] Selected cards for costs: ", selected_cards.size())
-		for sel_card in selected_cards:
-			if sel_card and sel_card.cardData:
-				print("🔍 [PUNGLYND DEBUG] - ", sel_card.cardData.cardName)
-	
 	# Check if Replace is being used
 	var replace_target = findReplaceTarget(card, selected_cards)
 	if replace_target:
 		print("💰 [REPLACE COST] Calculating reduced cost with replacement: ", replace_target.cardData.cardName)
-		if card.cardData.cardName == "Punglynd Childbearer":
-			var reduced_cost = calculateReplaceCost(card, replace_target)
-			print("🔍 [PUNGLYND DEBUG] Reduced cost: ", reduced_cost)
-			return reduced_cost
 		return calculateReplaceCost(card, replace_target)
 	
-	if card.cardData.cardName == "Punglynd Childbearer":
-		print("🔍 [PUNGLYND DEBUG] No Replace target found, returning base cost: ", base_cost)
 	return base_cost
 
 func findReplaceTarget(card: Card, selected_cards: Array[Card]) -> Card:
@@ -425,13 +386,6 @@ func isCardCastable(card: Card) -> bool:
 	"""Check if a card can be cast (affordable including additional costs)"""
 	if not card or not card.cardData:
 		return false
-	
-	# Debug logging for Punglynd Childbearer
-	if card.cardData.cardName == "Punglynd Childbearer":
-		print("🎯 [CASTABLE DEBUG] Checking if ", card.cardData.cardName, " is castable")
-		var can_pay = canPayCard(card)
-		print("🎯 [CASTABLE DEBUG] canPayCard result: ", can_pay)
-		return can_pay
 	
 	# Use the same logic as canPayCard for consistency
 	return canPayCard(card)
