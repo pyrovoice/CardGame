@@ -426,9 +426,12 @@ func executeAbility(triggeringCard: Card, ability: Dictionary, game_context: Gam
 	var effect_name = ability.get("effect_name", "")
 	var effect_parameters = ability.get("effect_parameters", {})
 	
+	print("🔥 [TRIGGER DEBUG] Executing ability for ", triggeringCard.cardData.cardName, " - Effect: ", effect_name)
+	
 	match effect_name:
 		"TrigToken":
 			# Call the existing token creation logic
+			print("🔥 [TRIGGER DEBUG] Creating token with parameters: ", effect_parameters)
 			execute_token_creation(effect_parameters, triggeringCard, game_context)
 		"TrigDraw", "Draw":
 			# Call the existing draw card logic

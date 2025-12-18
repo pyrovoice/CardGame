@@ -1,4 +1,6 @@
 Name:Punglynd Warcamp
 Types:Legendary Relic
-CardText:As additional cost to play me, sacrifice 3 Punglynd Grown-ups.  
-Once per turn, when you attack with 3 or more creature, draw a card and create a Punglynd Child token.
+AC:$ SacrificePermanent | ValidCard$ Card.YouCtrl+Creature+NonToken/Card.YouCtrl+Creature+Grow-up | Count 3
+
+CardText:As additional cost to play me, sacrifice three non-token creatures. Punglynd Grown-ups can be sacrificed this way.
+{exhaust}: Create a Punglynd Child, or Sacrifice a creature to draw a card.

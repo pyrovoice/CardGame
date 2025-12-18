@@ -182,8 +182,8 @@ func cast_position(should_turn_over: bool = false) -> Tween:
 	return null
 
 func go_to_rest() -> Tween:
-	# DRAG FIX: Block rest during dragging
-	if is_being_dragged():
+	# Only allow rest if card is in idle state
+	if current_state != AnimationState.IDLE:
 		return null
 	
 	var tween = get_tween(true, 0, "go_to_rest")  # Lowest priority
@@ -245,8 +245,10 @@ func end_drag(target_destination = null):
 		current_state = AnimationState.IDLE
 		# Don't call _check_for_rest_positioning() - let the game handle casting
 	else:
-		# Card was dropped in empty space - return to rest
-		end_player_control()
+		# Card was dropped in empty space - return to rest immediately
+		current_state = AnimationState.IDLE
+		# Try to go to rest - priority system will determine if this should proceed
+		go_to_rest()
 	
 	drag_ended.emit(card)
 

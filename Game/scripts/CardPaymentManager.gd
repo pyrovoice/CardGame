@@ -458,22 +458,34 @@ func getValidReplaceTargets(card: Card, replace_cost_data: Dictionary) -> Array[
 
 
 func filterCardsByParameters(cards: Array[Card], filter_string: String, game: Game) -> Array[Card]:
-	"""Universal card filtering method that handles all parameter types"""
+	"""Universal card filtering method that handles all parameter types with OR (/) and AND (+) logic"""
 	var valid_cards: Array[Card] = []
 	
 	if filter_string.is_empty():
 		return cards
 	
-	# Parse the filter string
-	var filter_parts = filter_string.split("+")
-	var criteria = parseCriteria(filter_parts)
+	# Split by "/" first to handle OR groups
+	var or_groups = filter_string.split("/")
 	
-	# Filter cards based on all criteria
+	# Filter cards - a card is valid if it matches ANY of the OR groups
 	for card in cards:
 		if not card or not card.cardData:
 			continue
 		
-		if matchesAllCriteria(card, criteria, game):
+		var matches_any_group = false
+		
+		# Check each OR group
+		for or_group in or_groups:
+			# Parse the AND criteria within this OR group
+			var filter_parts = or_group.split("+")
+			var criteria = parseCriteria(filter_parts)
+			
+			# If card matches all criteria in this group, it's valid
+			if matchesAllCriteria(card, criteria, game):
+				matches_any_group = true
+				break
+		
+		if matches_any_group:
 			valid_cards.append(card)
 	
 	return valid_cards
@@ -489,7 +501,8 @@ func parseCriteria(filter_parts: Array) -> Dictionary:
 		"cost_max": -1,   # Maximum cost (from "MaxCost.X")
 		"power": -1,      # Specific power (from "Power.X")
 		"power_min": -1,  # Minimum power (from "MinPower.X")
-		"power_max": -1   # Maximum power (from "MaxPower.X")
+		"power_max": -1,  # Maximum power (from "MaxPower.X")
+		"token": "",      # "Token", "NonToken"
 	}
 	
 	for part in filter_parts:
@@ -520,6 +533,10 @@ func process_filter_part(part: String, criteria: Dictionary):
 		criteria.controller = "YouCtrl"
 	elif part == "OppCtrl":
 		criteria.controller = "OppCtrl"
+	elif part == "Token":
+		criteria.token = "Token"
+	elif part == "NonToken":
+		criteria.token = "NonToken"
 	elif part.begins_with("Cost."):
 		criteria.cost = int(part.substr(5))
 	elif part.begins_with("MinCost."):
@@ -546,6 +563,12 @@ func matchesAllCriteria(card: Card, criteria: Dictionary, game: Game) -> bool:
 	if criteria.controller == "YouCtrl" and not card_data.playerControlled:
 		return false
 	elif criteria.controller == "OppCtrl" and card_data.playerControlled:
+		return false
+	
+	# Check token status
+	if criteria.token == "Token" and not card.isToken:
+		return false
+	elif criteria.token == "NonToken" and card.isToken:
 		return false
 	
 	# Check card types

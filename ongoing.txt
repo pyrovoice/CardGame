@@ -1,5 +1,6 @@
-
-Fix card not being reset when not cast or moved
+Activated ability on Punglynd Warcamp and Punglynd Warrior
+Cards being cast are still moveable
+Card are not moveable after new turn
 Manually test Punglynd stuff (replace)
 Do something that manipulates the graveyard
 	Make a Hand object and switch active hand between normal and extra for controlers and hightlights

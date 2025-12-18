@@ -2,5 +2,6 @@ Name:Punglynd Hersir
 ManaCost:3
 Types:Creature Punglynd
 Power:2
-CardText:Defensive 3, Replace 1-Cost. If the replaced creature was a Punglynd Grown-up, my cost is reduced by an additional 2.
+AC:$ Replace | ValidCard$ Card.YouCtrl+Cost.1+Creature | ValidCardAlt$ Card.YouCtrl+Cost.1+Grown-up | AddReduction 1
+CardText:Defensive 3, Replace 1-Cost. If the replaced creature was a Punglynd Grown-up, my cost is reduced by an additional 1.
 While in combat, I receive combat damage that would be dealt to other 1 or lower creatures in the same combat.

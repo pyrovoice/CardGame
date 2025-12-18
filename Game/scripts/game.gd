@@ -156,6 +156,8 @@ func tryMoveCard(card: Card, target_location: Node3D) -> void:
 				exchange_card_in_spots(card.get_parent(), target_location)
 			else:
 				print("❌ Cannot move card from CombatZone to non-PlayerBase location")
+				# Reset card to rest state when move fails
+				card.getAnimator().go_to_rest()
 		
 		_:
 			print("❌ Cannot move card from zone: ", source_zone)
@@ -1153,3 +1155,39 @@ func trigger_phase(phase_name: String):
 	var phase_action = GameAction.new(TriggerType.Type.PHASE)
 	phase_action.additional_data = {"phase": phase_name}
 	AbilityManagerAL.triggerGameAction(self, phase_action)
+	
+	# Handle end of turn special logic
+	if phase_name == "EndOfTurn":
+		await end_of_turn_return_cards_to_base()
+
+func end_of_turn_return_cards_to_base():
+	"""Return all player-controlled cards from combat locations to playerBase and reset their movement"""
+	var cards_to_return: Array[Card] = []
+	
+	# Collect all player cards in combat zones
+	for combat_zone in combatZones:
+		for ally_spot in combat_zone.allySpots:
+			var card = ally_spot.getCard()
+			if card and card.cardData.playerControlled:
+				cards_to_return.append(card)
+	
+	# Return cards to player base with animations
+	var return_tweens: Array[Tween] = []
+	for card in cards_to_return:
+		# First remove from combat spot by reparenting to game temporarily
+		GameUtility.reparentWithoutMoving(card, self)
+		
+		# Then move to player base using animator
+		var tween = moveCardToPlayerBase(card)
+		if tween:
+			return_tweens.append(tween)
+		
+		# Reset movement state so cards can move again
+		card.cardData.reset_movement_tracking()
+	
+	# Wait for all return animations to complete
+	for tween in return_tweens:
+		if tween and tween.is_valid():
+			await tween.finished
+	
+	print("🔄 End of turn: Returned ", cards_to_return.size(), " cards to player base and reset movement")
