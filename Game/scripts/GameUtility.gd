@@ -22,28 +22,55 @@ static func getAllCardsInPlay(game: Game) -> Array[Card]:
 	return cards
 
 static func createCardFromData(game: Game, cardData: CardData, player_controlled: bool, isToken: bool):
+	print("🔍 [CREATE CARD DEBUG] Starting createCardFromData")
+	print("  - cardData: ", cardData)
+	print("  - player_controlled: ", player_controlled)
+	print("  - isToken: ", isToken)
+	
 	if cardData == null:
 		push_warning("Tried to draw from empty deck.")
+		print("❌ [CREATE CARD DEBUG] cardData is null!")
 		return null
 	
+	print("  - cardData.cardName: ", cardData.cardName)
+	
 	var CARD = preload("res://Game/scenes/Card.tscn")
+	print("  - CARD preload successful: ", CARD != null)
+	
 	if !CARD.can_instantiate():
 		push_error("Can't instantiate.")
+		print("❌ [CREATE CARD DEBUG] Cannot instantiate Card.tscn!")
 		return
+	
+	print("  - Card.tscn can_instantiate: true")
+	
 	var card_instance: Card = CARD.instantiate() as Card
+	print("  - card_instance created: ", card_instance != null)
+	
 	if card_instance == null:
 		push_error("Card instance is null! Check if Card.gd is attached to Card.tscn root.")
+		print("❌ [CREATE CARD DEBUG] card_instance is null after instantiate!")
 		return
+	
 	game.add_child(card_instance)
+	print("  - card_instance added to game tree")
+	
 	cardData.playerControlled = player_controlled
 	cardData.playerOwned = player_controlled
+	
+	print("  - Calling setData on card_instance...")
 	card_instance.setData(cardData)
+	print("  - setData completed")
+	
 	card_instance.name = cardData.cardName + "_" + str(Game.getObjectCountAndIncrement())
+	print("  - card_instance.name set to: ", card_instance.name)
 	
 	card_instance.isToken = isToken
 	
 	# Connect card to highlight manager for drag notifications
 	game.connect_card_to_highlight_manager(card_instance)
+	print("✅ [CREATE CARD DEBUG] Card creation successful!")
+	
 	return card_instance
 
 static func getCardZone(game: Game, card: Card) -> GameZone.e:

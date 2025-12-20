@@ -300,8 +300,8 @@ func _executeSpellEffectWithTargets(card: Card, effect: Dictionary, targets: Arr
 	if targets.size() > 0:
 		ability.effect_parameters["Targets"] = targets
 	
-	# Use the unified ability execution system
-	await AbilityManagerAL.executeAbilityEffect(card, ability, self)
+	# Use the unified ability execution system (pass CardData instead of Card)
+	await AbilityManagerAL.executeAbilityEffect(card.cardData, ability, self)
 
 func _executeSpellDamageWithTargets(card: Card, parameters: Dictionary, targets: Array):
 	"""Execute spell damage effect with pre-selected targets"""
@@ -941,7 +941,7 @@ func tryActivateAbility(card: Card) -> bool:
 	
 	# Check if the ability can be activated (costs can be paid)
 	if not AbilityManagerAL.canPayActivationCosts(card, ability_to_activate, self):
-		print("❌ Cannot pay activation costs for ", card.cardData.cardName)
+		print("⚠️ Cannot pay activation costs for ", card.cardData.cardName)
 		return false
 	
 	print("🔥 Activating ability on ", card.cardData.cardName)
@@ -1299,6 +1299,7 @@ func getControllerCards(playerSide = true) -> Array[Card]:
 
 func can_card_move(card: Card) -> bool:
 	if card.cardData.is_tapped():
+		print("⚠️ Cannot move card - already tapped: ", card.cardData.cardName)
 		AnimationsManagerAL.show_floating_text(self, card.global_position, "Tapped", Color.ORANGE)
 		return false
 	return true

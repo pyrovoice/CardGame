@@ -273,6 +273,18 @@ func get_temporary_effects_by_duration(duration: String) -> Array[Dictionary]:
 			matching_effects.append(effect)
 	return matching_effects
 
-func clear_temporary_effect(effect: Dictionary):
-	"""Remove a specific temporary effect from this card"""
-	temporary_effects.erase(effect)
+# Card object reference methods
+func set_card_object(card: Card):
+	"""Set the Card object reference (uses WeakRef to avoid reference cycles)"""
+	if card:
+		card_object = weakref(card)
+	else:
+		card_object = null
+
+func get_card_object() -> Card:
+	"""Get the Card object if it still exists, null otherwise"""
+	if card_object:
+		var card = card_object.get_ref()
+		if card and is_instance_valid(card):
+			return card
+	return null

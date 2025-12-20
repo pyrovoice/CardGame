@@ -55,6 +55,15 @@ func setData(_cardData):
 	cardData.dirty_data.connect(_on_card_data_changed)
 	updateDisplay()
 	
+	# Defer setting the card_object reference until after we're in the tree
+	# This prevents instantiation issues when creating cards
+	if is_inside_tree():
+		# Already in tree, set immediately
+		cardData.set_card_object(self)
+	else:
+		# Wait for tree entry
+		tree_entered.connect(func(): cardData.set_card_object(self), CONNECT_ONE_SHOT)
+	
 func updateDisplay():
 	if not cardData:
 		print("  - ❌ ERROR: No cardData, returning early")

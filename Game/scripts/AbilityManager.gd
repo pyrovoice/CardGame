@@ -13,8 +13,8 @@ func triggerGameAction(game: Game, action: GameAction):
 	for abilityPair in triggeredAbilities:
 		var triggeringCard = abilityPair.card
 		var ability = abilityPair.ability
-		# Execute the ability effect using unified method
-		await executeAbilityEffect(triggeringCard, ability, game)
+		# Execute the ability effect using unified method (pass CardData instead of Card)
+		await executeAbilityEffect(triggeringCard.cardData, ability, game)
 	
 	# Resolve state-based actions after all triggered abilities have executed
 	if triggeredAbilities.size() > 0:
@@ -26,21 +26,31 @@ func activateAbility(source_card: Card, activated_ability: Dictionary, game_cont
 	
 	# First, check if costs can be paid
 	if not canPayActivationCosts(source_card, activated_ability, game_context):
-		print("❌ Cannot pay activation costs for ", source_card.cardData.cardName)
+		print("⚠️ Cannot pay activation costs for ", source_card.cardData.cardName)
 		return false
 	
-	# Pay the activation costs
+	# Check if any cost would destroy the source card (like Sacrifice Self)
+	var has_sacrifice_self_cost = false
+	var card_name_for_debug = source_card.cardData.cardName  # Store card name before potential destruction
+	var source_card_data = source_card.cardData  # Store CardData reference before card might be freed
+	var activation_costs = activated_ability.get("activation_costs", [])
+	for cost in activation_costs:
+		if cost.get("type", "") == "Sacrifice" and cost.get("target", "") == "Self":
+			has_sacrifice_self_cost = true
+			break
+	
+	# Always pay costs first (proper order for sacrificing)
 	if not await payActivationCosts(source_card, activated_ability, game_context):
-		print("❌ Failed to pay activation costs for ", source_card.cardData.cardName)
+		print("❌ Failed to pay activation costs for ", card_name_for_debug)
 		return false
 	
-	# Execute the ability effect (unified method for all abilities)
-	await executeAbilityEffect(source_card, activated_ability, game_context)
+	# Execute the ability effect using CardData (which persists even if Card is freed)
+	await executeAbilityEffect(source_card_data, activated_ability, game_context)
 	
 	# Resolve state-based actions after ability execution
 	game_context.resolveStateBasedAction()
 	
-	print("✅ [ACTIVATED] Completed ability activation for ", source_card.cardData.cardName)
+	print("✅ [ACTIVATED] Completed ability activation")
 	return true
 
 func canPayActivationCosts(source_card: Card, activated_ability: Dictionary, game_context: Game) -> bool:
@@ -122,18 +132,19 @@ func payActivationCosts(source_card: Card, activated_ability: Dictionary, game_c
 	await game_context.get_tree().process_frame
 	return true
 
-func executeAbilityEffect(source_card: Card, ability: Dictionary, game_context: Game):
+func executeAbilityEffect(source_card_data: CardData, ability: Dictionary, game_context: Game):
 	"""
 	Unified method to execute ability effects - used for both triggered and activated abilities.
 	After an ability is triggered or activated, this handles the actual effect execution.
 	Uses enum-based effect types for type safety and consistency.
+	Uses CardData instead of Card object, so effects work even if the Card has been destroyed.
 	"""
 	var effect_type_str = ability.get("effect_type", "")
 	var effect_parameters = ability.get("effect_parameters", {})
 	var target_conditions = ability.get("target_conditions", {})
 	
 	if effect_type_str.is_empty():
-		print("❌ No effect_type specified for ability on card: ", source_card.cardData.cardName)
+		print("❌ No effect_type specified for ability on card: ", source_card_data.cardName)
 		print("   Ability data: ", ability)
 		return
 	
@@ -145,27 +156,27 @@ func executeAbilityEffect(source_card: Card, ability: Dictionary, game_context: 
 	# Execute based on effect type enum
 	match effect_type_enum:
 		EffectType.Type.DEAL_DAMAGE:
-			await execute_spell_damage_effect(source_card, effect_parameters, game_context)
+			await execute_spell_damage_effect(source_card_data, effect_parameters, game_context)
 		
 		EffectType.Type.PUMP:
-			await execute_pump_effect(source_card, effect_parameters, game_context)
+			await execute_pump_effect(source_card_data, effect_parameters, game_context)
 		
 		EffectType.Type.ADD_KEYWORD:  # PumpAll -> AddKeyword
-			await execute_pump_all(source_card, effect_parameters, target_conditions, game_context)
+			await execute_pump_all(source_card_data, effect_parameters, target_conditions, game_context)
 		
 		EffectType.Type.CREATE_TOKEN:
-			execute_token_creation(effect_parameters, source_card, game_context)
+			execute_token_creation(effect_parameters, source_card_data, game_context)
 		
 		EffectType.Type.DRAW:
-			execute_draw_card(effect_parameters, source_card, game_context)
+			execute_draw_card(effect_parameters, source_card_data, game_context)
 		
 		EffectType.Type.ADD_TYPE:
-			execute_add_type(effect_parameters, source_card, game_context)
+			execute_add_type(effect_parameters, source_card_data, game_context)
 		
 		_:
 			print("❌ Unknown ability effect type: ", EffectType.type_to_string(effect_type_enum))
 
-func execute_pump_all(source_card: Card, effect_parameters: Dictionary, target_conditions: Dictionary, game_context: Game):
+func execute_pump_all(source_card_data: CardData, effect_parameters: Dictionary, target_conditions: Dictionary, game_context: Game):
 	"""Execute PumpAll effect - give keyword abilities to target creatures"""
 	var keyword = effect_parameters.get("KW", "")
 	var duration = effect_parameters.get("Duration", "Permanent")
@@ -241,7 +252,7 @@ func grant_keyword_to_card(target_card: Card, keyword: String, duration: String,
 	"""Grant a keyword ability to a card - delegates to unified modifyCard"""
 	modifyCard(target_card, "keyword", {"keyword": keyword}, duration)
 
-func execute_token_creation(parameters: Dictionary, source_card: Card, game_context: Game):
+func execute_token_creation(parameters: Dictionary, source_card_data: CardData, game_context: Game):
 	"""Execute token creation effect"""
 	var token_script = parameters.get("TokenScript", "")
 	if token_script.is_empty():
@@ -255,9 +266,10 @@ func execute_token_creation(parameters: Dictionary, source_card: Card, game_cont
 		return
 	
 	# Check for replacement effects before creating tokens
+	# Note: We can't pass a Card object, but replacement effects shouldn't need it
 	var effect_context = {
 		"effect_type": "CreateToken",
-		"source_card": source_card,
+		"source_card_data": source_card_data,
 		"token_data": token_data,
 		"tokens_to_create": 1,  # Default amount
 		"game_context": game_context
@@ -269,15 +281,15 @@ func execute_token_creation(parameters: Dictionary, source_card: Card, game_cont
 	# Create the modified number of tokens
 	var tokens_to_create = effect_context.get("tokens_to_create", 1)
 	for i in range(tokens_to_create):
-		var card = game_context.createToken(token_data, source_card.cardData.playerControlled)
+		var card = game_context.createToken(token_data, source_card_data.playerControlled)
 		game_context.executeCardEnters(card, GameZone.e.UNKNOWN, GameZone.e.UNKNOWN)
 
-func execute_draw_card(parameters: Dictionary, source_card: Card, game_context: Game):
+func execute_draw_card(parameters: Dictionary, source_card_data: CardData, game_context: Game):
 	"""Execute draw card effect"""
 	# Check who should draw the card (default to "You" if not specified)
 	var defined_player = parameters.get("Defined", "You")
 	if defined_player != "You":
-		print("⚡ Draw card triggered by: ", source_card.cardData.cardName)
+		print("⚡ Draw card triggered by: ", source_card_data.cardName)
 		print("  But effect is for: ", defined_player, " (not implemented for non-player)")
 		return
 	
@@ -290,14 +302,14 @@ func execute_draw_card(parameters: Dictionary, source_card: Card, game_context: 
 	elif parameters.has("CardsDrawn"):
 		cards_to_draw = int(parameters.get("CardsDrawn", "1"))
 	
-	print("⚡ Draw card triggered by: ", source_card.cardData.cardName)
+	print("⚡ Draw card triggered by: ", source_card_data.cardName)
 	print("  Drawing ", cards_to_draw, " card(s) for: ", defined_player)
 	
 	# Draw the specified number of cards
 	for i in range(cards_to_draw):
 		game_context.drawCard()
 
-func execute_add_type(parameters: Dictionary, source_card: Card, game_context: Game):
+func execute_add_type(parameters: Dictionary, source_card_data: CardData, game_context: Game):
 	"""Execute AddType effect - add types/subtypes to target cards"""
 	
 	# Parse target - defaults to Self
@@ -306,7 +318,13 @@ func execute_add_type(parameters: Dictionary, source_card: Card, game_context: G
 	
 	match target_param:
 		"Self":
-			target_cards = [source_card]
+			# Get the Card object from CardData (if it still exists)
+			var source_card = source_card_data.get_card_object()
+			if source_card:
+				target_cards = [source_card]
+			else:
+				print("⚠️ Cannot add type to Self - card no longer exists in play")
+				return
 		_:
 			print("❌ Unsupported AddType target: ", target_param)
 			return
@@ -658,9 +676,9 @@ func executeSpellEffect(card: Card, effect: Dictionary, game_context: Game):
 		"target_conditions": {}
 	}
 	
-	await executeAbilityEffect(card, ability, game_context)
+	await executeAbilityEffect(card.cardData, ability, game_context)
 
-func execute_spell_damage_effect(card: Card, parameters: Dictionary, game_context: Game):
+func execute_spell_damage_effect(source_card_data: CardData, parameters: Dictionary, game_context: Game):
 	"""Execute spell damage effect with targeting"""
 	var damage_amount = parameters.get("NumDamage", 1)
 	var valid_targets = parameters.get("ValidTargets", "Any")
@@ -671,7 +689,7 @@ func execute_spell_damage_effect(card: Card, parameters: Dictionary, game_contex
 	if preselected_targets.size() > 0:
 		# Use pre-selected targets
 		var target = preselected_targets[0]
-		print("⚡ ", card.cardData.cardName, " deals ", damage_amount, " damage to ", target.cardData.cardName)
+		print("⚡ ", source_card_data.cardName, " deals ", damage_amount, " damage to ", target.cardData.cardName)
 		
 		# Apply damage
 		target.receiveDamage(damage_amount)
@@ -683,7 +701,7 @@ func execute_spell_damage_effect(card: Card, parameters: Dictionary, game_contex
 		game_context.resolveStateBasedAction()
 		return
 	
-	print("⚡ ", card.cardData.cardName, " needs to deal ", damage_amount, " damage to target (", valid_targets, ")")
+	print("⚡ ", source_card_data.cardName, " needs to deal ", damage_amount, " damage to target (", valid_targets, ")")
 	
 	# Get all possible targets using centralized filtering
 	var possible_targets: Array[Card] = GameUtility.filterCardsByParameters(
@@ -693,7 +711,13 @@ func execute_spell_damage_effect(card: Card, parameters: Dictionary, game_contex
 	)
 	
 	if possible_targets.is_empty():
-		print("⚠️ No valid targets for ", card.cardData.cardName)
+		print("⚠️ No valid targets for ", source_card_data.cardName)
+		return
+	
+	# Get the Card object from CardData (if it still exists)
+	var casting_card = source_card_data.get_card_object()
+	if not casting_card:
+		print("⚠️ Cannot select target - source card no longer exists (card was destroyed)")
 		return
 	
 	# Start target selection
@@ -702,15 +726,15 @@ func execute_spell_damage_effect(card: Card, parameters: Dictionary, game_contex
 		"count": 1
 	}
 	
-	print("🎯 Starting target selection for ", card.cardData.cardName)
-	var selected_targets = await game_context.start_selection_with_casting_card(requirement, possible_targets, "spell_target_" + card.cardData.cardName, card)
+	print("🎯 Starting target selection for ", source_card_data.cardName)
+	var selected_targets = await game_context.start_card_selection(requirement, possible_targets, "spell_target_" + source_card_data.cardName, casting_card)
 	
 	if selected_targets.is_empty():
-		print("❌ No target selected for ", card.cardData.cardName)
+		print("❌ No target selected for ", source_card_data.cardName)
 		return
 	
 	var target = selected_targets[0]
-	print("⚡ ", card.cardData.cardName, " deals ", damage_amount, " damage to ", target.cardData.cardName)
+	print("⚡ ", source_card_data.cardName, " deals ", damage_amount, " damage to ", target.cardData.cardName)
 	
 	# Apply damage
 	target.receiveDamage(damage_amount)
@@ -721,7 +745,7 @@ func execute_spell_damage_effect(card: Card, parameters: Dictionary, game_contex
 	# Resolve state-based actions after damage
 	game_context.resolveStateBasedAction()
 
-func execute_pump_effect(card: Card, parameters: Dictionary, game_context: Game):
+func execute_pump_effect(source_card_data: CardData, parameters: Dictionary, game_context: Game):
 	"""Execute spell pump effect with targeting - temporarily increases power"""
 	var power_bonus = parameters.get("PowerBonus", 0)
 	var valid_targets = parameters.get("ValidTargets", "Creature")
@@ -733,7 +757,7 @@ func execute_pump_effect(card: Card, parameters: Dictionary, game_context: Game)
 	if preselected_targets.size() > 0:
 		# Use pre-selected targets
 		var target = preselected_targets[0]
-		print("✨ ", card.cardData.cardName, " pumps ", target.cardData.cardName, " by +", power_bonus, " power")
+		print("✨ ", source_card_data.cardName, " pumps ", target.cardData.cardName, " by +", power_bonus, " power")
 		
 		# Apply the power boost
 		apply_power_boost(target, power_bonus, duration)
@@ -742,7 +766,7 @@ func execute_pump_effect(card: Card, parameters: Dictionary, game_context: Game)
 		AnimationsManagerAL.show_floating_text(game_context, target.global_position, "+" + str(power_bonus) + " Power", Color.GREEN)
 		return
 	
-	print("✨ ", card.cardData.cardName, " needs to pump a creature +", power_bonus, " power (", valid_targets, ")")
+	print("✨ ", source_card_data.cardName, " needs to pump a creature +", power_bonus, " power (", valid_targets, ")")
 	
 	# Get all possible targets using centralized filtering
 	var possible_targets: Array[Card] = GameUtility.filterCardsByParameters(
@@ -752,7 +776,13 @@ func execute_pump_effect(card: Card, parameters: Dictionary, game_context: Game)
 	)
 	
 	if possible_targets.is_empty():
-		print("⚠️ No valid targets for ", card.cardData.cardName)
+		print("⚠️ No valid targets for ", source_card_data.cardName)
+		return
+	
+	# Get the Card object from CardData (if it still exists)
+	var casting_card = source_card_data.get_card_object()
+	if not casting_card:
+		print("⚠️ Cannot select target - source card no longer exists (card was destroyed)")
 		return
 	
 	# Start target selection
@@ -761,15 +791,15 @@ func execute_pump_effect(card: Card, parameters: Dictionary, game_context: Game)
 		"count": 1
 	}
 	
-	print("🎯 Starting target selection for ", card.cardData.cardName)
-	var selected_targets = await game_context.start_selection_with_casting_card(requirement, possible_targets, "spell_target_" + card.cardData.cardName, card)
+	print("🎯 Starting target selection for ", source_card_data.cardName)
+	var selected_targets = await game_context.start_card_selection(requirement, possible_targets, "spell_target_" + source_card_data.cardName, casting_card)
 	
 	if selected_targets.is_empty():
-		print("❌ No target selected for ", card.cardData.cardName)
+		print("❌ No target selected for ", source_card_data.cardName)
 		return
 	
 	var target = selected_targets[0]
-	print("✨ ", card.cardData.cardName, " pumps ", target.cardData.cardName, " by +", power_bonus, " power")
+	print("✨ ", source_card_data.cardName, " pumps ", target.cardData.cardName, " by +", power_bonus, " power")
 	
 	# Apply the power boost
 	apply_power_boost(target, power_bonus, duration)

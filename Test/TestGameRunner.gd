@@ -26,6 +26,15 @@ func ensure_game_loaded() -> Game:
 		game_instance.doStartGame = false
 		add_child(game_instance)
 		
+		# Wait for the game to be fully added to the scene tree and ready
+		await get_tree().process_frame
+		
+		# Wait for game's _ready() to complete
+		if not game_instance.is_node_ready():
+			await game_instance.ready
+		
+		print("🎮 Game fully initialized in scene tree")
+		
 		# Hide the test manager UI while tests are running
 		test_manager.visible = false
 		print("Game loaded, UI hidden for test execution")
