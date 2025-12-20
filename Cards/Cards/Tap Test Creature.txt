@@ -1,0 +1,7 @@
+Name:Tap Test Creature
+ManaCost:1
+Types:Creature Test
+Power:1
+AA:$ PumpAll | Cost$ Tap.Self+Pay.1 | ValidCards$ Creature.YouCtrl | KW$ Spellshield | Duration$ EndOfTurn
+
+CardText:Tap, Pay 1: Other creatures you control gain Spellshield this turn.

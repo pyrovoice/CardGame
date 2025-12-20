@@ -1083,6 +1083,352 @@ func test_replace_with_additional_reduction() -> bool:
 	
 	print("✅ Replace with additional reduction test passed!")
 	return true
+
+func test_activated_ability_parsing() -> bool:
+	"""Test parsing of activated abilities (AA:$)"""
+	print("=== Testing Activated Ability Parsing ===")
+	
+	# Test with Punglynd Hersir's activated ability
+	var hersir_card = createCardFromName("Punglynd Hersir", true)
+	
+	if not assert_test_not_null(hersir_card, "Should create Punglynd Hersir card"):
+		return false
+		
+	if not assert_test_not_null(hersir_card.cardData, "Card should have cardData"):
+		return false
+	
+	# Check that the card has abilities
+	if not assert_test(hersir_card.cardData.abilities.size() > 0, "Hersir should have abilities"):
+		return false
+	
+	# Look for the activated ability
+	var activated_ability = null
+	for ability in hersir_card.cardData.abilities:
+		if ability.get("type") == "ActivatedAbility":
+			activated_ability = ability
+			break
+	
+	if not assert_test_not_null(activated_ability, "Should find activated ability"):
+		return false
+	
+	# Test the parsed activated ability structure
+	if not assert_test_equal(activated_ability.get("effect_type"), "PumpAll", "Effect type should be PumpAll"):
+		return false
+	
+	# Test activation costs parsing
+	var costs = activated_ability.get("activation_costs", [])
+	if not assert_test_equal(costs.size(), 2, "Should have 2 activation costs"):
+		return false
+	
+	# Check sacrifice cost
+	var sac_cost = null
+	var pay_cost = null
+	for cost in costs:
+		if cost.get("type") == "Sacrifice":
+			sac_cost = cost
+		elif cost.get("type") == "PayMana":
+			pay_cost = cost
+	
+	if not assert_test_not_null(sac_cost, "Should have sacrifice cost"):
+		return false
+	if not assert_test_equal(sac_cost.get("target"), "Self", "Sacrifice target should be Self"):
+		return false
+	
+	if not assert_test_not_null(pay_cost, "Should have mana payment cost"):
+		return false
+	if not assert_test_equal(pay_cost.get("amount"), 1, "Pay cost should be 1"):
+		return false
+	
+	# Test target conditions
+	var target_conditions = activated_ability.get("target_conditions", {})
+	if not assert_test_equal(target_conditions.get("ValidCards"), "Creature.YouCtrl", "Valid cards should be Creature.YouCtrl"):
+		return false
+	
+	# Test effect parameters
+	var effect_params = activated_ability.get("effect_parameters", {})
+	if not assert_test_equal(effect_params.get("KW"), "Spellshield", "Keyword should be Spellshield"):
+		return false
+	if not assert_test_equal(effect_params.get("Duration"), "EndOfTurn", "Duration should be EndOfTurn"):
+		return false
+	
+	print("✅ Activated ability parsing test passed!")
+	return true
+
+func test_tap_system() -> bool:
+	"""Test the tap/untap system for cards"""
+	print("=== Testing Tap System ===")
+	
+	# Create a test creature (try Tap Test Creature first, fallback to any creature)
+	var test_card = createCardFromName("Tap Test Creature", true)
+	if not test_card:
+		# Fallback to any available creature for basic tap testing
+		test_card = createCardFromName("Punglynd Hersir", true)
+	if not assert_test_not_null(test_card, "Should create test card"):
+		return false
+	
+	# Add it to player base
+	GameUtility.reparentWithoutMoving(test_card, game.player_base)
+	test_card.setFlip(true)
+	test_card.getAnimator().make_small()
+	
+	# Test 1: Card should start untapped
+	if not assert_test_false(test_card.cardData.is_tapped(), "Card should start untapped"):
+		return false
+	if not assert_test_true(test_card.cardData.can_tap(), "Card should be able to tap initially"):
+		return false
+	
+	# Test 2: Test tapping manually
+	test_card.cardData.tap()
+	if not assert_test_true(test_card.cardData.is_tapped(), "Card should be tapped after tap()"):
+		return false
+	if not assert_test_false(test_card.cardData.can_tap(), "Card should not be able to tap when already tapped"):
+		return false
+	
+	# Test 3: Test untapping
+	test_card.cardData.untap()
+	if not assert_test_false(test_card.cardData.is_tapped(), "Card should be untapped after untap()"):
+		return false
+	if not assert_test_true(test_card.cardData.can_tap(), "Card should be able to tap after untapping"):
+		return false
+	
+	# Test 4: Test movement tapping (assuming we can move to combat)
+	if game.combatZones.size() > 0:
+		var combat_zone = game.combatZones[0] as CombatZone
+		var empty_spot = combat_zone.getFirstEmptyLocation(true)
+		
+		if empty_spot:
+			# Try to move card to combat (should tap it)
+			var move_successful = game.moveCardToCombatZone(test_card, empty_spot)
+			if assert_test_true(move_successful, "Movement to combat should succeed"):
+				if not assert_test_true(test_card.cardData.is_tapped(), "Card should be tapped after moving to combat"):
+					return false
+				
+				# Try to move again (should fail because card is tapped)
+				var second_move = game.moveCardToCombatZone(test_card, empty_spot)
+				if not assert_test_false(second_move, "Second movement should fail (card is tapped)"):
+					return false
+	
+	# Test 5: Test activated ability with tap cost
+	# First untap the card
+	test_card.cardData.untap()
+	setPlayerGold(10)  # Give plenty of mana
+	
+	# Find activated abilities with tap cost
+	var tap_abilities = []
+	for ability in test_card.cardData.abilities:
+		if ability.get("type") == "ActivatedAbility":
+			var costs = ability.get("activation_costs", [])
+			for cost in costs:
+				if cost.get("type") == "Tap":
+					tap_abilities.append(ability)
+					break
+	
+	if tap_abilities.size() > 0:
+		var ability = tap_abilities[0]
+		
+		# Check if we can pay costs (should be true)
+		if assert_test_true(AbilityManagerAL.canPayActivationCosts(test_card, ability, game), "Should be able to pay tap costs when untapped"):
+			# Activate the ability
+			await AbilityManagerAL.activateAbility(test_card, ability, game)
+			
+			# Check that card is now tapped
+			if not assert_test_true(test_card.cardData.is_tapped(), "Card should be tapped after using tap ability"):
+				return false
+			
+			# Try to use ability again (should fail)
+			if not assert_test_false(AbilityManagerAL.canPayActivationCosts(test_card, ability, game), "Should not be able to pay tap costs when already tapped"):
+				return false
+	
+	print("✅ Tap system test passed!")
+	return true
+
+func test_temporary_keyword_effects() -> bool:
+	"""Test that keywords granted until end of turn are properly removed"""
+	print("=== Testing Temporary Keyword Effects ===")
+	
+	# Step 1: Create test creatures - one with activated ability, targets for the effect
+	var hersir_card = createCardFromName("Punglynd Hersir", true)
+	if not assert_test_not_null(hersir_card, "Should create Punglynd Hersir"):
+		return false
+	
+	var target_card = createCardFromName("Goblin", true)
+	if not assert_test_not_null(target_card, "Should create target creature"):
+		return false
+	
+	# Step 2: Place both cards in play
+	GameUtility.reparentWithoutMoving(hersir_card, game.player_base)
+	hersir_card.setFlip(true)
+	hersir_card.getAnimator().make_small()
+	
+	GameUtility.reparentWithoutMoving(target_card, game.player_base)
+	target_card.setFlip(true)
+	target_card.getAnimator().make_small()
+	
+	await get_tree().process_frame
+	
+	# Step 3: Verify target doesn't have Spellshield initially
+	var initial_abilities = target_card.cardData.abilities.size()
+	var has_spellshield_initial = false
+	for ability in target_card.cardData.abilities:
+		if ability.get("keyword") == "Spellshield":
+			has_spellshield_initial = true
+			break
+	
+	if not assert_test_false(has_spellshield_initial, "Target should not have Spellshield initially"):
+		return false
+	
+	# Step 4: Set up resources and activate Hersir's ability
+	setPlayerGold(10)  # Plenty of mana
+	
+	# Find the activated ability
+	var activated_ability = null
+	for ability in hersir_card.cardData.abilities:
+		if ability.get("type") == "ActivatedAbility":
+			activated_ability = ability
+			break
+	
+	if not assert_test_not_null(activated_ability, "Hersir should have activated ability"):
+		return false
+	
+	# Step 5: Activate the ability (sacrifices Hersir, grants Spellshield to all creatures)
+	print("🎯 Activating Hersir's ability to grant Spellshield...")
+	await AbilityManagerAL.activateAbility(hersir_card, activated_ability, game)
+	await get_tree().process_frame
+	
+	# Step 6: Verify target now has Spellshield
+	var has_spellshield_after = false
+	for ability in target_card.cardData.abilities:
+		if ability.get("keyword") == "Spellshield":
+			has_spellshield_after = true
+			break
+	
+	if not assert_test_true(has_spellshield_after, "Target should have Spellshield after activation"):
+		return false
+	
+	var abilities_after_grant = target_card.cardData.abilities.size()
+	if not assert_test_equal(abilities_after_grant, initial_abilities + 1, "Should have one more ability after granting Spellshield"):
+		return false
+	
+	# Step 7: Verify the effect is tracked on the card itself
+	if not assert_test_true(target_card.cardData.has_temporary_effects(), "Target card should have temporary effects tracked"):
+		return false
+	
+	if not assert_test_true(target_card.cardData.has_temporary_keyword("Spellshield"), "Target card should have Spellshield tracked as temporary"):
+		return false
+	
+	var card_temp_effects = target_card.cardData.get_temporary_effects_by_duration("EndOfTurn")
+	if not assert_test_equal(card_temp_effects.size(), 1, "Should have 1 end-of-turn effect on card"):
+		return false
+	
+	print("  ℹ️ ", target_card.cardData.temporary_effects.size(), " temporary effect(s) tracked on card")
+	
+	# Step 8: Trigger end of turn to clean up temporary effects
+	print("🔄 Starting new turn to trigger cleanup...")
+	await game.onTurnStart()
+	await get_tree().process_frame
+	
+	# Step 9: Verify Spellshield was removed
+	var has_spellshield_after_turn = false
+	for ability in target_card.cardData.abilities:
+		if ability.get("keyword") == "Spellshield":
+			has_spellshield_after_turn = true
+			break
+	
+	if not assert_test_false(has_spellshield_after_turn, "Target should not have Spellshield after end of turn"):
+		return false
+	
+	var abilities_after_cleanup = target_card.cardData.abilities.size()
+	if not assert_test_equal(abilities_after_cleanup, initial_abilities, "Should have original number of abilities after cleanup"):
+		return false
+	
+	# Step 10: Verify the effect was removed from the card's tracking
+	if not assert_test_false(target_card.cardData.has_temporary_effects(), "Target card should have no temporary effects after cleanup"):
+		return false
+	
+	if not assert_test_false(target_card.cardData.has_temporary_keyword("Spellshield"), "Target card should not have Spellshield tracked as temporary after cleanup"):
+		return false
+	
+	print("✅ Temporary keyword effects test passed!")
+	return true
+
+func test_growth_spell_pump() -> bool:
+	"""Test Growth spell - pump effect that gives +3 power until end of turn"""
+	print("=== Testing Growth Spell (Pump Effect) ===")
+	
+	# Step 1: Create Growth spell and a target creature
+	var growth_card = createCardFromName("Growth", true)
+	if not assert_test_not_null(growth_card, "Should create Growth spell"):
+		return false
+	
+	var target_creature = createCardFromName("Goblin", true)
+	if not assert_test_not_null(target_creature, "Should create target creature"):
+		return false
+	
+	# Step 2: Place target in play and spell in hand
+	GameUtility.reparentWithoutMoving(target_creature, game.player_base)
+	target_creature.setFlip(true)
+	target_creature.getAnimator().make_small()
+	
+	addCardToHand(growth_card)
+	setPlayerGold(10)
+	
+	await get_tree().process_frame
+	
+	# Step 3: Record initial power
+	var initial_power = target_creature.cardData.power
+	print("  Initial power: ", initial_power)
+	
+	# Step 4: Cast Growth targeting the creature
+	print("🎯 Casting Growth on ", target_creature.cardData.cardName)
+	
+	var selections = SelectionManager.CardPlaySelections.new()
+	selections.add_spell_target(target_creature)
+	
+	await game.tryPlayCard(growth_card, game.player_base, selections)
+	await get_tree().process_frame
+	
+	# Step 5: Verify power was increased by 3
+	var boosted_power = target_creature.cardData.power
+	if not assert_test_equal(boosted_power, initial_power + 3, "Power should be increased by 3"):
+		return false
+	
+	print("  Boosted power: ", boosted_power)
+	
+	# Step 6: Verify temporary effect is tracked
+	if not assert_test_true(target_creature.cardData.has_temporary_effects(), "Should have temporary effect"):
+		return false
+	
+	if not assert_test_true(target_creature.cardData.has_temporary_power_boost(), "Should have temporary power boost"):
+		return false
+	
+	var temp_effects = target_creature.cardData.get_temporary_effects_by_duration("EndOfTurn")
+	if not assert_test_equal(temp_effects.size(), 1, "Should have 1 end-of-turn effect"):
+		return false
+	
+	# Step 7: Verify Growth spell went to graveyard
+	if not assertCardExists("Growth", "graveyard"):
+		return false
+	
+	# Step 8: End turn to trigger cleanup
+	print("🔄 Ending turn to test power boost removal...")
+	await game.onTurnStart()
+	await get_tree().process_frame
+	
+	# Step 9: Verify power returned to original value
+	var final_power = target_creature.cardData.power
+	if not assert_test_equal(final_power, initial_power, "Power should return to original after end of turn"):
+		return false
+	
+	print("  Final power after cleanup: ", final_power)
+	
+	# Step 10: Verify temporary effect was removed
+	if not assert_test_false(target_creature.cardData.has_temporary_effects(), "Should have no temporary effects after cleanup"):
+		return false
+	
+	if not assert_test_false(target_creature.cardData.has_temporary_power_boost(), "Should have no power boost after cleanup"):
+		return false
+	
+	print("✅ Growth spell pump effect test passed!")
 	return true
 
 func test_punglynd_child_growup():

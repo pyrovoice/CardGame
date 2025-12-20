@@ -108,8 +108,12 @@ func onTurnStart(skipFirstTurn = false):
 		await resolve_unresolved_combats()
 		# Trigger end of turn phase
 		trigger_phase("EndOfTurn")
+		# Clean up temporary effects that last until end of turn
+		cleanup_end_of_turn_effects()
 		game_data.start_new_turn()
 		reset_all_card_turn_tracking()
+		# Untap all player cards at start of turn
+		untap_all_player_cards()
 		game_data.reset_combat_resolution_flags()
 		# Trigger beginning of turn phase
 		trigger_phase("BeginningOfTurn")
@@ -273,7 +277,8 @@ func _executeSpellWithTargets(card: Card, targets: Array):
 		
 		# Assign targets to effects that need them
 		var effect_type = effect.get("effect_type", "")
-		if effect_type == "DealDamage" and target_index < targets.size():
+		# Effects that require targeting
+		if effect_type in ["DealDamage", "Pump", "Destroy", "Bounce", "Exile"] and target_index < targets.size():
 			effect_targets = [targets[target_index]]
 			target_index += 1
 		
@@ -282,15 +287,21 @@ func _executeSpellWithTargets(card: Card, targets: Array):
 	print("✨ Finished casting spell: ", card.cardData.cardName)
 
 func _executeSpellEffectWithTargets(card: Card, effect: Dictionary, targets: Array):
-	"""Execute a single spell effect with pre-selected targets"""
-	var effect_type = effect.get("effect_type", "")
-	var parameters = effect.get("parameters", {})
+	"""Execute a single spell effect with pre-selected targets - delegates to AbilityManager"""
+	# Convert spell effect format to ability format and use unified execution
+	var ability = {
+		"type": "SpellEffect",
+		"effect_type": effect.get("effect_type", ""),
+		"effect_parameters": effect.get("parameters", {}),
+		"target_conditions": {}
+	}
 	
-	match effect_type:
-		"DealDamage":
-			await _executeSpellDamageWithTargets(card, parameters, targets)
-		_:
-			print("❌ Unknown spell effect type: ", effect_type)
+	# For targeting effects, add targets to parameters
+	if targets.size() > 0:
+		ability.effect_parameters["Targets"] = targets
+	
+	# Use the unified ability execution system
+	await AbilityManagerAL.executeAbilityEffect(card, ability, self)
 
 func _executeSpellDamageWithTargets(card: Card, parameters: Dictionary, targets: Array):
 	"""Execute spell damage effect with pre-selected targets"""
@@ -338,22 +349,40 @@ func executeCardAttacks(card: Card, combat_spot: CombatantFightingSpot):
 	
 
 func moveCardToCombatZone(card: Card, zone: CombatantFightingSpot) -> bool:
-	# Mark card as moved and attacked this turn
-	card.cardData.mark_as_moved()
-	card.cardData.mark_as_attacked()
+	# Check if card can be tapped (required for movement)
+	if not card.cardData.can_tap():
+		print("❌ Cannot move card - already tapped: ", card.cardData.cardName)
+		return false
+	
+	# Tap the card for movement and mark as attacked
+	card.cardData.tap()
+	card.cardData.hasAttackedThisTurn = true
 	
 	# Let setCard handle the positioning and reparenting
 	zone.setCard(card)
 	return true
 
-func moveCardToPlayerBase(card: Card) -> Tween:
-	"""Move card to PlayerBase with smooth animation from current position"""
+func moveCardToPlayerBase(card: Card, require_tap: bool = true) -> Tween:
+	"""Move card to PlayerBase with smooth animation from current position
+	
+	Args:
+		card: The card to move
+		require_tap: If true, card must be tappable and will be tapped (for movement actions).
+		             If false, card is entering battlefield and doesn't need to tap.
+	"""
 	var target_position = player_base.getNextEmptyLocation()
 	if target_position == Vector3.INF:  # No empty location available
 		return null
 	
-	# Mark card as moved and update tracking
-	card.cardData.mark_as_moved()
+	# Only check tapping for actual movement actions (not initial battlefield entry)
+	if require_tap:
+		# Check if card can be tapped (required for movement)
+		if not card.cardData.can_tap():
+			print("❌ Cannot move card - already tapped: ", card.cardData.cardName)
+			return null
+		
+		# Tap the card for movement
+		card.cardData.tap()
 	
 	# Use local position since card will be reparented to player_base
 	var local_target = target_position + Vector3(0, 0.2, 0)
@@ -437,6 +466,99 @@ func reset_all_card_turn_tracking():
 	"""Reset all turn-based tracking for all player cards (movement, attacks, etc.)"""
 	for card in _get_all_player_cards():
 		card.cardData.reset_turn_tracking()
+
+func untap_all_player_cards():
+	"""Untap all player cards at the start of turn"""
+	for card in _get_all_player_cards():
+		if card.cardData.is_tapped():
+			card.cardData.untap()
+			print("🔄 Untapped ", card.cardData.cardName)
+
+func cleanup_end_of_turn_effects():
+	"""Remove all temporary effects that last until end of turn from all cards"""
+	print("🧹 Cleaning up end of turn effects...")
+	
+	var total_effects_removed = 0
+	
+	# Check all player cards for temporary effects
+	for card in _get_all_player_cards():
+		var effects_to_remove = card.cardData.get_temporary_effects_by_duration("EndOfTurn")
+		
+		if effects_to_remove.size() > 0:
+			print("  🗑️ Removing ", effects_to_remove.size(), " effect(s) from ", card.cardData.cardName)
+			
+			for effect in effects_to_remove:
+				_remove_temporary_effect_from_card(card, effect)
+				total_effects_removed += 1
+	
+	if total_effects_removed > 0:
+		print("  ✅ Removed ", total_effects_removed, " end-of-turn effect(s) total")
+
+func _remove_temporary_effect_from_card(card: Card, effect: Dictionary):
+	"""Remove a specific temporary effect from a card"""
+	var effect_type = effect.get("type")
+	
+	match effect_type:
+		"keyword":
+			_remove_keyword_from_card(card, effect.get("keyword"))
+		"type":
+			_remove_type_from_card(card, effect.get("type_to_remove"))
+		"power_boost":
+			_remove_power_boost_from_card(card, effect.get("power_bonus"))
+		_:
+			print("    ❌ Unknown temporary effect type: ", effect_type)
+	
+	# Remove from card's tracking
+	card.cardData.clear_temporary_effect(effect)
+
+func _remove_keyword_from_card(card: Card, keyword: String):
+	"""Remove a granted keyword ability from a card"""
+	# Find and remove the keyword ability
+	var abilities_to_remove = []
+	for i in range(card.cardData.abilities.size()):
+		var ability = card.cardData.abilities[i]
+		if ability.get("type") == "KeywordAbility" and ability.get("keyword") == keyword and ability.get("granted_by") == "ActivatedAbility":
+			abilities_to_remove.append(i)
+	
+	# Remove abilities in reverse order to maintain indices
+	abilities_to_remove.reverse()
+	for index in abilities_to_remove:
+		card.cardData.abilities.remove_at(index)
+	
+	# Update the card's visual display
+	if card.has_method("updateDisplay"):
+		card.updateDisplay()
+
+func _remove_type_from_card(card: Card, type_to_remove: String):
+	"""Remove a granted type/subtype from a card"""
+	# Check if it's a main type or subtype
+	if CardData.isValidCardTypeString(type_to_remove):
+		# It's a main card type - remove it
+		var card_type = CardData.stringToCardType(type_to_remove)
+		card.cardData.removeType(card_type)
+	else:
+		# It's a subtype - remove it
+		card.cardData.subtypes.erase(type_to_remove)
+	
+	# Update the card's visual display
+	if card.has_method("updateDisplay"):
+		card.updateDisplay()
+
+func _remove_power_boost_from_card(card: Card, power_bonus: int):
+	"""Remove a temporary power boost from a card"""
+	print("    💪 Removing +", power_bonus, " power boost from ", card.cardData.cardName)
+	
+	# Reverse the power boost
+	card.cardData.power -= power_bonus
+	
+	print("      Power now: ", card.cardData.power)
+	
+	# Update the card's visual display
+	if card.has_method("updateDisplay"):
+		card.updateDisplay()
+	
+	# Emit dirty signal to update UI
+	card.cardData.emit_signal("dirty_data")
 
 func _get_all_player_cards() -> Array[Card]:
 	var all_cards: Array[Card] = []
@@ -621,10 +743,10 @@ func createToken(cardData: CardData, player_controlled: bool) -> Card:
 
 func executeCardEnters(card: Card, source_zone: GameZone.e, target_zone: GameZone.e):
 	"""Execute the card entering the battlefield - handles movement and triggers"""
-	# Move the card to player base
+	# Move the card to player base (no tapping required for battlefield entry)
 	card.setFlip(true)
 	card.getAnimator().make_small()
-	var tween = moveCardToPlayerBase(card)
+	var tween = moveCardToPlayerBase(card, false)  # false = don't require tap for entering battlefield
 	
 	if not tween:
 		print("❌ Failed to move card to player base")
@@ -799,9 +921,49 @@ func _on_right_click(card: Card):
 	# Normal right-click behavior (show popup)
 	showCardPopup(card)
 
+func tryActivateAbility(card: Card) -> bool:
+	"""Try to activate an activated ability on the card"""
+	if not card or not card.cardData:
+		return false
+	
+	# Find activated abilities on the card
+	var activated_abilities = []
+	for ability in card.cardData.abilities:
+		if ability.get("type") == "ActivatedAbility":
+			activated_abilities.append(ability)
+	
+	if activated_abilities.is_empty():
+		return false
+	
+	# For now, if there are multiple activated abilities, use the first one
+	# TODO: Add UI to choose between multiple abilities
+	var ability_to_activate = activated_abilities[0]
+	
+	# Check if the ability can be activated (costs can be paid)
+	if not AbilityManagerAL.canPayActivationCosts(card, ability_to_activate, self):
+		print("❌ Cannot pay activation costs for ", card.cardData.cardName)
+		return false
+	
+	print("🔥 Activating ability on ", card.cardData.cardName)
+	
+	# Activate the ability
+	await AbilityManagerAL.activateAbility(card, ability_to_activate, self)
+	
+	return true
+
 func _on_left_click(objectUnderMouse):
-	if objectUnderMouse is Card and selection_manager.is_selecting():
-		selection_manager.handle_card_click(objectUnderMouse as Card)
+	if objectUnderMouse is Card:
+		var card = objectUnderMouse as Card
+		
+		# Handle card selection if we're in a selection process
+		if selection_manager.is_selecting():
+			selection_manager.handle_card_click(card)
+		else:
+			# Check for activated abilities first
+			if await tryActivateAbility(card):
+				return
+			# If no activated abilities, fall back to normal behavior (like showing popup)
+			# For now, we don't do anything else on left-click for cards
 	elif objectUnderMouse is ResolveFightButton:
 		resolve_combat_for_zone(objectUnderMouse.get_parent())
 	elif objectUnderMouse == extra_deck:
@@ -956,7 +1118,8 @@ func _spellRequiresTargeting(card: Card) -> bool:
 	for ability in card.cardData.abilities:
 		if ability.get("type") == "SpellEffect":
 			var effect_type = ability.get("effect_type", "")
-			if effect_type == "DealDamage":  # Add other targeting effects here
+			# Check if this effect type requires targeting
+			if effect_type in ["DealDamage", "Pump", "Destroy", "Bounce", "Exile"]:
 				return true
 	return false
 
@@ -973,7 +1136,8 @@ func _getSpellTargetsIfRequired(card: Card, preselected_targets: Array[Card] = [
 	for ability in card.cardData.abilities:
 		if ability.get("type") == "SpellEffect":
 			var effect_type = ability.get("effect_type", "")
-			if effect_type == "DealDamage":  # Add other targeting effects here
+			# Check if this effect type requires targeting
+			if effect_type in ["DealDamage", "Pump", "Destroy", "Bounce", "Exile"]:
 				targeting_effects.append(ability)
 	
 	if targeting_effects.is_empty():
@@ -1134,9 +1298,10 @@ func getControllerCards(playerSide = true) -> Array[Card]:
 	return GameUtility.getControllerCards(self, playerSide)
 
 func can_card_move(card: Card) -> bool:
-	if card.cardData.hasMoved:
-		AnimationsManagerAL.show_floating_text(self, card.global_position, "Already_moved", Color.ORANGE)
-	return !card.cardData.hasMoved
+	if card.cardData.is_tapped():
+		AnimationsManagerAL.show_floating_text(self, card.global_position, "Tapped", Color.ORANGE)
+		return false
+	return true
 
 func exchange_card_in_spots(from: CombatantFightingSpot, to: CombatantFightingSpot):
 	if from.get_parent() != to.get_parent():
@@ -1161,7 +1326,7 @@ func trigger_phase(phase_name: String):
 		await end_of_turn_return_cards_to_base()
 
 func end_of_turn_return_cards_to_base():
-	"""Return all player-controlled cards from combat locations to playerBase and reset their movement"""
+	"""Return all player-controlled cards from combat locations to playerBase"""
 	var cards_to_return: Array[Card] = []
 	
 	# Collect all player cards in combat zones
@@ -1171,23 +1336,18 @@ func end_of_turn_return_cards_to_base():
 			if card and card.cardData.playerControlled:
 				cards_to_return.append(card)
 	
-	# Return cards to player base with animations
-	var return_tweens: Array[Tween] = []
+	# Return cards to player base - they will untap at start of next turn
 	for card in cards_to_return:
 		# First remove from combat spot by reparenting to game temporarily
 		GameUtility.reparentWithoutMoving(card, self)
 		
-		# Then move to player base using animator
-		var tween = moveCardToPlayerBase(card)
-		if tween:
-			return_tweens.append(tween)
-		
-		# Reset movement state so cards can move again
-		card.cardData.reset_movement_tracking()
+		# Then move to player base using a simple position animation (don't use moveCardToPlayerBase as it requires tapping)
+		var target_position = player_base.getNextEmptyLocation()
+		if target_position != Vector3.INF:
+			var local_target = target_position + Vector3(0, 0.2, 0)
+			card.getAnimator().move_to_position(local_target, 0.8, player_base)
 	
-	# Wait for all return animations to complete
-	for tween in return_tweens:
-		if tween and tween.is_valid():
-			await tween.finished
+	# Wait a moment for animations to start
+	await get_tree().create_timer(0.1).timeout
 	
-	print("🔄 End of turn: Returned ", cards_to_return.size(), " cards to player base and reset movement")
+	print("🔄 End of turn: Returned ", cards_to_return.size(), " cards to player base")

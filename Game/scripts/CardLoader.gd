@@ -127,10 +127,16 @@ func parse_single_spell_effect(effect_text: String) -> Dictionary:
 		# Parse different effect types
 		if part == "DealDamage":
 			effect_data.effect_type = "DealDamage"
+		elif part == "Pump":
+			effect_data.effect_type = "Pump"
 		elif part.begins_with("ValidTgts$"):
 			effect_data.parameters["ValidTargets"] = part.substr(11)
 		elif part.begins_with("NumDmg$"):
 			effect_data.parameters["NumDamage"] = int(part.substr(8))
+		elif part.begins_with("Pow$"):
+			effect_data.parameters["PowerBonus"] = int(part.substr(5))
+		elif part.begins_with("Duration$"):
+			effect_data.parameters["Duration"] = part.substr(10)
 		elif part.begins_with("SpellDescription$"):
 			effect_data.description = part.substr(18)
 		# Add more spell effect types as needed (Mill, Draw, Heal, etc.)
@@ -154,7 +160,7 @@ func parse_abilities(properties: Dictionary) -> Array[Dictionary]:
 				var effect_value = svar_parts[1].strip_edges()
 				svar_effects[effect_name] = effect_value
 	
-	# Second pass: parse triggered abilities
+	# Second pass: parse triggered abilities and activated abilities
 	for key in properties.keys():
 		if key == "T":
 			var trigger_ability = parse_triggered_ability(properties[key], svar_effects)
@@ -164,6 +170,10 @@ func parse_abilities(properties: Dictionary) -> Array[Dictionary]:
 			var replacement_effect = parse_replacement_effect(properties[key], svar_effects)
 			if replacement_effect:
 				abilities.append(replacement_effect)
+		elif key == "AA":
+			var activated_ability = parse_activated_ability(properties[key], svar_effects)
+			if activated_ability:
+				abilities.append(activated_ability)
 	
 	return abilities
 
@@ -173,12 +183,13 @@ func parse_triggered_ability(trigger_text: String, svar_effects: Dictionary) -> 
 		"type": "TriggeredAbility",
 		"trigger_type": TriggerType.Type.CARD_ENTERS,  # Store enum value, not string
 		"trigger_conditions": {},
-		"effect_name": "",
+		"effect_type": "",  # Modern format using enum strings
 		"effect_parameters": {},
 		"description": ""
 	}
 	
 	var trigger_parts = trigger_text.split(" | ")
+	var legacy_effect_name = ""  # Temporary storage for conversion
 	
 	# Parse trigger conditions and parameters
 	for part in trigger_parts:
@@ -202,21 +213,35 @@ func parse_triggered_ability(trigger_text: String, svar_effects: Dictionary) -> 
 		elif part.begins_with("Condition$"):
 			ability_data.trigger_conditions["Condition"] = part.substr(11)
 		elif part.begins_with("Execute$"):
-			ability_data.effect_name = part.substr(9)
+			legacy_effect_name = part.substr(9)
 		elif part.begins_with("TriggerDescription$"):
 			ability_data.description = part.substr(20)
 	
-	# Get effect parameters from SVar
-	if ability_data.effect_name in svar_effects:
-		ability_data.effect_parameters = parse_effect_parameters(svar_effects[ability_data.effect_name])
-	else:
-		# Try common alternatives for token creation
-		if ability_data.effect_name.begins_with("TrigCreate") or ability_data.effect_name.begins_with("Trig"):
-			if "TrigToken" in svar_effects:
-				ability_data.effect_parameters = parse_effect_parameters(svar_effects["TrigToken"])
-				ability_data.effect_name = "TrigToken"  # Normalize the name
+	# Get effect parameters from SVar and convert effect name to modern effect_type
+	if legacy_effect_name in svar_effects:
+		ability_data.effect_parameters = parse_effect_parameters(svar_effects[legacy_effect_name])
+	
+	# Convert effect name to modern effect_type format
+	# This enforces the new enum-based system
+	ability_data.effect_type = _normalize_effect_name(legacy_effect_name)
 	
 	return ability_data
+
+# Helper to normalize legacy effect names to modern effect types
+func _normalize_effect_name(legacy_name: String) -> String:
+	"""Convert legacy effect names (TrigToken, TrigDraw) to modern effect types (CreateToken, Draw)"""
+	match legacy_name:
+		"TrigToken":
+			return "CreateToken"
+		"TrigDraw":
+			return "Draw"
+		"TrigGrowup":
+			return "AddType"
+		"Token":
+			return "CreateToken"
+		_:
+			# Unknown effect - return as-is and let EffectType.string_to_type handle it
+			return legacy_name
 
 # Parse a single replacement effect
 func parse_replacement_effect(replacement_text: String, svar_effects: Dictionary) -> Dictionary:
@@ -251,6 +276,73 @@ func parse_replacement_effect(replacement_text: String, svar_effects: Dictionary
 		ability_data.effect_parameters = parse_effect_parameters(svar_effects[ability_data.effect_name])
 	
 	return ability_data
+
+# Parse a single activated ability
+func parse_activated_ability(activated_text: String, svar_effects: Dictionary) -> Dictionary:
+	var ability_data = {
+		"type": "ActivatedAbility",
+		"effect_type": "",  # The type of effect (e.g., "PumpAll")
+		"activation_costs": [],  # Array of costs to activate (e.g., "Sac.Self", "Pay.1")
+		"target_conditions": {},  # Targeting/validation conditions
+		"effect_parameters": {},  # Parameters for the effect
+		"description": ""
+	}
+	
+	var activated_parts = activated_text.split(" | ")
+	
+	# Parse activated ability conditions and parameters
+	for part in activated_parts:
+		part = part.strip_edges()
+		if part.begins_with("$ "):
+			# The effect type comes right after "$ " (e.g., "$ PumpAll")
+			ability_data.effect_type = part.substr(2).strip_edges()
+		elif part.begins_with("Cost$"):
+			# Parse the cost components (e.g., "Sac.Self+Pay.1")
+			var cost_string = part.substr(6)  # Remove "Cost$ "
+			ability_data.activation_costs = parse_activation_costs(cost_string)
+		elif part.begins_with("ValidCards$"):
+			ability_data.target_conditions["ValidCards"] = part.substr(12)
+		elif part.begins_with("ValidTargets$"):
+			ability_data.target_conditions["ValidTargets"] = part.substr(14)
+		elif part.begins_with("KW$"):
+			ability_data.effect_parameters["KW"] = part.substr(4)
+		elif part.begins_with("Duration$"):
+			ability_data.effect_parameters["Duration"] = part.substr(10)
+		elif part.begins_with("NumTarget$"):
+			ability_data.effect_parameters["NumTarget"] = part.substr(11)
+		elif part.begins_with("Amount$"):
+			ability_data.effect_parameters["Amount"] = part.substr(8)
+		elif part.begins_with("Description$"):
+			ability_data.description = part.substr(13)
+	
+	return ability_data
+
+# Parse activation costs from cost string (e.g., "Sac.Self+Pay.1")
+func parse_activation_costs(cost_string: String) -> Array[Dictionary]:
+	var costs: Array[Dictionary] = []
+	var cost_parts = cost_string.split("+")
+	
+	for cost_part in cost_parts:
+		cost_part = cost_part.strip_edges()
+		var cost_data = {}
+		
+		if cost_part.begins_with("Sac."):
+			cost_data["type"] = "Sacrifice"
+			cost_data["target"] = cost_part.substr(4)  # Remove "Sac."
+		elif cost_part.begins_with("Pay."):
+			cost_data["type"] = "PayMana"
+			cost_data["amount"] = int(cost_part.substr(4))  # Remove "Pay." and convert to int
+		elif cost_part.begins_with("Tap."):
+			cost_data["type"] = "Tap"
+			cost_data["target"] = cost_part.substr(4)  # Remove "Tap."
+		else:
+			# Generic cost parsing for future expansion
+			cost_data["type"] = "Unknown"
+			cost_data["raw"] = cost_part
+		
+		costs.append(cost_data)
+	
+	return costs
 
 # Parse effect parameters from SVar text
 func parse_effect_parameters(effect_text: String) -> Dictionary:

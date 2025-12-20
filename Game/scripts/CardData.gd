@@ -27,6 +27,10 @@ var playerOwned: bool       # Whether this card is owned by the player
 var hasMoved: bool = false  # Track if the card has moved this turn
 # Attack tracking
 var hasAttackedThisTurn: bool = false  # Track if the card attacked this turn
+# Tap state
+var isTapped: bool = false  # Track if the card is currently tapped
+# Temporary effects tracking
+var temporary_effects: Array[Dictionary] = []  # Track temporary effects applied to this card
 
 	
 func describe() -> String:
@@ -203,19 +207,72 @@ func reset_movement_tracking():
 	"""Reset movement tracking at the start of turn"""
 	hasMoved = false
 
-func mark_as_moved():
-	"""Mark this card as having moved this turn"""
-	hasMoved = true
-
 func reset_attack_tracking():
 	"""Reset attack tracking at the start of turn"""
 	hasAttackedThisTurn = false
-
-func mark_as_attacked():
-	"""Mark this card as having attacked this turn"""
-	hasAttackedThisTurn = true
 
 func reset_turn_tracking():
 	"""Reset all turn-based tracking (movement, attacks, etc.) at start of turn"""
 	reset_movement_tracking()
 	reset_attack_tracking()
+
+# Tap state methods
+func tap():
+	"""Tap this card"""
+	isTapped = true
+	emit_signal("dirty_data")
+
+func untap():
+	"""Untap this card"""
+	isTapped = false
+	emit_signal("dirty_data")
+
+func is_tapped() -> bool:
+	"""Check if this card is currently tapped"""
+	return isTapped
+
+func can_tap() -> bool:
+	"""Check if this card can be tapped (i.e., is not already tapped)"""
+	return not isTapped
+
+# Temporary effects tracking methods
+func add_temporary_effect(effect: Dictionary):
+	"""Add a temporary effect to this card"""
+	temporary_effects.append(effect)
+
+func has_temporary_effects() -> bool:
+	"""Check if this card has any temporary effects"""
+	return temporary_effects.size() > 0
+
+func has_temporary_keyword(keyword: String) -> bool:
+	"""Check if this card has a specific temporary keyword"""
+	for effect in temporary_effects:
+		if effect.get("type") == "keyword" and effect.get("keyword") == keyword:
+			return true
+	return false
+
+func has_temporary_type(type_name: String) -> bool:
+	"""Check if this card has a specific temporary type"""
+	for effect in temporary_effects:
+		if effect.get("type") == "type" and effect.get("type_to_remove") == type_name:
+			return true
+	return false
+
+func has_temporary_power_boost() -> bool:
+	"""Check if this card has any temporary power boosts"""
+	for effect in temporary_effects:
+		if effect.get("type") == "power_boost":
+			return true
+	return false
+
+func get_temporary_effects_by_duration(duration: String) -> Array[Dictionary]:
+	"""Get all temporary effects with a specific duration"""
+	var matching_effects: Array[Dictionary] = []
+	for effect in temporary_effects:
+		if effect.get("duration") == duration:
+			matching_effects.append(effect)
+	return matching_effects
+
+func clear_temporary_effect(effect: Dictionary):
+	"""Remove a specific temporary effect from this card"""
+	temporary_effects.erase(effect)

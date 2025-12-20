@@ -1,0 +1,4 @@
+Name:Growth
+Types:Spell
+ManaCost:1
+E:$ Pump | ValidTgts$ Creature | Pow$ 3 | Duration$ EndOfTurn | SpellDescription$ Target creature gets +3 might this turn.
