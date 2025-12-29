@@ -257,7 +257,7 @@ func _run_single_test(test_method: String) -> Dictionary:
 	# Create fresh game instance for this test
 	if test_runner:
 		await test_runner.cleanup_game()
-		game = test_runner.ensure_game_loaded()
+		game = await test_runner.ensure_game_loaded()
 	
 	# Run beforeEach setup
 	await beforeEach()
@@ -1313,7 +1313,7 @@ func test_temporary_keyword_effects() -> bool:
 	if not assert_test_true(target_card.cardData.has_temporary_effects(), "Target card should have temporary effects tracked"):
 		return false
 	
-	if not assert_test_true(target_card.cardData.has_temporary_keyword("Spellshield"), "Target card should have Spellshield tracked as temporary"):
+	if not assert_test_true(target_card.cardData.has_temporary_effect(EffectType.Type.ADD_KEYWORD), "Target card should have ADD_KEYWORD temporary effect"):
 		return false
 	
 	var card_temp_effects = target_card.cardData.get_temporary_effects_by_duration("EndOfTurn")
@@ -1345,7 +1345,7 @@ func test_temporary_keyword_effects() -> bool:
 	if not assert_test_false(target_card.cardData.has_temporary_effects(), "Target card should have no temporary effects after cleanup"):
 		return false
 	
-	if not assert_test_false(target_card.cardData.has_temporary_keyword("Spellshield"), "Target card should not have Spellshield tracked as temporary after cleanup"):
+	if not assert_test_false(target_card.cardData.has_temporary_effect(EffectType.Type.ADD_KEYWORD), "Target card should not have ADD_KEYWORD temporary effect after cleanup"):
 		return false
 	
 	print("✅ Temporary keyword effects test passed!")
@@ -1398,7 +1398,7 @@ func test_growth_spell_pump() -> bool:
 	if not assert_test_true(target_creature.cardData.has_temporary_effects(), "Should have temporary effect"):
 		return false
 	
-	if not assert_test_true(target_creature.cardData.has_temporary_power_boost(), "Should have temporary power boost"):
+	if not assert_test_true(target_creature.cardData.has_temporary_effect(EffectType.Type.PUMP), "Should have temporary PUMP effect"):
 		return false
 	
 	var temp_effects = target_creature.cardData.get_temporary_effects_by_duration("EndOfTurn")
@@ -1425,7 +1425,7 @@ func test_growth_spell_pump() -> bool:
 	if not assert_test_false(target_creature.cardData.has_temporary_effects(), "Should have no temporary effects after cleanup"):
 		return false
 	
-	if not assert_test_false(target_creature.cardData.has_temporary_power_boost(), "Should have no power boost after cleanup"):
+	if not assert_test_false(target_creature.cardData.has_temporary_effect(EffectType.Type.PUMP), "Should have no PUMP effect after cleanup"):
 		return false
 	
 	print("✅ Growth spell pump effect test passed!")
@@ -1693,4 +1693,156 @@ func test_replace_ui_optional_selection() -> bool:
 		return false
 	
 	print("✅ Replace UI optional selection test passed!")
+	return true
+
+func test_eyepatch_cast_from_deck():
+	"""Test Eyepatch the Pirate casting itself from deck when another goblin enters play
+	
+	Test scenario:
+	1. Add Eyepatch the Pirate to player's deck
+	2. Play a Goblin token from hand
+	3. Verify Eyepatch triggers from deck and casts itself
+	4. Verify Eyepatch enters the battlefield (player base)
+	"""
+	print("=== Testing Eyepatch Cast from Deck ===")
+	
+	# Step 1: Get Eyepatch card data and add it to deck
+	var eyepatch_data = CardLoaderAL.getCardByName("Eyepatch the Pirate")
+	if not assert_test_not_null(eyepatch_data, "Eyepatch the Pirate card should exist"):
+		return false
+	
+	# Duplicate the card data and add it to player's deck
+	var eyepatch_copy = CardLoaderAL.duplicateCardScript(eyepatch_data)
+	game.deck.add_card(eyepatch_copy)
+	print("📚 Added Eyepatch to deck. Deck size: ", game.deck.cards.size())
+	
+	# Step 2: Give player gold and create a goblin token to play
+	setPlayerGold(10)
+	var goblin_token = createCardFromName("Goblin")
+	if not assert_test_not_null(goblin_token, "Goblin token should be created"):
+		return false
+	
+	addCardToHand(goblin_token)
+	print("🃏 Added Goblin token to hand")
+	
+	# Step 3: Count cards in play before
+	var initial_base_count = game.player_base.get_children().filter(func(c): return c is Card).size()
+	print("📊 Initial battlefield count: ", initial_base_count)
+	
+	# Step 4: Play the goblin token - this should trigger Eyepatch from deck
+	print("🎲 Playing Goblin token...")
+	await game.tryPlayCard(goblin_token, game.player_base)
+	
+	# Wait for trigger resolution
+	await get_tree().create_timer(0.5).timeout
+	
+	# Step 5: Verify Eyepatch is no longer in deck
+	var eyepatch_in_deck = game.deck.cards.any(func(card): return card.cardName == "Eyepatch the Pirate")
+	if not assert_test_false(eyepatch_in_deck, "Eyepatch should have been removed from deck"):
+		return false
+	print("✅ Eyepatch removed from deck")
+	
+	# Step 6: Verify Eyepatch is now on battlefield
+	var cards_in_play = game.player_base.get_children().filter(func(c): return c is Card)
+	var eyepatch_in_play = cards_in_play.any(func(card): return card.cardData.cardName == "Eyepatch the Pirate")
+	if not assert_test_true(eyepatch_in_play, "Eyepatch should be on battlefield"):
+		return false
+	print("✅ Eyepatch entered battlefield")
+	
+	# Step 7: Verify both cards are in play (Goblin + Eyepatch)
+	var final_base_count = cards_in_play.size()
+	if not assert_test_equal(final_base_count, initial_base_count + 2, "Should have 2 new cards (Goblin + Eyepatch)"):
+		return false
+	print("✅ Both Goblin and Eyepatch are in play")
+	
+	# Step 8: Verify the goblin token is also in play
+	var goblin_in_play = cards_in_play.any(func(card): return card.cardData.cardName == "Goblin")
+	if not assert_test_true(goblin_in_play, "Goblin token should be on battlefield"):
+		return false
+	print("✅ Goblin token confirmed in play")
+	
+	print("✅ Eyepatch cast from deck test passed!")
+	return true
+
+func test_goblin_emblem_replacement_effect():
+	"""Test Goblin Emblem replacement effect - creating extra tokens
+	
+	Test scenario:
+	1. Play Goblin Emblem to battlefield (has replacement effect)
+	2. Play Goblin Pair from hand (creates 1 Goblin token on enter)
+	3. Verify that 2 Goblin tokens were created instead of 1 (Emblem's +1 effect)
+	4. Total cards in play should be: Goblin Emblem + Goblin Pair + 2 Goblin tokens = 4
+	"""
+	print("=== Testing Goblin Emblem Replacement Effect ===")
+	
+	# Step 1: Give player plenty of gold
+	setPlayerGold(99)
+	
+	# Step 2: Create and play Goblin Emblem
+	var emblem_card = createCardFromName("Goblin Emblem")
+	if not assert_test_not_null(emblem_card, "Goblin Emblem should be created"):
+		return false
+	
+	addCardToHand(emblem_card)
+	print("🃏 Playing Goblin Emblem...")
+	await game.tryPlayCard(emblem_card, game.player_base)
+	
+	# Verify Goblin Emblem is in play
+	if not assertCardExists("Goblin Emblem", "play"):
+		return false
+	print("✅ Goblin Emblem in play")
+	
+	# Count cards before playing Goblin Pair
+	var cards_before = game.player_base.getCards().size()
+	print("📊 Cards in play before Goblin Pair: ", cards_before)
+	
+	# Step 3: Create and play Goblin Pair
+	var goblin_pair = createCardFromName("Goblin pair")
+	if not assert_test_not_null(goblin_pair, "Goblin Pair should be created"):
+		return false
+	
+	addCardToHand(goblin_pair)
+	print("🃏 Playing Goblin Pair (should trigger token creation with replacement effect)...")
+	await game.tryPlayCard(goblin_pair, game.player_base)
+	
+	# Wait for triggers to resolve
+	await get_tree().process_frame
+	await get_tree().create_timer(0.3).timeout
+	
+	# Step 4: Count all cards in play
+	var all_cards = game.player_base.getCards()
+	var total_cards = all_cards.size()
+	
+	print("📊 Cards in play after Goblin Pair: ", total_cards)
+	
+	# Debug: Print all cards
+	print("🔍 Cards in play:")
+	for card in all_cards:
+		print("  - ", card.cardData.cardName)
+	
+	# Step 5: Count Goblin tokens specifically
+	var goblin_tokens = all_cards.filter(func(card): 
+		return card.cardData.cardName.to_lower() == "goblin" and card.cardData.types.has("Token")
+	)
+	var token_count = goblin_tokens.size()
+	
+	print("📊 Goblin tokens created: ", token_count)
+	
+	# Step 6: Verify 2 Goblin tokens were created (1 base + 1 from replacement effect)
+	if not assert_test_equal(token_count, 2, "Should have created 2 Goblin tokens (1 base + 1 from Goblin Emblem)"):
+		return false
+	print("✅ Correct number of tokens created")
+	
+	# Step 7: Verify total cards (Goblin Emblem + Goblin Pair + 2 Goblin tokens = 4)
+	var expected_total = cards_before + 3  # +1 for Goblin Pair, +2 for tokens
+	if not assert_test_equal(total_cards, expected_total, "Should have Goblin Emblem + Goblin Pair + 2 tokens"):
+		return false
+	
+	# Step 8: Verify all expected cards exist
+	if not assertCardExists("Goblin Emblem", "play"):
+		return false
+	if not assertCardExists("Goblin pair", "play"):
+		return false
+	
+	print("✅ Goblin Emblem replacement effect test passed!")
 	return true

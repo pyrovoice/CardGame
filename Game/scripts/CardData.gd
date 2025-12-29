@@ -8,21 +8,26 @@ enum CardType { CREATURE, SPELL, RELIC, LEGENDARY, TOKEN }
 	
 var cardName: String
 var goldCost: int
-var additionalCosts: Array[Dictionary] = []  # Additional costs like sacrifice, etc.
+
+
 #Creature, spell, permanent, boss - can have multiple types
 var types: Array[CardType] = []
 #Goblin, Fire, Elemental... Can have up to 3
 var subtypes: Array[String] = []
 var power: int
 var text_box: String
-#Contain all abilities from the card textBox to be useable by the game
-var abilities: Array[Dictionary] = []
+# Contain all abilities from the card textBox to be useable by the game
+var abilities: Array[CardAbility] = []
+# Keyword abilities (separate from complex abilities)
+var keywords: Array[String] = []  # Simple keywords like "Flying", "Spellshield"
+# Additional costs beyond gold cost (sacrifice, replace, etc.)
+var additionalCosts: Array[Dictionary] = []
 # Card artwork texture
 var cardArt: Texture2D
 # Controller and ownership properties
 var playerControlled: bool  # Whether this card is controlled by the player
 var playerOwned: bool       # Whether this card is owned by the player
-
+var card_object: WeakRef  # Reference to Card object (using WeakRef to avoid cycles)
 # Movement tracking
 var hasMoved: bool = false  # Track if the card has moved this turn
 # Attack tracking
@@ -30,7 +35,9 @@ var hasAttackedThisTurn: bool = false  # Track if the card attacked this turn
 # Tap state
 var isTapped: bool = false  # Track if the card is currently tapped
 # Temporary effects tracking
-var temporary_effects: Array[Dictionary] = []  # Track temporary effects applied to this card
+var temporary_effects: Array[TemporaryEffect] = []  # Track temporary effects applied to this card
+# Static ability effects tracking (effects this card is providing to others)
+#TODO var active_static_effects: Array[StaticAbilityEffect] = []  # Static effects this card provides while in play
 
 	
 func describe() -> String:
@@ -236,42 +243,59 @@ func can_tap() -> bool:
 	return not isTapped
 
 # Temporary effects tracking methods
-func add_temporary_effect(effect: Dictionary):
+func add_temporary_effect(effect: TemporaryEffect):
 	"""Add a temporary effect to this card"""
 	temporary_effects.append(effect)
+
+func subscribe_to_game_signals(game: Node):
+	"""Subscribe to game signals for managing temporary effects"""
+	if game.has_signal("end_of_turn"):
+		if not game.is_connected("end_of_turn", _on_end_of_turn):
+			game.end_of_turn.connect(_on_end_of_turn)
+			print("  📡 [CARDDATA] ", cardName, " subscribed to end_of_turn signal")
+
+func unsubscribe_from_game_signals(game: Node):
+	"""Unsubscribe from game signals when card is removed"""
+	if game and is_instance_valid(game):
+		if game.has_signal("end_of_turn") and game.is_connected("end_of_turn", _on_end_of_turn):
+			game.end_of_turn.disconnect(_on_end_of_turn)
+			print("  📡 [CARDDATA] ", cardName, " unsubscribed from end_of_turn signal")
+
+func _on_end_of_turn(context: Dictionary = {}):
+	"""Handle end of turn cleanup for temporary effects"""
+	var effects_to_remove = get_temporary_effects_by_duration(TemporaryEffect.Duration.END_OF_TURN)
+	
+	if effects_to_remove.size() > 0:
+		print("  🗑️ [CARDDATA] ", cardName, " removing ", effects_to_remove.size(), " end-of-turn effect(s)")
+		
+		for effect in effects_to_remove:
+			effect.remove_from_card(self)
+			clear_temporary_effect(effect)
+		
+		dirty_data.emit()
 
 func has_temporary_effects() -> bool:
 	"""Check if this card has any temporary effects"""
 	return temporary_effects.size() > 0
 
-func has_temporary_keyword(keyword: String) -> bool:
-	"""Check if this card has a specific temporary keyword"""
+func has_temporary_effect(effect_type: EffectType.Type) -> bool:
+	"""Check if this card has a temporary effect of a specific type"""
 	for effect in temporary_effects:
-		if effect.get("type") == "keyword" and effect.get("keyword") == keyword:
+		if effect.matches_type(effect_type):
 			return true
 	return false
 
-func has_temporary_type(type_name: String) -> bool:
-	"""Check if this card has a specific temporary type"""
-	for effect in temporary_effects:
-		if effect.get("type") == "type" and effect.get("type_to_remove") == type_name:
-			return true
-	return false
-
-func has_temporary_power_boost() -> bool:
-	"""Check if this card has any temporary power boosts"""
-	for effect in temporary_effects:
-		if effect.get("type") == "power_boost":
-			return true
-	return false
-
-func get_temporary_effects_by_duration(duration: String) -> Array[Dictionary]:
+func get_temporary_effects_by_duration(duration: TemporaryEffect.Duration) -> Array[TemporaryEffect]:
 	"""Get all temporary effects with a specific duration"""
-	var matching_effects: Array[Dictionary] = []
+	var matching_effects: Array[TemporaryEffect] = []
 	for effect in temporary_effects:
-		if effect.get("duration") == duration:
+		if effect.matches_duration(duration):
 			matching_effects.append(effect)
 	return matching_effects
+
+func clear_temporary_effect(effect: TemporaryEffect):
+	"""Remove a specific temporary effect from this card"""
+	temporary_effects.erase(effect)
 
 # Card object reference methods
 func set_card_object(card: Card):
@@ -288,3 +312,52 @@ func get_card_object() -> Card:
 		if card and is_instance_valid(card):
 			return card
 	return null
+
+## Ability management methods
+
+func add_ability(ability: CardAbility):
+	"""Add an ability to this card"""
+	abilities.append(ability)
+	dirty_data.emit()
+
+func add_keyword(keyword: String):
+	"""Add a keyword ability to this card"""
+	if keyword not in keywords:
+		keywords.append(keyword)
+		dirty_data.emit()
+
+func remove_keyword(keyword: String):
+	"""Remove a keyword ability from this card"""
+	if keyword in keywords:
+		keywords.erase(keyword)
+		dirty_data.emit()
+
+func has_keyword(keyword: String) -> bool:
+	"""Check if this card has a specific keyword"""
+	return keyword in keywords
+
+## Backward compatibility methods for Dictionary-based abilities
+
+func add_ability_from_dict(ability_dict: Dictionary):
+	"""Add an ability from dictionary format (backward compatibility)"""
+	var type_str = ability_dict.get("type", "")
+	var ability: CardAbility = null
+	
+	match type_str:
+		"TriggeredAbility":
+			ability = TriggeredAbility.from_dictionary(self, ability_dict)
+		"ActivatedAbility":
+			ability = ActivatedAbility.from_dictionary(self, ability_dict)
+		"StaticAbility":
+			ability = StaticAbility.from_dictionary(self, ability_dict)
+		"SpellEffect":
+			ability = SpellAbility.from_dictionary(self, ability_dict)
+		"KeywordAbility":
+			# Keywords are handled separately
+			var keyword = ability_dict.get("keyword", "")
+			if keyword != "":
+				add_keyword(keyword)
+			return
+	
+	if ability:
+		abilities.append(ability)

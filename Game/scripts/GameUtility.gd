@@ -36,6 +36,7 @@ static func createCardFromData(game: Game, cardData: CardData, player_controlled
 	
 	var CARD = preload("res://Game/scenes/Card.tscn")
 	print("  - CARD preload successful: ", CARD != null)
+	print("  - C preload successful: ", CARD != null)
 	
 	if !CARD.can_instantiate():
 		push_error("Can't instantiate.")

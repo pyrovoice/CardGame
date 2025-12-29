@@ -3,22 +3,10 @@ class_name AbilityManager
 
 # Manages triggered abilities and game events
 # Singleton
-# Main entry point for trigger detection when game action happens
+# NEW SYSTEM: Abilities self-register when created and enabled
+# AbilityManager only handles execution, not registration
 
-
-func triggerGameAction(game: Game, action: GameAction):
-	var objectsInCorrectLocationToTrigger = game.getAllCardsInPlay().filter(func(c: Card): return isCorrectTriggerLocation(c, game.getCardZone(c)))
-	var triggeredAbilities = getTriggeredAbilities(objectsInCorrectLocationToTrigger, action)
-	
-	for abilityPair in triggeredAbilities:
-		var triggeringCard = abilityPair.card
-		var ability = abilityPair.ability
-		# Execute the ability effect using unified method (pass CardData instead of Card)
-		await executeAbilityEffect(triggeringCard.cardData, ability, game)
-	
-	# Resolve state-based actions after all triggered abilities have executed
-	if triggeredAbilities.size() > 0:
-		game.resolveStateBasedAction()
+## Ability execution methods
 
 func activateAbility(source_card: Card, activated_ability: Dictionary, game_context: Game):
 	"""Execute an activated ability - entry point for player-activated abilities"""
@@ -132,16 +120,31 @@ func payActivationCosts(source_card: Card, activated_ability: Dictionary, game_c
 	await game_context.get_tree().process_frame
 	return true
 
-func executeAbilityEffect(source_card_data: CardData, ability: Dictionary, game_context: Game):
+func executeAbilityEffect(source_card_data: CardData, ability, game_context: Game):
 	"""
 	Unified method to execute ability effects - used for both triggered and activated abilities.
 	After an ability is triggered or activated, this handles the actual effect execution.
 	Uses enum-based effect types for type safety and consistency.
 	Uses CardData instead of Card object, so effects work even if the Card has been destroyed.
+	
+	Accepts TriggeredAbility, ActivatedAbility, StaticAbility, or Dictionary (legacy)
 	"""
-	var effect_type_str = ability.get("effect_type", "")
-	var effect_parameters = ability.get("effect_parameters", {})
-	var target_conditions = ability.get("target_conditions", {})
+	var effect_type_str: String
+	var effect_parameters: Dictionary
+	var target_conditions: Dictionary
+	
+	# Check ability type and extract data
+	if ability is TriggeredAbility or ability is ActivatedAbility or ability is StaticAbility:
+		effect_type_str = EffectType.type_to_string(ability.effect_type)
+		effect_parameters = ability.effect_parameters
+		target_conditions = ability.trigger_conditions if "trigger_conditions" in ability else {}
+	elif ability is Dictionary:
+		effect_type_str = ability.get("effect_type", "")
+		effect_parameters = ability.get("effect_parameters", {})
+		target_conditions = ability.get("target_conditions", {})
+	else:
+		print("❌ Invalid ability type: ", typeof(ability))
+		return
 	
 	if effect_type_str.is_empty():
 		print("❌ No effect_type specified for ability on card: ", source_card_data.cardName)
@@ -153,213 +156,37 @@ func executeAbilityEffect(source_card_data: CardData, ability: Dictionary, game_
 	
 	print("🔥 [ABILITY] Executing effect: ", EffectType.type_to_string(effect_type_enum), " with parameters: ", effect_parameters)
 	
-	# Execute based on effect type enum
+	# Resolve targets at the ability level (before effect execution)
+	var resolved_parameters = effect_parameters.duplicate()
+	
+	# For effects that need target resolution
 	match effect_type_enum:
-		EffectType.Type.DEAL_DAMAGE:
-			await execute_spell_damage_effect(source_card_data, effect_parameters, game_context)
-		
-		EffectType.Type.PUMP:
-			await execute_pump_effect(source_card_data, effect_parameters, game_context)
-		
-		EffectType.Type.ADD_KEYWORD:  # PumpAll -> AddKeyword
-			await execute_pump_all(source_card_data, effect_parameters, target_conditions, game_context)
-		
-		EffectType.Type.CREATE_TOKEN:
-			execute_token_creation(effect_parameters, source_card_data, game_context)
-		
-		EffectType.Type.DRAW:
-			execute_draw_card(effect_parameters, source_card_data, game_context)
+		EffectType.Type.ADD_KEYWORD:
+			# Merge ValidCards from target_conditions
+			if target_conditions.has("ValidCards"):
+				resolved_parameters["ValidCards"] = target_conditions.get("ValidCards")
+			# Resolve targets
+			var targets = TargetResolver.resolve_targets(resolved_parameters, source_card_data, game_context)
+			resolved_parameters["Targets"] = targets
 		
 		EffectType.Type.ADD_TYPE:
-			execute_add_type(effect_parameters, source_card_data, game_context)
-		
-		_:
-			print("❌ Unknown ability effect type: ", EffectType.type_to_string(effect_type_enum))
+			# Resolve Self or other targets
+			var targets = TargetResolver.resolve_targets(resolved_parameters, source_card_data, game_context)
+			resolved_parameters["Targets"] = targets
+	
+	# Apply ability modifiers from the registry (replacement effects, static modifiers, etc.)
+	# This happens when the ability "enters the trigger queue"
+	resolved_parameters = AbilityModifierRegistry.apply_modifiers_to_effect(
+		effect_type_str, 
+		resolved_parameters, 
+		game_context
+	)
+	
+	# Execute the effect with resolved and modified parameters
+	await EffectFactory.execute_effect(effect_type_enum, resolved_parameters, source_card_data, game_context)
 
-func execute_pump_all(source_card_data: CardData, effect_parameters: Dictionary, target_conditions: Dictionary, game_context: Game):
-	"""Execute PumpAll effect - give keyword abilities to target creatures"""
-	var keyword = effect_parameters.get("KW", "")
-	var duration = effect_parameters.get("Duration", "Permanent")
-	var valid_cards = target_conditions.get("ValidCards", "Any")
-	
-	if keyword.is_empty():
-		print("❌ No keyword specified for PumpAll effect")
-		return
-	
-	# Find target creatures based on ValidCards condition
-	var target_cards = findValidTargetCards(valid_cards, game_context)
-	
-	if target_cards.is_empty():
-		print("⚠️ No valid targets found for PumpAll effect")
-		return
-	
-	print("✨ Granting ", keyword, " to ", target_cards.size(), " creature(s) until ", duration)
-	
-	# Apply the keyword to each target
-	for target_card in target_cards:
-		grant_keyword_to_card(target_card, keyword, duration, game_context)
-
-func findValidTargetCards(valid_cards_condition: String, game_context: Game) -> Array[Card]:
-	"""Find cards that match the ValidCards condition"""
-	var all_cards = game_context.getAllCardsInPlay()
-	var valid_targets: Array[Card] = []
-	
-	for card in all_cards:
-		if isValidTargetForCondition(card, valid_cards_condition):
-			valid_targets.append(card)
-	
-	return valid_targets
-
-func isValidTargetForCondition(card: Card, condition: String) -> bool:
-	"""Check if a card matches the given condition string"""
-	if condition == "Any":
-		return true
-	
-	# Parse condition format: "Creature.YouCtrl" etc.
-	var parts = condition.split(".")
-	
-	for part in parts:
-		part = part.strip_edges()
-		
-		match part:
-			"Creature":
-				if not card.cardData.hasType(CardData.CardType.CREATURE):
-					return false
-			
-			"YouCtrl":
-				if not card.cardData.playerControlled:
-					return false
-			
-			"Spell":
-				if not card.cardData.hasType(CardData.CardType.SPELL):
-					return false
-			
-			# Check for subtypes (e.g., "Goblin", "Punglynd")
-			_:
-				if CardData.isValidCardTypeString(part):
-					# It's a card type
-					var card_type = CardData.stringToCardType(part)
-					if not card.cardData.hasType(card_type):
-						return false
-				else:
-					# Assume it's a subtype
-					if not card.cardData.hasSubtype(part):
-						return false
-	
-	return true
-
-func grant_keyword_to_card(target_card: Card, keyword: String, duration: String, game_context: Game):
-	"""Grant a keyword ability to a card - delegates to unified modifyCard"""
-	modifyCard(target_card, "keyword", {"keyword": keyword}, duration)
-
-func execute_token_creation(parameters: Dictionary, source_card_data: CardData, game_context: Game):
-	"""Execute token creation effect"""
-	var token_script = parameters.get("TokenScript", "")
-	if token_script.is_empty():
-		print("❌ No TokenScript specified for token creation")
-		return
-	
-	# Load the token data from the tokensData array
-	var token_data = CardLoaderAL.load_token_by_name(token_script)
-	if not token_data:
-		print("❌ Failed to load token: " + token_script)
-		return
-	
-	# Check for replacement effects before creating tokens
-	# Note: We can't pass a Card object, but replacement effects shouldn't need it
-	var effect_context = {
-		"effect_type": "CreateToken",
-		"source_card_data": source_card_data,
-		"token_data": token_data,
-		"tokens_to_create": 1,  # Default amount
-		"game_context": game_context
-	}
-	
-	# Apply replacement effects
-	effect_context = onEffectTrigger(effect_context, game_context)
-	
-	# Create the modified number of tokens
-	var tokens_to_create = effect_context.get("tokens_to_create", 1)
-	for i in range(tokens_to_create):
-		var card = game_context.createToken(token_data, source_card_data.playerControlled)
-		game_context.executeCardEnters(card, GameZone.e.UNKNOWN, GameZone.e.UNKNOWN)
-
-func execute_draw_card(parameters: Dictionary, source_card_data: CardData, game_context: Game):
-	"""Execute draw card effect"""
-	# Check who should draw the card (default to "You" if not specified)
-	var defined_player = parameters.get("Defined", "You")
-	if defined_player != "You":
-		print("⚡ Draw card triggered by: ", source_card_data.cardName)
-		print("  But effect is for: ", defined_player, " (not implemented for non-player)")
-		return
-	
-	# Get the number of cards to draw
-	var cards_to_draw = 1  # Default to 1
-	if parameters.has("NumCards"):
-		cards_to_draw = int(parameters.get("NumCards", "1"))
-	elif parameters.has("Amount"):
-		cards_to_draw = int(parameters.get("Amount", "1"))
-	elif parameters.has("CardsDrawn"):
-		cards_to_draw = int(parameters.get("CardsDrawn", "1"))
-	
-	print("⚡ Draw card triggered by: ", source_card_data.cardName)
-	print("  Drawing ", cards_to_draw, " card(s) for: ", defined_player)
-	
-	# Draw the specified number of cards
-	for i in range(cards_to_draw):
-		game_context.drawCard()
-
-func execute_add_type(parameters: Dictionary, source_card_data: CardData, game_context: Game):
-	"""Execute AddType effect - add types/subtypes to target cards"""
-	
-	# Parse target - defaults to Self
-	var target_param = parameters.get("Target", "Self")
-	var target_cards: Array[Card] = []
-	
-	match target_param:
-		"Self":
-			# Get the Card object from CardData (if it still exists)
-			var source_card = source_card_data.get_card_object()
-			if source_card:
-				target_cards = [source_card]
-			else:
-				print("⚠️ Cannot add type to Self - card no longer exists in play")
-				return
-		_:
-			print("❌ Unsupported AddType target: ", target_param)
-			return
-	
-	# Parse types to add
-	var types_to_add = parameters.get("Types", "")
-	if types_to_add.is_empty():
-		print("❌ No types specified for AddType effect")
-		return
-	
-	# Parse duration
-	var duration = parameters.get("Duration", "Permanent")
-	
-	# Add the types to each target card
-	for target_card in target_cards:
-		add_type_to_card(target_card, types_to_add, duration, game_context)
-
-func add_type_to_card(target_card: Card, types_string: String, duration: String, game_context: Game):
-	"""Add types/subtypes to a card with specified duration - delegates to unified modifyCard"""
-	
-	# Split types by space if multiple types specified
-	var type_parts = types_string.split(" ")
-	
-	for type_part in type_parts:
-		type_part = type_part.strip_edges()
-		if type_part.is_empty():
-			continue
-		
-		# Check if it's a main card type or subtype
-		if CardData.isValidCardTypeString(type_part):
-			# It's a main card type
-			modifyCard(target_card, "type", {"type": type_part}, duration)
-		else:
-			# It's a subtype
-			modifyCard(target_card, "subtype", {"subtype": type_part}, duration)
+## Replacement Effect System (Legacy - kept for compatibility)
+## New code should use ReplacementEffectManager instead
 
 func onEffectTrigger(effect_context: Dictionary, game_context: Game) -> Dictionary:
 	"""Check for replacement effects that modify the given effect"""
@@ -524,117 +351,8 @@ static func place_token_at_location(token_card: Card, location: Node3D):
 	if not token_card.objectID:
 		token_card.objectID = token_card.cardData.cardName + "_token_" + str(Time.get_unix_time_from_system())
 
-func isCorrectTriggerLocation(triggeringObject: Card, current_zone: GameZone.e):
-	# Check each ability on the card to see if any have trigger zone restrictions
-	if not triggeringObject.cardData or triggeringObject.cardData.abilities.is_empty():
-		return false
-	
-	for ability in triggeringObject.cardData.abilities:
-		if ability.get("type", "") != "TriggeredAbility":
-			continue
-			
-		var trigger_zones = ability.get("trigger_conditions", {}).get("TriggerZones", "Any")
-		
-		# If no trigger zone specified or "Any", the ability can trigger from anywhere
-		if trigger_zones == "Any":
-			return true
-		
-		# Check if current zone matches the required trigger zone
-		if trigger_zones == "Battlefield":
-			# Battlefield includes both PLAYER_BASE and COMBAT_ZONE
-			if current_zone == GameZone.e.PLAYER_BASE or current_zone == GameZone.e.COMBAT_ZONE:
-				return true
-		elif trigger_zones == "Hand":
-			if current_zone == GameZone.e.HAND:
-				return true
-		elif trigger_zones == "Graveyard":
-			if current_zone == GameZone.e.GRAVEYARD:
-				return true
-		elif trigger_zones == "Deck":
-			if current_zone == GameZone.e.DECK:
-				return true
-	
-	return false
-	
-func getTriggeredAbilities(cards: Array[Card], action: GameAction) -> Array:
-	"""Return an array of {card: Card, ability: Dictionary} pairs for abilities that should trigger"""
-	var triggeredAbilities = []
-	var actionTriggerType = action.trigger_type  # Use enum value directly
-	
-	for triggeringObject in cards:
-		# Check if the card has any triggered abilities
-		if not triggeringObject.cardData or triggeringObject.cardData.abilities.is_empty():
-			continue
-		
-		for ability: Dictionary in triggeringObject.cardData.abilities:
-			if ability.get("type", "") != "TriggeredAbility":
-				continue
-			
-			# Check if this ability's trigger type matches the current trigger
-			var ability_trigger_type = ability.get("trigger_type", TriggerType.Type.CARD_ENTERS)
-			
-			if ability_trigger_type == actionTriggerType:
-				# Additional validation for specific trigger types
-				if actionTriggerType == TriggerType.Type.CARD_ENTERS:
-					# Check Origin and Destination conditions for card enters
-					var origin_condition = ability.get("trigger_conditions", {}).get("Origin", "Any")
-					var destination_condition = ability.get("trigger_conditions", {}).get("Destination", "Any")
-					
-					# Validate origin condition
-					if not _isZoneConditionMet(origin_condition, action.from_zone):
-						continue
-					
-					# Validate destination condition  
-					if not _isZoneConditionMet(destination_condition, action.to_zone):
-						continue
-				
-				elif actionTriggerType == TriggerType.Type.CARD_PLAYED:
-					# Check if there's a specific Origin condition
-					var origin_condition = ability.get("trigger_conditions", {}).get("Origin", "Any")
-					if not _isZoneConditionMet(origin_condition, action.from_zone):
-						continue
-					
-					# Validate destination is battlefield (where cards are "played" to)
-					if not action.is_battlefield_entry():
-						continue
-				
-				elif actionTriggerType == TriggerType.Type.PHASE:
-					# Check if the phase matches the specified phase condition
-					var phase_condition = ability.get("trigger_conditions", {}).get("Phase", "")
-					var action_phase = action.additional_data.get("phase", "")
-					
-					# Normalize phase names for comparison
-					var normalized_condition = phase_condition.replace(" ", "").replace("of", "").replace("Of", "")
-					var normalized_action = action_phase.replace(" ", "").replace("of", "").replace("Of", "")
-					
-					if phase_condition.is_empty() or normalized_condition != normalized_action:
-						continue
-				
-				# Check ValidCard condition
-				var valid_card_condition = ability.get("trigger_conditions", {}).get("ValidCard", "Any")
-				if not isValidCardCondition(valid_card_condition, action.trigger_source, triggeringObject):
-					continue
-				
-				# Check ValidActivatingPlayer condition
-				var valid_player_condition = ability.get("trigger_conditions", {}).get("ValidActivatingPlayer", "Any")
-				if valid_player_condition == "You":
-					# For now, assume all actions are from "You" (the player)
-					# This could be expanded to support multiplayer
-					pass
-				elif valid_player_condition == "Opponent":
-					# Skip for now since we don't have opponent actions
-					continue
-				
-				# Check additional trigger condition
-				var trigger_condition = ability.get("trigger_conditions", {}).get("Condition", "")
-				if not trigger_condition.is_empty():
-					if not evaluateCondition(trigger_condition, triggeringObject, action):
-						continue
-				
-				# If we get here, the ability should trigger
-				triggeredAbilities.append({"card": triggeringObject, "ability": ability})
-	
-	return triggeredAbilities
+## Spell Effect Execution
+## Handles spell casting and effect resolution
 
 func executeSpellEffects(card: Card, game_context: Game):
 	"""Execute spell effects - handle targeting and effect resolution"""
@@ -678,142 +396,8 @@ func executeSpellEffect(card: Card, effect: Dictionary, game_context: Game):
 	
 	await executeAbilityEffect(card.cardData, ability, game_context)
 
-func execute_spell_damage_effect(source_card_data: CardData, parameters: Dictionary, game_context: Game):
-	"""Execute spell damage effect with targeting"""
-	var damage_amount = parameters.get("NumDamage", 1)
-	var valid_targets = parameters.get("ValidTargets", "Any")
-	
-	# Check if targets are pre-specified (from game.gd spell casting)
-	var preselected_targets = parameters.get("Targets", [])
-	
-	if preselected_targets.size() > 0:
-		# Use pre-selected targets
-		var target = preselected_targets[0]
-		print("⚡ ", source_card_data.cardName, " deals ", damage_amount, " damage to ", target.cardData.cardName)
-		
-		# Apply damage
-		target.receiveDamage(damage_amount)
-		
-		# Show damage animation
-		AnimationsManagerAL.show_floating_text(game_context, target.global_position, "-" + str(damage_amount), Color.RED)
-		
-		# Resolve state-based actions after damage
-		game_context.resolveStateBasedAction()
-		return
-	
-	print("⚡ ", source_card_data.cardName, " needs to deal ", damage_amount, " damage to target (", valid_targets, ")")
-	
-	# Get all possible targets using centralized filtering
-	var possible_targets: Array[Card] = GameUtility.filterCardsByParameters(
-		game_context.getAllCardsInPlay(),
-		valid_targets,
-		game_context
-	)
-	
-	if possible_targets.is_empty():
-		print("⚠️ No valid targets for ", source_card_data.cardName)
-		return
-	
-	# Get the Card object from CardData (if it still exists)
-	var casting_card = source_card_data.get_card_object()
-	if not casting_card:
-		print("⚠️ Cannot select target - source card no longer exists (card was destroyed)")
-		return
-	
-	# Start target selection
-	var requirement = {
-		"valid_card": "Any",  # We've already filtered the possible_targets
-		"count": 1
-	}
-	
-	print("🎯 Starting target selection for ", source_card_data.cardName)
-	var selected_targets = await game_context.start_card_selection(requirement, possible_targets, "spell_target_" + source_card_data.cardName, casting_card)
-	
-	if selected_targets.is_empty():
-		print("❌ No target selected for ", source_card_data.cardName)
-		return
-	
-	var target = selected_targets[0]
-	print("⚡ ", source_card_data.cardName, " deals ", damage_amount, " damage to ", target.cardData.cardName)
-	
-	# Apply damage
-	target.receiveDamage(damage_amount)
-	
-	# Show damage animation
-	AnimationsManagerAL.show_floating_text(game_context, target.global_position, "-" + str(damage_amount), Color.RED)
-	
-	# Resolve state-based actions after damage
-	game_context.resolveStateBasedAction()
-
-func execute_pump_effect(source_card_data: CardData, parameters: Dictionary, game_context: Game):
-	"""Execute spell pump effect with targeting - temporarily increases power"""
-	var power_bonus = parameters.get("PowerBonus", 0)
-	var valid_targets = parameters.get("ValidTargets", "Creature")
-	var duration = parameters.get("Duration", "EndOfTurn")
-	
-	# Check if targets are pre-specified (from game.gd spell casting)
-	var preselected_targets = parameters.get("Targets", [])
-	
-	if preselected_targets.size() > 0:
-		# Use pre-selected targets
-		var target = preselected_targets[0]
-		print("✨ ", source_card_data.cardName, " pumps ", target.cardData.cardName, " by +", power_bonus, " power")
-		
-		# Apply the power boost
-		apply_power_boost(target, power_bonus, duration)
-		
-		# Show buff animation
-		AnimationsManagerAL.show_floating_text(game_context, target.global_position, "+" + str(power_bonus) + " Power", Color.GREEN)
-		return
-	
-	print("✨ ", source_card_data.cardName, " needs to pump a creature +", power_bonus, " power (", valid_targets, ")")
-	
-	# Get all possible targets using centralized filtering
-	var possible_targets: Array[Card] = GameUtility.filterCardsByParameters(
-		game_context.getAllCardsInPlay(),
-		valid_targets,
-		game_context
-	)
-	
-	if possible_targets.is_empty():
-		print("⚠️ No valid targets for ", source_card_data.cardName)
-		return
-	
-	# Get the Card object from CardData (if it still exists)
-	var casting_card = source_card_data.get_card_object()
-	if not casting_card:
-		print("⚠️ Cannot select target - source card no longer exists (card was destroyed)")
-		return
-	
-	# Start target selection
-	var requirement = {
-		"valid_card": "Any",  # We've already filtered the possible_targets
-		"count": 1
-	}
-	
-	print("🎯 Starting target selection for ", source_card_data.cardName)
-	var selected_targets = await game_context.start_card_selection(requirement, possible_targets, "spell_target_" + source_card_data.cardName, casting_card)
-	
-	if selected_targets.is_empty():
-		print("❌ No target selected for ", source_card_data.cardName)
-		return
-	
-	var target = selected_targets[0]
-	print("✨ ", source_card_data.cardName, " pumps ", target.cardData.cardName, " by +", power_bonus, " power")
-	
-	# Apply the power boost
-	apply_power_boost(target, power_bonus, duration)
-	
-	# Show buff animation
-	AnimationsManagerAL.show_floating_text(game_context, target.global_position, "+" + str(power_bonus) + " Power", Color.GREEN)
-
-func apply_power_boost(target_card: Card, power_bonus: int, duration: String):
-	"""Apply a temporary power boost to a card - delegates to unified modifyCard"""
-	if power_bonus >= 0:
-		modifyCard(target_card, "power_boost", {"amount": power_bonus}, duration)
-	else:
-		# Handle negative values as power reduction
-		modifyCard(target_card, "power_reduction", {"amount": -power_bonus}, duration)
+## Validation and Condition Checking
+## Used by the deprecated trigger system and for card condition validation
 
 func isValidCardCondition(condition: String, triggerSource: Card, abilityOwner: Card) -> bool:
 	"""Check if the trigger source meets the ValidCard condition"""
@@ -874,126 +458,3 @@ func evaluateCondition(condition: String, triggeringCard: Card, action: GameActi
 			return false
 	
 	return false
-
-func modifyCard(target_card: Card, modification_type: String, modification_data: Dictionary, duration: String):
-	"""
-	Unified method to apply any modification to a card (keyword, type, power boost, etc.)
-	
-	Parameters:
-	- target_card: The card to modify
-	- modification_type: Type of modification ("keyword", "type", "subtype", "power_boost", "power_reduction")
-	- modification_data: Dictionary containing modification details:
-		- For "keyword": {"keyword": "Spellshield"}
-		- For "type": {"type": "Creature"}
-		- For "subtype": {"subtype": "Goblin"}
-		- For "power_boost": {"amount": 3}
-		- For "power_reduction": {"amount": 2}
-	- duration: "Permanent", "EndOfTurn", or "WhileSourceInPlay"
-	"""
-	match modification_type:
-		"keyword":
-			_apply_keyword_modification(target_card, modification_data.get("keyword", ""), duration)
-		
-		"type":
-			_apply_type_modification(target_card, modification_data.get("type", ""), duration)
-		
-		"subtype":
-			_apply_subtype_modification(target_card, modification_data.get("subtype", ""), duration)
-		
-		"power_boost":
-			_apply_power_modification(target_card, modification_data.get("amount", 0), duration, true)
-		
-		"power_reduction":
-			_apply_power_modification(target_card, modification_data.get("amount", 0), duration, false)
-		
-		_:
-			print("❌ Unknown modification type: ", modification_type)
-			return
-	
-	# Update the card's visual display after any modification
-	if target_card.has_method("updateDisplay"):
-		target_card.updateDisplay()
-	
-	# Emit dirty signal to update UI
-	target_card.cardData.emit_signal("dirty_data")
-
-func _apply_keyword_modification(target_card: Card, keyword: String, duration: String):
-	"""Internal: Apply keyword modification to a card"""
-	if keyword.is_empty():
-		print("❌ No keyword specified for modification")
-		return
-	
-	print("  ✨ Granting ", keyword, " to ", target_card.cardData.cardName)
-	
-	# Add the keyword to the card's abilities
-	var keyword_ability = {
-		"type": "KeywordAbility",
-		"keyword": keyword,
-		"duration": duration,
-		"granted_by": "Modification"
-	}
-	target_card.cardData.abilities.append(keyword_ability)
-	
-	# Track for removal if not permanent
-	_track_modification_for_removal(target_card, "keyword", {"keyword": keyword}, duration)
-
-func _apply_type_modification(target_card: Card, type_string: String, duration: String):
-	"""Internal: Apply type modification to a card"""
-	if type_string.is_empty():
-		print("❌ No type specified for modification")
-		return
-	
-	if CardData.isValidCardTypeString(type_string):
-		var card_type = CardData.stringToCardType(type_string)
-		target_card.cardData.addType(card_type)
-		print("  ✨ Added type ", type_string, " to ", target_card.cardData.cardName)
-		
-		# Track for removal if not permanent
-		_track_modification_for_removal(target_card, "type", {"type_to_remove": type_string}, duration)
-	else:
-		print("❌ Invalid card type: ", type_string)
-
-func _apply_subtype_modification(target_card: Card, subtype: String, duration: String):
-	"""Internal: Apply subtype modification to a card"""
-	if subtype.is_empty():
-		print("❌ No subtype specified for modification")
-		return
-	
-	target_card.cardData.addSubtype(subtype)
-	print("  ✨ Added subtype ", subtype, " to ", target_card.cardData.cardName)
-	
-	# Track for removal if not permanent
-	_track_modification_for_removal(target_card, "type", {"type_to_remove": subtype}, duration)
-
-func _apply_power_modification(target_card: Card, amount: int, duration: String, is_boost: bool):
-	"""Internal: Apply power modification to a card (boost or reduction)"""
-	if amount == 0:
-		print("⚠️ Power modification amount is 0")
-		return
-	
-	var actual_amount = amount if is_boost else -amount
-	var old_power = target_card.cardData.power
-	target_card.cardData.power += actual_amount
-	
-	var symbol = "+" if is_boost else "-"
-	print("  💪 Modifying ", target_card.cardData.cardName, " power: ", old_power, " → ", target_card.cardData.power, " (", symbol, amount, ")")
-	
-	# Track for removal if not permanent
-	_track_modification_for_removal(target_card, "power_boost", {"power_bonus": actual_amount}, duration)
-
-func _track_modification_for_removal(target_card: Card, effect_type: String, effect_data: Dictionary, duration: String):
-	"""Internal: Track a modification for later removal based on duration"""
-	match duration:
-		"Permanent":
-			# Nothing to track - modification is permanent
-			pass
-		"EndOfTurn", "WhileSourceInPlay":
-			# Create effect entry with duration
-			var effect_entry = effect_data.duplicate()
-			effect_entry["type"] = effect_type
-			effect_entry["duration"] = duration
-			
-			target_card.cardData.add_temporary_effect(effect_entry)
-			print("  ⏰ Scheduled removal at ", duration, " (", target_card.cardData.temporary_effects.size(), " effects tracked)")
-		_:
-			print("❌ Unsupported duration: ", duration)

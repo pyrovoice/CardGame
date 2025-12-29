@@ -3,6 +3,17 @@ class_name Game
 
 const OpponentAIScript = preload("res://Game/scripts/OpponentAI.gd")
 
+# Game event signals for triggered abilities to listen to
+signal card_entered_play(card_data: CardData, context: Dictionary)
+signal card_died(card_data: CardData, context: Dictionary)
+signal attack_declared(card_data: CardData, context: Dictionary)
+signal damage_dealt(source_card_data: CardData, target_card_data: CardData, amount: int, context: Dictionary)
+signal spell_cast(card_data: CardData, context: Dictionary)
+signal turn_started(context: Dictionary)
+signal turn_ended(context: Dictionary)
+signal beginning_of_turn(context: Dictionary)
+signal end_of_turn(context: Dictionary)
+
 @onready var player_control: PlayerControl = $playerControl
 @onready var player_hand: CardHand = $PlayerHand
 @onready var extra_hand: CardHand = $ExtraHand
@@ -22,6 +33,11 @@ var playerControlLock:PlayerControlLock = PlayerControlLock.new()
 @onready var admin_button: Button = $UI/AdminButton
 @onready var selection_manager: SelectionManager = $SelectionManager
 var highlightManager: HighlightManager
+
+# Trigger queue for managing triggered abilities
+var trigger_queue: TriggerQueue = TriggerQueue.new()
+var is_resolving_triggers: bool = false  # Track if we're currently resolving the trigger queue
+
 # Game data and state management
 var game_data: GameData
 @onready var graveyard_opponent: Graveyard = $graveyardOpponent
@@ -106,10 +122,8 @@ func onTurnStart(skipFirstTurn = false):
 	# Start a new turn (increases danger level via SignalInt)
 	if !skipFirstTurn:
 		await resolve_unresolved_combats()
-		# Trigger end of turn phase
+		# Trigger end of turn phase (cards will clean up their own temporary effects)
 		trigger_phase("EndOfTurn")
-		# Clean up temporary effects that last until end of turn
-		cleanup_end_of_turn_effects()
 		game_data.start_new_turn()
 		reset_all_card_turn_tracking()
 		# Untap all player cards at start of turn
@@ -260,48 +274,41 @@ func _executeSpellWithTargets(card: Card, targets: Array):
 	
 	print("✨ Casting spell: ", card.cardData.cardName)
 	
-	# Get spell effects from the card's abilities
-	var spell_effects = []
+	# Get spell abilities from the card
+	var spell_abilities: Array[SpellAbility] = []
 	for ability in card.cardData.abilities:
-		if ability.get("type") == "SpellEffect":
-			spell_effects.append(ability)
+		if ability is SpellAbility:
+			spell_abilities.append(ability)
 	
-	if spell_effects.is_empty():
+	if spell_abilities.is_empty():
 		print("⚠️ Spell has no effects to execute: ", card.cardData.cardName)
 		return
 	
 	# Execute each spell effect with targets
 	var target_index = 0
-	for effect in spell_effects:
+	for spell_ability in spell_abilities:
 		var effect_targets = []
 		
 		# Assign targets to effects that need them
-		var effect_type = effect.get("effect_type", "")
-		# Effects that require targeting
-		if effect_type in ["DealDamage", "Pump", "Destroy", "Bounce", "Exile"] and target_index < targets.size():
+		if spell_ability.requires_target() and target_index < targets.size():
 			effect_targets = [targets[target_index]]
 			target_index += 1
 		
-		await _executeSpellEffectWithTargets(card, effect, effect_targets)
+		await _executeSpellEffectWithTargets(card, spell_ability, effect_targets)
 	
 	print("✨ Finished casting spell: ", card.cardData.cardName)
 
-func _executeSpellEffectWithTargets(card: Card, effect: Dictionary, targets: Array):
+func _executeSpellEffectWithTargets(card: Card, spell_ability: SpellAbility, targets: Array):
 	"""Execute a single spell effect with pre-selected targets - delegates to AbilityManager"""
-	# Convert spell effect format to ability format and use unified execution
-	var ability = {
-		"type": "SpellEffect",
-		"effect_type": effect.get("effect_type", ""),
-		"effect_parameters": effect.get("parameters", {}),
-		"target_conditions": {}
-	}
+	# Use the SpellAbility's to_dictionary() method for AbilityManager compatibility
+	var ability_dict = spell_ability.to_dictionary()
 	
 	# For targeting effects, add targets to parameters
 	if targets.size() > 0:
-		ability.effect_parameters["Targets"] = targets
+		ability_dict["effect_parameters"]["Targets"] = targets
 	
 	# Use the unified ability execution system (pass CardData instead of Card)
-	await AbilityManagerAL.executeAbilityEffect(card.cardData, ability, self)
+	await AbilityManagerAL.executeAbilityEffect(card.cardData, ability_dict, self)
 
 func _executeSpellDamageWithTargets(card: Card, parameters: Dictionary, targets: Array):
 	"""Execute spell damage effect with pre-selected targets"""
@@ -474,92 +481,6 @@ func untap_all_player_cards():
 			card.cardData.untap()
 			print("🔄 Untapped ", card.cardData.cardName)
 
-func cleanup_end_of_turn_effects():
-	"""Remove all temporary effects that last until end of turn from all cards"""
-	print("🧹 Cleaning up end of turn effects...")
-	
-	var total_effects_removed = 0
-	
-	# Check all player cards for temporary effects
-	for card in _get_all_player_cards():
-		var effects_to_remove = card.cardData.get_temporary_effects_by_duration("EndOfTurn")
-		
-		if effects_to_remove.size() > 0:
-			print("  🗑️ Removing ", effects_to_remove.size(), " effect(s) from ", card.cardData.cardName)
-			
-			for effect in effects_to_remove:
-				_remove_temporary_effect_from_card(card, effect)
-				total_effects_removed += 1
-	
-	if total_effects_removed > 0:
-		print("  ✅ Removed ", total_effects_removed, " end-of-turn effect(s) total")
-
-func _remove_temporary_effect_from_card(card: Card, effect: Dictionary):
-	"""Remove a specific temporary effect from a card"""
-	var effect_type = effect.get("type")
-	
-	match effect_type:
-		"keyword":
-			_remove_keyword_from_card(card, effect.get("keyword"))
-		"type":
-			_remove_type_from_card(card, effect.get("type_to_remove"))
-		"power_boost":
-			_remove_power_boost_from_card(card, effect.get("power_bonus"))
-		_:
-			print("    ❌ Unknown temporary effect type: ", effect_type)
-	
-	# Remove from card's tracking
-	card.cardData.clear_temporary_effect(effect)
-
-func _remove_keyword_from_card(card: Card, keyword: String):
-	"""Remove a granted keyword ability from a card"""
-	# Find and remove the keyword ability
-	var abilities_to_remove = []
-	for i in range(card.cardData.abilities.size()):
-		var ability = card.cardData.abilities[i]
-		if ability.get("type") == "KeywordAbility" and ability.get("keyword") == keyword and ability.get("granted_by") == "ActivatedAbility":
-			abilities_to_remove.append(i)
-	
-	# Remove abilities in reverse order to maintain indices
-	abilities_to_remove.reverse()
-	for index in abilities_to_remove:
-		card.cardData.abilities.remove_at(index)
-	
-	# Update the card's visual display
-	if card.has_method("updateDisplay"):
-		card.updateDisplay()
-
-func _remove_type_from_card(card: Card, type_to_remove: String):
-	"""Remove a granted type/subtype from a card"""
-	# Check if it's a main type or subtype
-	if CardData.isValidCardTypeString(type_to_remove):
-		# It's a main card type - remove it
-		var card_type = CardData.stringToCardType(type_to_remove)
-		card.cardData.removeType(card_type)
-	else:
-		# It's a subtype - remove it
-		card.cardData.subtypes.erase(type_to_remove)
-	
-	# Update the card's visual display
-	if card.has_method("updateDisplay"):
-		card.updateDisplay()
-
-func _remove_power_boost_from_card(card: Card, power_bonus: int):
-	"""Remove a temporary power boost from a card"""
-	print("    💪 Removing +", power_bonus, " power boost from ", card.cardData.cardName)
-	
-	# Reverse the power boost
-	card.cardData.power -= power_bonus
-	
-	print("      Power now: ", card.cardData.power)
-	
-	# Update the card's visual display
-	if card.has_method("updateDisplay"):
-		card.updateDisplay()
-	
-	# Emit dirty signal to update UI
-	card.cardData.emit_signal("dirty_data")
-
 func _get_all_player_cards() -> Array[Card]:
 	var all_cards: Array[Card] = []
 	
@@ -726,6 +647,15 @@ func putInOwnerGraveyard(cards):
 	# Add cards to graveyard and clean up after all animations complete
 	for card in cards_array:
 		if card and is_instance_valid(card):
+			# Unregister abilities from game signals
+			for ability in card.cardData.abilities:
+				if ability is TriggeredAbility:
+					ability.unregister_from_game(self)
+				elif ability is StaticAbility:
+					ability.remove_from_game()
+			
+			# Unsubscribe card data from game signals before destroying
+			card.cardData.unsubscribe_from_game_signals(self)
 			graveyard.add_card(card.cardData)
 			card.queue_free()
 
@@ -741,6 +671,27 @@ func createToken(cardData: CardData, player_controlled: bool) -> Card:
 	"""Create a token card and execute its enters-the-battlefield effects"""
 	return GameUtility.createCardFromData(self, cardData, player_controlled, true)
 
+func playCardFromDeck(card_data: CardData):
+	"""Play a card from the deck directly to the battlefield
+	Used for effects that put cards into play from the deck (like Cast from deck)"""
+	print("🎯 Playing card from deck: ", card_data.cardName)
+	
+	# Check if card exists in deck
+	var deck_to_use = deck if card_data.playerControlled else deck_opponent
+	if not deck_to_use.cards.has(card_data):
+		print("❌ Card not found in deck: ", card_data.cardName)
+		return
+	
+	# Draw the specific card from deck (removes from deck and creates Card object)
+	var card = deck_to_use.draw_specific_card(card_data)
+	if not card:
+		print("❌ Failed to draw card from deck: ", card_data.cardName)
+		return
+	
+	# Execute card entering from deck to battlefield
+	await executeCardEnters(card, GameZone.e.DECK, GameZone.e.PLAYER_BASE)
+	print("✅ Card played from deck successfully: ", card_data.cardName)
+
 func executeCardEnters(card: Card, source_zone: GameZone.e, target_zone: GameZone.e):
 	"""Execute the card entering the battlefield - handles movement and triggers"""
 	# Move the card to player base (no tapping required for battlefield entry)
@@ -753,9 +704,20 @@ func executeCardEnters(card: Card, source_zone: GameZone.e, target_zone: GameZon
 		return
 	else:
 		await tween.finished
-	# Trigger CARD_ENTERS action after the card has moved to battlefield
-	var enters_action = GameAction.new(TriggerType.Type.CARD_ENTERS, card, source_zone, target_zone)
-	AbilityManagerAL.triggerGameAction(self, enters_action)
+	
+	# Emit card_entered_play signal to trigger any "when a card enters play" abilities
+	# Abilities are already enabled when CardData is created, so they're listening to signals
+	emit_game_event(TriggeredAbility.GameEventType.CARD_ENTERED_PLAY, card.cardData, {"from_zone": source_zone, "to_zone": target_zone})
+	
+	# Register abilities to game signals (TriggeredAbility needs to connect to game events)
+	for ability in card.cardData.abilities:
+		if ability is TriggeredAbility:
+			ability.register_to_game(self)
+		elif ability is StaticAbility:
+			ability.apply_to_game(self)
+	
+	# Subscribe card data to game signals for self-managed temporary effects
+	card.cardData.subscribe_to_game_signals(self)
 	
 	# Resolve state-based actions after card enters
 	resolveStateBasedAction()
@@ -927,9 +889,9 @@ func tryActivateAbility(card: Card) -> bool:
 		return false
 	
 	# Find activated abilities on the card
-	var activated_abilities = []
+	var activated_abilities: Array[ActivatedAbility] = []
 	for ability in card.cardData.abilities:
-		if ability.get("type") == "ActivatedAbility":
+		if ability is ActivatedAbility:
 			activated_abilities.append(ability)
 	
 	if activated_abilities.is_empty():
@@ -1116,10 +1078,8 @@ func _collectAllPlayerSelections(card: Card, pre_selections: SelectionManager.Ca
 func _spellRequiresTargeting(card: Card) -> bool:
 	"""Check if a spell has any effects that require targeting"""
 	for ability in card.cardData.abilities:
-		if ability.get("type") == "SpellEffect":
-			var effect_type = ability.get("effect_type", "")
-			# Check if this effect type requires targeting
-			if effect_type in ["DealDamage", "Pump", "Destroy", "Bounce", "Exile"]:
+		if ability is SpellAbility:
+			if ability.requires_target():
 				return true
 	return false
 
@@ -1131,23 +1091,19 @@ func _getSpellTargetsIfRequired(card: Card, preselected_targets: Array[Card] = [
 		print("🎯 Using pre-selected spell targets: ", preselected_targets.map(func(c): return c.cardData.cardName))
 		return preselected_targets
 	
-	# Get spell effects that require targeting
-	var targeting_effects = []
+	# Get spell abilities that require targeting
+	var targeting_abilities: Array[SpellAbility] = []
 	for ability in card.cardData.abilities:
-		if ability.get("type") == "SpellEffect":
-			var effect_type = ability.get("effect_type", "")
-			# Check if this effect type requires targeting
-			if effect_type in ["DealDamage", "Pump", "Destroy", "Bounce", "Exile"]:
-				targeting_effects.append(ability)
+		if ability is SpellAbility and ability.requires_target():
+			targeting_abilities.append(ability)
 	
-	if targeting_effects.is_empty():
+	if targeting_abilities.is_empty():
 		return []  # No targeting required
 	
 	# For now, handle the first targeting effect
 	# TODO: Handle multiple targeting effects
-	var effect = targeting_effects[0]
-	var parameters = effect.get("parameters", {})
-	var valid_targets = parameters.get("ValidTargets", "Any")
+	var spell_ability = targeting_abilities[0]
+	var valid_targets = spell_ability.effect_parameters.get("ValidTargets", "Any")
 	
 	# Get all possible targets based on ValidTargets
 	var possible_targets: Array[Card] = []
@@ -1352,3 +1308,61 @@ func end_of_turn_return_cards_to_base():
 	await get_tree().create_timer(0.1).timeout
 	
 	print("🔄 End of turn: Returned ", cards_to_return.size(), " cards to player base")
+
+func resolve_trigger_queue():
+	"""Resolve all triggers in the queue one by one"""
+	if is_resolving_triggers:
+		print("⚠️ [TRIGGER QUEUE] Already resolving, skipping nested resolution")
+		return
+	
+	if not trigger_queue.has_triggers():
+		return
+	
+	print("🔄 [TRIGGER QUEUE] Starting resolution (", trigger_queue.size(), " triggers)")
+	is_resolving_triggers = true
+	
+	while trigger_queue.has_triggers():
+		var queued_trigger = trigger_queue.get_next_trigger()
+		
+		if not queued_trigger:
+			break
+		
+		print("  ⚡ Resolving: ", queued_trigger.source_card_data.cardName, " - ", queued_trigger.ability.get_description())
+		
+		# Execute the triggered ability
+		await AbilityManagerAL.executeAbilityEffect(
+			queued_trigger.source_card_data,
+			queued_trigger.ability.to_dictionary(),  # Convert to dict for AbilityManager
+			self
+		)
+		
+		# Resolve state-based actions after each trigger
+		resolveStateBasedAction()
+	
+	is_resolving_triggers = false
+	print("✅ [TRIGGER QUEUE] Resolution complete")
+
+func emit_game_event(event_type: TriggeredAbility.GameEventType, card_data: CardData = null, context: Dictionary = {}):
+	"""Emit a game event signal - abilities listening to this event will add themselves to the trigger queue"""
+	match event_type:
+		TriggeredAbility.GameEventType.CARD_ENTERED_PLAY:
+			card_entered_play.emit(card_data, context)
+		TriggeredAbility.GameEventType.CARD_DIED:
+			card_died.emit(card_data, context)
+		TriggeredAbility.GameEventType.ATTACK_DECLARED:
+			attack_declared.emit(card_data, context)
+		TriggeredAbility.GameEventType.DAMAGE_DEALT:
+			var target = context.get("target")
+			var amount = context.get("amount", 0)
+			damage_dealt.emit(card_data, target, amount, context)
+		TriggeredAbility.GameEventType.SPELL_CAST:
+			spell_cast.emit(card_data, context)
+		TriggeredAbility.GameEventType.TURN_STARTED:
+			turn_started.emit(context)
+		TriggeredAbility.GameEventType.END_OF_TURN:
+			end_of_turn.emit(context)
+		TriggeredAbility.GameEventType.BEGINNING_OF_TURN:
+			beginning_of_turn.emit(context)
+	
+	# After emitting the event, resolve any triggers that were added to the queue
+	await resolve_trigger_queue()

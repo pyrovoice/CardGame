@@ -1,105 +1,185 @@
-extends RefCounted
+extends CardAbility
 class_name TriggeredAbility
 
-# Triggered abilities that respond to game events
+## Triggered ability that automatically responds to game events
+## Registers itself to game signals when enabled
 
-enum TriggerType {
-	CHANGES_ZONE,
-	CARD_PLAYED,
-	# Add more trigger types as needed
+enum GameEventType {
+	ATTACK_DECLARED,      # When this or another card attacks
+	CARD_DIED,            # When this or another card dies
+	CARD_ENTERED_PLAY,    # When this or another card enters play
+	DAMAGE_DEALT,         # When damage is dealt
+	TURN_STARTED,         # At the start of a turn
+	SPELL_CAST,           # When a spell is cast
+	END_OF_TURN,          # At end of turn
+	BEGINNING_OF_TURN     # At beginning of turn
 }
 
-var description: String = ""
-var trigger_type: TriggerType
-var trigger_conditions: Dictionary = {}
-var effect_name: String = ""
-var effect_parameters: Dictionary = {}
+# Mapping from GameEventType to game.gd signal names
+const EVENT_TO_SIGNAL = {
+	GameEventType.ATTACK_DECLARED: "attack_declared",
+	GameEventType.CARD_DIED: "card_died",
+	GameEventType.CARD_ENTERED_PLAY: "card_entered_play",
+	GameEventType.DAMAGE_DEALT: "damage_dealt",
+	GameEventType.TURN_STARTED: "turn_started",
+	GameEventType.SPELL_CAST: "spell_cast",
+	GameEventType.END_OF_TURN: "end_of_turn",
+	GameEventType.BEGINNING_OF_TURN: "beginning_of_turn"
+}
 
-func _init(
-	_trigger_type: TriggerType,
-	_trigger_conditions: Dictionary = {},
-	_effect_name: String = "",
-	_effect_parameters: Dictionary = {},
-	_description: String = ""
-):
-	description = _description
-	trigger_type = _trigger_type
-	trigger_conditions = _trigger_conditions.duplicate()
-	effect_name = _effect_name
-	effect_parameters = _effect_parameters.duplicate()
+var game_event_trigger: GameEventType
+var game_ref: WeakRef  # Reference to game node
 
-func execute(card: Card, _game_context: Node):
-	# Execute the triggered ability based on effect name
-	match effect_name:
-		"TrigToken", "TrigCreateGoblin":
-			execute_token_creation(card, _game_context)
-		_:
-			push_error("Unknown effect: " + effect_name)
-
-func execute_token_creation(card: Card, _game_context: Node):
-	# Create token based on parameters
-	if "TokenScript" in effect_parameters:
-		var token_script = effect_parameters["TokenScript"]
-		print("Creating token: ", token_script, " for card: ", card.cardData.cardName)
-		# TODO: Implement actual token creation logic
-		# This would load the token from Cards/Tokens/ and create it at the same location
-
-func can_trigger(_event_type: String, event_data: Dictionary) -> bool:
-	# Check if this ability should trigger based on the event
-	match trigger_type:
-		TriggerType.CHANGES_ZONE:
-			return check_zone_change_trigger(event_data)
-		TriggerType.CARD_PLAYED:
-			return check_card_played_trigger(event_data)
-		_:
-			return false
-
-func check_zone_change_trigger(event_data: Dictionary) -> bool:
-	# Check if zone change conditions are met
-	var origin = trigger_conditions.get("Origin", "Any")
-	var destination = trigger_conditions.get("Destination", "Any")
-	var valid_card = trigger_conditions.get("ValidCard", "Any")
+func _init(p_owner: CardData, p_trigger: GameEventType, p_effect: EffectType.Type, game: Node = null):
+	super(p_owner)
+	game_event_trigger = p_trigger
+	effect_type = p_effect
 	
-	# Basic validation - can be expanded
-	if origin != "Any" and event_data.get("origin", "") != origin:
-		return false
-	if destination != "Any" and event_data.get("destination", "") != destination:
-		return false
-	if valid_card == "Card.Self" and event_data.get("card") != self:
-		return false
+	# Connect to game signals immediately if game is provided
+	if game:
+		register_to_game(game)
+
+func register_to_game(game: Node):
+	"""Register this ability to listen to the appropriate game signal"""
+	game_ref = weakref(game)
+	
+	var signal_name = EVENT_TO_SIGNAL.get(game_event_trigger, "")
+	if signal_name.is_empty():
+		print("❌ Unknown trigger type for ability: ", game_event_trigger)
+		return
+	
+	# Check if signal exists on game node
+	if not game.has_signal(signal_name):
+		print("❌ Game node missing signal: ", signal_name)
+		return
+	
+	# Connect to the signal
+	if not game.is_connected(signal_name, _on_game_event):
+		game.connect(signal_name, _on_game_event)
+		
+		var owner = get_owner()
+		var card_name = owner.cardName if owner else "Unknown"
+		print("📡 [ABILITY REGISTER] ", card_name, " listening to '", signal_name, "'")
+
+func unregister_from_game(game: Node):
+	"""Disconnect from game signal (called when card leaves play or is destroyed)"""
+	var signal_name = EVENT_TO_SIGNAL.get(game_event_trigger, "")
+	if signal_name.is_empty():
+		return
+	
+	if game.has_signal(signal_name) and game.is_connected(signal_name, _on_game_event):
+		game.disconnect(signal_name, _on_game_event)
+		
+		var owner = get_owner()
+		var card_name = owner.cardName if owner else "Unknown"
+		print("📡 [ABILITY UNREGISTER] ", card_name, " from '", signal_name, "'")
+
+## Signal callback
+
+func _on_game_event(event_card_data: CardData = null, context: Dictionary = {}):
+	"""Called when the relevant game event fires"""
+	var owner = get_owner()
+	if not owner:
+		return  # Owner was destroyed
+	
+	var game = game_ref.get_ref() if game_ref else null
+	if not game:
+		return  # Game was destroyed (shouldn't happen)
+	
+	# Check if trigger conditions are met
+	if not _check_trigger_conditions(owner, event_card_data, context, game):
+		return
+	
+	# Add to trigger queue
+	var ability_desc = event_to_string(game_event_trigger) + " -> " + EffectType.type_to_string(effect_type)
+	print("⚡ [TRIGGER] ", owner.cardName, " ability triggered: ", ability_desc)
+	
+	game.trigger_queue.add_trigger(owner, self, context)
+
+func _check_trigger_conditions(owner: CardData, event_card_data: CardData, context: Dictionary, game: Node) -> bool:
+	"""Check if the trigger conditions for this ability are met"""
+	# Check "Self" condition - ability only triggers for this card
+	if trigger_conditions.get("Self", false):
+		if event_card_data != owner:
+			return false
+	
+	# Check "ValidCards" condition - filter what cards trigger this
+	var valid_cards_filter = trigger_conditions.get("ValidCards", "")
+	if valid_cards_filter != "":
+		# TODO: Implement card filtering based on ValidCards
+		# For now, accept all
+		pass
 	
 	return true
 
-func check_card_played_trigger(event_data: Dictionary) -> bool:
-	# Check if card played conditions are met
-	var valid_card = trigger_conditions.get("ValidCard", "Any")
-	var valid_player = trigger_conditions.get("ValidActivatingPlayer", "Any")
-	var trigger_zones = trigger_conditions.get("TriggerZones", "Any")
-	
-	# Check if the played card matches the valid card condition
-	var played_card = event_data.get("card")
-	if valid_card != "Any" and played_card:
-		# Check if the card has the required subtype
-		var card_data = played_card.get("cardData")
-		if card_data and not valid_card in card_data.subtypes:
-			return false
-	
-	# Check if the player matches
-	if valid_player == "You" and not event_data.get("is_owner_player", false):
-		return false
-	
-	# Check if trigger is in the right zone (assuming the triggering card is on battlefield)
-	if trigger_zones != "Any" and trigger_zones != "Battlefield":
-		return false
-	
-	return true
+## Helper methods
 
-func describe() -> String:
-	var trigger_name = ""
-	match trigger_type:
-		TriggerType.CHANGES_ZONE:
-			trigger_name = "Zone Change"
-		TriggerType.CARD_PLAYED:
-			trigger_name = "Card Played"
+static func event_to_string(event: GameEventType) -> String:
+	"""Convert GameEventType to string"""
+	match event:
+		GameEventType.ATTACK_DECLARED:
+			return "AttackDeclared"
+		GameEventType.CARD_DIED:
+			return "CardDied"
+		GameEventType.CARD_ENTERED_PLAY:
+			return "CardEnteredPlay"
+		GameEventType.DAMAGE_DEALT:
+			return "DamageDealt"
+		GameEventType.TURN_STARTED:
+			return "TurnStarted"
+		GameEventType.SPELL_CAST:
+			return "SpellCast"
+		GameEventType.END_OF_TURN:
+			return "EndOfTurn"
+		GameEventType.BEGINNING_OF_TURN:
+			return "BeginningOfTurn"
+	return "Unknown"
+
+static func string_to_event(event_str: String) -> GameEventType:
+	"""Convert string to GameEventType"""
+	match event_str:
+		"AttackDeclared":
+			return GameEventType.ATTACK_DECLARED
+		"CardDied":
+			return GameEventType.CARD_DIED
+		"CardEnteredPlay", "Enters":
+			return GameEventType.CARD_ENTERED_PLAY
+		"DamageDealt":
+			return GameEventType.DAMAGE_DEALT
+		"TurnStarted":
+			return GameEventType.TURN_STARTED
+		"SpellCast":
+			return GameEventType.SPELL_CAST
+		"EndOfTurn":
+			return GameEventType.END_OF_TURN
+		"BeginningOfTurn":
+			return GameEventType.BEGINNING_OF_TURN
+	return GameEventType.CARD_ENTERED_PLAY  # Default
+
+## Conversion methods for backward compatibility
+
+func to_dictionary() -> Dictionary:
+	"""Convert to dictionary format for backward compatibility"""
+	return {
+		"type": "TriggeredAbility",
+		"trigger": event_to_string(game_event_trigger),
+		"effect_type": EffectType.type_to_string(effect_type),
+		"effect_parameters": effect_parameters.duplicate(),
+		"trigger_conditions": trigger_conditions.duplicate(),
+		"targeting_requirements": targeting_requirements.duplicate()
+	}
+
+static func from_dictionary(owner: CardData, dict: Dictionary) -> TriggeredAbility:
+	"""Create a TriggeredAbility from dictionary format"""
+	var trigger_str = dict.get("trigger", "")
+	var trigger_event = string_to_event(trigger_str)
 	
-	return "Triggered Ability (%s): %s -> %s" % [trigger_name, description, effect_name]
+	var effect_str = dict.get("effect_type", "")
+	var effect = EffectType.string_to_type(effect_str)
+	
+	var ability = TriggeredAbility.new(owner, trigger_event, effect)
+	ability.effect_parameters = dict.get("effect_parameters", {})
+	ability.trigger_conditions = dict.get("trigger_conditions", {})
+	ability.targeting_requirements = dict.get("targeting_requirements", {})
+	
+	return ability

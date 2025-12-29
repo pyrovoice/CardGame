@@ -1,0 +1,6 @@
+Name:Eyepatch the Pirate
+Types:Creature Goblin
+Power:1
+T:Mode$ CardEnters | Origin$ Any | Destination$ Battlefield | ValidCard$ Card.Other+Goblin | ValidActivatingPlayer$ You | Execute$ PlayMe | TriggerZones$ Deck | TriggerDescription$ When a goblin enters play, if Eyepatch the Pirate is in your deck, play it for free.
+SVar:PlayMe:DB$ Cast | Target$ Self
+CardText: When a goblin enters play, if Eyepatch the Pirate is in your deck, play it for free.

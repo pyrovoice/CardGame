@@ -10,6 +10,7 @@ enum Type {
 	
 	# Token/creature effects
 	CREATE_TOKEN,  # Create token creatures
+	CAST,  # Cast/play a card from any zone
 	
 	# Modification effects
 	ADD_TYPE,  # Add types/subtypes to cards
@@ -36,6 +37,8 @@ static func type_to_string(effect_type: Type) -> String:
 			return "Draw"
 		Type.CREATE_TOKEN:
 			return "CreateToken"
+		Type.CAST:
+			return "Cast"
 		Type.ADD_TYPE:
 			return "AddType"
 		Type.ADD_KEYWORD:
@@ -68,6 +71,8 @@ static func string_to_type(effect_string: String) -> Type:
 			return Type.DRAW
 		"CreateToken":
 			return Type.CREATE_TOKEN
+		"Cast":
+			return Type.CAST
 		"AddType":
 			return Type.ADD_TYPE
 		"AddKeyword", "PumpAll":  # PumpAll is alias for AddKeyword
@@ -93,7 +98,7 @@ static func string_to_type(effect_string: String) -> Type:
 # Get all available effect type strings
 static func get_all_strings() -> Array[String]:
 	return [
-		"DealDamage", "Pump", "Draw", "CreateToken", "AddType", 
+		"DealDamage", "Pump", "Draw", "CreateToken", "Cast", "AddType", 
 		"AddKeyword", "Destroy", "Bounce", "Exile", "Mill", 
 		"Discard", "Search", "Shuffle"
 	]

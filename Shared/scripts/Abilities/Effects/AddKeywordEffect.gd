@@ -1,0 +1,37 @@
+extends Effect
+class_name AddKeywordEffect
+
+## Effect that adds keyword abilities to creatures (formerly PumpAll)
+## Expects targets to be pre-resolved and passed in parameters["Targets"]
+
+func execute(parameters: Dictionary, source_card_data: CardData, game_context: Game):
+	var keyword = parameters.get("KW", "")
+	var duration = parameters.get("Duration", "Permanent")
+	
+	if keyword.is_empty():
+		print("❌ No keyword specified for AddKeyword effect")
+		return
+	
+	# Get pre-resolved targets (should be provided by ability system)
+	var target_cards: Array = parameters.get("Targets", [])
+	
+	if target_cards.is_empty():
+		print("⚠️ No valid targets found for AddKeyword effect")
+		return
+	
+	print("✨ Granting ", keyword, " to ", target_cards.size(), " creature(s) until ", duration)
+	
+	# Apply the keyword to each target
+	for target_card in target_cards:
+		_grant_keyword_to_card(target_card, keyword, duration)
+
+func _grant_keyword_to_card(target_card: Card, keyword: String, duration: String):
+	"""Grant a keyword ability to a card"""
+	CardModifier.modify_card(target_card, "keyword", {"keyword": keyword}, duration)
+
+func validate_parameters(parameters: Dictionary) -> bool:
+	return parameters.has("KW")
+
+func get_description(parameters: Dictionary) -> String:
+	var keyword = parameters.get("KW", "")
+	return "Grant " + keyword + " to targets"

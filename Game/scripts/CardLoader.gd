@@ -79,16 +79,18 @@ func parse_card_data(card_text: String) -> CardData:
 					card_data.subtypes.append(type_part)
 	
 	# Parse abilities
-	card_data.abilities = parse_abilities(properties)
+	var ability_dicts = parse_abilities(properties)
+	for ability_dict in ability_dicts:
+		card_data.add_ability_from_dict(ability_dict)
 	
 	# Parse additional costs
 	card_data.additionalCosts = parse_additional_costs(properties)
 	
 	# Parse spell effects (for spell cards)
 	if card_data.hasType(CardData.CardType.SPELL):
-		var spell_effects = parse_spell_effects(properties)
-		if spell_effects.size() > 0:
-			card_data.abilities.append_array(spell_effects)
+		var spell_effect_dicts = parse_spell_effects(properties)
+		for spell_dict in spell_effect_dicts:
+			card_data.add_ability_from_dict(spell_dict)
 	
 	return card_data
 
