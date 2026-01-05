@@ -11,3 +11,7 @@ Do something that manipulates the graveyard
 - Deck view with cards listed, how many are there of each and animation on refill
 - Add Agile, allowing once per turn to move without tapping
 - Add Untap effect, and a built-in lock to prevent untapping more than once per turn
+- Player draw 3 per turn. Player can sacrifice cards from the hand to get 3/2/1 gold. Effects and faction that add useless card to the hand to be sacrificed. Effect on third sacrifice for some cards.
+- Card per battlefield + general for the opponent. Flow becomes: Danger gives budget, cards from the opponent's deck are selected to fill each general's hand, hidden. Player can interact with the hand or the threat level. When starting a fight, cards from the hand are played, some hidden. Effects can unhide, and some cards will be duds for the player to waste discovers on (called "Feints" and "Lure"). On top of that, a second resource (1/turn?) is allocated for the opponent, and can be used to cast a selection of general cards to respond to what the player does (2 cost maybe, so they can't answer every turn?)
+- Ability to join fights after they start
+- Opponent creature with high defense value, and that give a mark for the turn to a random creature every turn. This mark bypass the defense, and can be transfered by tapping the creature (activated ability)

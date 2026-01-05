@@ -54,14 +54,8 @@ static func _apply_keyword_modification(target_card: Card, keyword: String, dura
 	
 	print("  ✨ Granting ", keyword, " to ", target_card.cardData.cardName)
 	
-	# Add the keyword to the card's abilities
-	var keyword_ability = {
-		"type": "KeywordAbility",
-		"keyword": keyword,
-		"duration": duration,
-		"granted_by": "Modification"
-	}
-	target_card.cardData.abilities.append(keyword_ability)
+	# Add the keyword to the card's keywords array
+	target_card.cardData.add_keyword(keyword)
 	
 	# Track for removal if not permanent
 	_track_modification_for_removal(target_card, "keyword", {"keyword": keyword}, duration)

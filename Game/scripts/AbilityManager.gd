@@ -8,12 +8,11 @@ class_name AbilityManager
 
 ## Ability execution methods
 
-func activateAbility(source_card: Card, activated_ability: Dictionary, game_context: Game):
-	"""Execute an activated ability - entry point for player-activated abilities"""
+func activateAbility(source_card: Card, activated_ability: ActivatedAbility, game_context: Game, pre_selections: SelectionManager.CardPlaySelections = null):
 	print("🔥 [ACTIVATED] Activating ability on ", source_card.cardData.cardName)
 	
 	# First, check if costs can be paid
-	if not canPayActivationCosts(source_card, activated_ability, game_context):
+	if not CardPaymentManagerAL.canPayCosts(activated_ability.activation_costs, source_card):
 		print("⚠️ Cannot pay activation costs for ", source_card.cardData.cardName)
 		return false
 	
@@ -21,14 +20,14 @@ func activateAbility(source_card: Card, activated_ability: Dictionary, game_cont
 	var has_sacrifice_self_cost = false
 	var card_name_for_debug = source_card.cardData.cardName  # Store card name before potential destruction
 	var source_card_data = source_card.cardData  # Store CardData reference before card might be freed
-	var activation_costs = activated_ability.get("activation_costs", [])
-	for cost in activation_costs:
+	
+	for cost in activated_ability.activation_costs:
 		if cost.get("type", "") == "Sacrifice" and cost.get("target", "") == "Self":
 			has_sacrifice_self_cost = true
 			break
 	
 	# Always pay costs first (proper order for sacrificing)
-	if not await payActivationCosts(source_card, activated_ability, game_context):
+	if not await CardPaymentManagerAL.payCosts(activated_ability.activation_costs, source_card, pre_selections):
 		print("❌ Failed to pay activation costs for ", card_name_for_debug)
 		return false
 	
@@ -41,85 +40,6 @@ func activateAbility(source_card: Card, activated_ability: Dictionary, game_cont
 	print("✅ [ACTIVATED] Completed ability activation")
 	return true
 
-func canPayActivationCosts(source_card: Card, activated_ability: Dictionary, game_context: Game) -> bool:
-	"""Check if the activation costs can be paid"""
-	var activation_costs = activated_ability.get("activation_costs", [])
-	
-	for cost in activation_costs:
-		var cost_type = cost.get("type", "")
-		match cost_type:
-			"Sacrifice":
-				var target = cost.get("target", "")
-				if target == "Self":
-					# Can always sacrifice self if the card is in play
-					var source_zone = game_context.getCardZone(source_card)
-					if source_zone != GameZone.e.PLAYER_BASE and source_zone != GameZone.e.COMBAT_ZONE:
-						return false
-				else:
-					print("❌ Unsupported sacrifice target: ", target)
-					return false
-			
-			"PayMana":
-				var amount = cost.get("amount", 0)
-				if game_context.game_data.player_gold.getValue() < amount:
-					return false
-			
-			"Tap":
-				var target = cost.get("target", "")
-				if target == "Self":
-					# Check if the card can be tapped
-					if not source_card.cardData.can_tap():
-						return false
-				else:
-					print("❌ Unsupported tap target: ", target)
-					return false
-			
-			_:
-				print("❌ Unknown activation cost type: ", cost_type)
-				return false
-	
-	return true
-
-func payActivationCosts(source_card: Card, activated_ability: Dictionary, game_context: Game) -> bool:
-	"""Pay the activation costs for the ability"""
-	var activation_costs = activated_ability.get("activation_costs", [])
-	
-	for cost in activation_costs:
-		var cost_type = cost.get("type", "")
-		match cost_type:
-			"Sacrifice":
-				var target = cost.get("target", "")
-				if target == "Self":
-					print("🔥 Sacrificing ", source_card.cardData.cardName, " for activated ability")
-					# Move the card to graveyard
-					game_context.putInOwnerGraveyard(source_card)
-				else:
-					print("❌ Unsupported sacrifice target: ", target)
-					return false
-			
-			"PayMana":
-				var amount = cost.get("amount", 0)
-				print("💰 Paying ", amount, " mana for activated ability")
-				var current_gold = game_context.game_data.player_gold.getValue()
-				game_context.game_data.player_gold.setValue(current_gold - amount)
-			
-			"Tap":
-				var target = cost.get("target", "")
-				if target == "Self":
-					print("🔄 Tapping ", source_card.cardData.cardName, " for activated ability")
-					source_card.cardData.tap()
-				else:
-					print("❌ Unsupported tap target: ", target)
-					return false
-			
-			_:
-				print("❌ Unknown activation cost type: ", cost_type)
-				return false
-	
-	# Small delay to show the cost payment
-	await game_context.get_tree().process_frame
-	return true
-
 func executeAbilityEffect(source_card_data: CardData, ability, game_context: Game):
 	"""
 	Unified method to execute ability effects - used for both triggered and activated abilities.
@@ -127,14 +47,14 @@ func executeAbilityEffect(source_card_data: CardData, ability, game_context: Gam
 	Uses enum-based effect types for type safety and consistency.
 	Uses CardData instead of Card object, so effects work even if the Card has been destroyed.
 	
-	Accepts TriggeredAbility, ActivatedAbility, StaticAbility, or Dictionary (legacy)
+	Accepts TriggeredAbility, ActivatedAbility, StaticAbility, ReplacementAbility, or Dictionary (legacy)
 	"""
 	var effect_type_str: String
 	var effect_parameters: Dictionary
 	var target_conditions: Dictionary
 	
 	# Check ability type and extract data
-	if ability is TriggeredAbility or ability is ActivatedAbility or ability is StaticAbility:
+	if ability is TriggeredAbility or ability is ActivatedAbility or ability is StaticAbility or ability is ReplacementAbility:
 		effect_type_str = EffectType.type_to_string(ability.effect_type)
 		effect_parameters = ability.effect_parameters
 		target_conditions = ability.trigger_conditions if "trigger_conditions" in ability else {}
@@ -174,9 +94,9 @@ func executeAbilityEffect(source_card_data: CardData, ability, game_context: Gam
 			var targets = TargetResolver.resolve_targets(resolved_parameters, source_card_data, game_context)
 			resolved_parameters["Targets"] = targets
 	
-	# Apply ability modifiers from the registry (replacement effects, static modifiers, etc.)
-	# This happens when the ability "enters the trigger queue"
-	resolved_parameters = AbilityModifierRegistry.apply_modifiers_to_effect(
+	# Apply replacement effects from the registry
+	# This happens before the effect executes
+	resolved_parameters = ReplacementEffectRegistry.apply_replacement_effects(
 		effect_type_str, 
 		resolved_parameters, 
 		game_context
@@ -196,13 +116,10 @@ func onEffectTrigger(effect_context: Dictionary, game_context: Game) -> Dictiona
 	var all_cards = game_context.getAllCardsInPlay()
 	
 	for card in all_cards:
-		if not card.cardData or card.cardData.abilities.is_empty():
+		if not card.cardData or card.cardData.replacement_abilities.is_empty():
 			continue
 		
-		for ability in card.cardData.abilities:
-			if ability.get("type", "") != "ReplacementEffect":
-				continue
-			
+		for ability in card.cardData.replacement_abilities:
 			# Check if this replacement effect applies to the current effect
 			if shouldReplacementEffectApply(ability, effect_context, card, game_context):
 				# Apply the replacement effect
@@ -210,10 +127,10 @@ func onEffectTrigger(effect_context: Dictionary, game_context: Game) -> Dictiona
 	
 	return modified_context
 
-func shouldReplacementEffectApply(replacement_ability: Dictionary, effect_context: Dictionary, replacement_source: Card, game_context: Game) -> bool:
+func shouldReplacementEffectApply(replacement_ability: ReplacementAbility, effect_context: Dictionary, replacement_source: Card, game_context: Game) -> bool:
 	"""Check if a replacement effect should apply to the current effect"""
 	var effect_type = effect_context.get("effect_type", "")
-	var ability_event_type = replacement_ability.get("event_type", "")
+	var ability_event_type = replacement_ability.effect_parameters.get("event_type", "")
 	
 	# Check if the event type matches using ReplacementType for consistency
 	# Convert both to standardized format for comparison
@@ -224,7 +141,7 @@ func shouldReplacementEffectApply(replacement_ability: Dictionary, effect_contex
 		return false
 	
 	# Check ActiveZones condition
-	var conditions = replacement_ability.get("replacement_conditions", {})
+	var conditions = replacement_ability.effect_parameters.get("replacement_conditions", {})
 	var active_zones = conditions.get("ActiveZones", "Any")
 	
 	if active_zones != "Any":
@@ -304,16 +221,16 @@ func isValidTokenCondition(condition: String, effect_context: Dictionary) -> boo
 	
 	return true
 
-func applyReplacementEffect(replacement_ability: Dictionary, effect_context: Dictionary, _replacement_source: Card) -> Dictionary:
+func applyReplacementEffect(replacement_ability: ReplacementAbility, effect_context: Dictionary, _replacement_source: Card) -> Dictionary:
 	"""Apply a replacement effect to modify the effect context"""
 	var modified_context = effect_context.duplicate()
-	var effect_parameters = replacement_ability.get("effect_parameters", {})
-	var replacement_type = effect_parameters.get("Type", "")
+	var effect_params = replacement_ability.effect_parameters
+	var replacement_type = effect_params.get("Type", "")
 	
 	match replacement_type:
 		"AddToken":
 			# Add additional tokens to be created
-			var amount_to_add = int(effect_parameters.get("Amount", "0"))
+			var amount_to_add = int(effect_params.get("Amount", "0"))
 			var current_amount = modified_context.get("tokens_to_create", 1)
 			modified_context["tokens_to_create"] = current_amount + amount_to_add
 			print("  Adding ", amount_to_add, " additional token(s). Total: ", modified_context["tokens_to_create"])
@@ -363,10 +280,7 @@ func executeSpellEffects(card: Card, game_context: Game):
 	print("✨ Casting spell: ", card.cardData.cardName)
 	
 	# Get spell effects from the card's abilities
-	var spell_effects = []
-	for ability in card.cardData.abilities:
-		if ability.get("type") == "SpellEffect":
-			spell_effects.append(ability)
+	var spell_effects = card.cardData.spell_abilities
 	
 	if spell_effects.is_empty():
 		print("⚠️ Spell has no effects to execute: ", card.cardData.cardName)

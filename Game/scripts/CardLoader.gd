@@ -79,43 +79,41 @@ func parse_card_data(card_text: String) -> CardData:
 					card_data.subtypes.append(type_part)
 	
 	# Parse abilities
-	var ability_dicts = parse_abilities(properties)
-	for ability_dict in ability_dicts:
-		card_data.add_ability_from_dict(ability_dict)
+	var abilities = parse_abilities(properties, card_data)
+	for ability in abilities:
+		if ability:
+			card_data.add_ability(ability)
 	
 	# Parse additional costs
 	card_data.additionalCosts = parse_additional_costs(properties)
 	
 	# Parse spell effects (for spell cards)
 	if card_data.hasType(CardData.CardType.SPELL):
-		var spell_effect_dicts = parse_spell_effects(properties)
-		for spell_dict in spell_effect_dicts:
-			card_data.add_ability_from_dict(spell_dict)
+		var spell_abilities = parse_spell_effects(properties, card_data)
+		for spell_ability in spell_abilities:
+			if spell_ability:
+				card_data.add_ability(spell_ability)
 	
 	return card_data
 
 # Parse spell effects from card properties
-func parse_spell_effects(properties: Dictionary) -> Array[Dictionary]:
-	var spell_effects: Array[Dictionary] = []
+func parse_spell_effects(properties: Dictionary, card_data: CardData) -> Array[SpellAbility]:
+	var spell_effects: Array[SpellAbility] = []
 	
 	# Look for E: lines (Effect lines for spells)
 	for key in properties.keys():
 		if key == "E":
 			var effect_line = properties[key]
-			var spell_effect = parse_single_spell_effect(effect_line)
-			if not spell_effect.is_empty():
-				spell_effects.append(spell_effect)
+			var spell_ability = parse_single_spell_effect(effect_line, card_data)
+			if spell_ability:
+				spell_effects.append(spell_ability)
 	
 	return spell_effects
 
 # Parse a single spell effect line
-func parse_single_spell_effect(effect_text: String) -> Dictionary:
-	var effect_data = {
-		"type": "SpellEffect",
-		"effect_type": "",
-		"parameters": {},
-		"description": ""
-	}
+func parse_single_spell_effect(effect_text: String, card_data: CardData) -> SpellAbility:
+	var effect_type_str: String = ""
+	var parameters: Dictionary = {}
 	
 	# Remove the initial "$ " if present
 	if effect_text.begins_with("$ "):
@@ -128,110 +126,157 @@ func parse_single_spell_effect(effect_text: String) -> Dictionary:
 		
 		# Parse different effect types
 		if part == "DealDamage":
-			effect_data.effect_type = "DealDamage"
+			effect_type_str = "DealDamage"
 		elif part == "Pump":
-			effect_data.effect_type = "Pump"
+			effect_type_str = "Pump"
 		elif part.begins_with("ValidTgts$"):
-			effect_data.parameters["ValidTargets"] = part.substr(11)
+			parameters["ValidTargets"] = part.substr(11)
 		elif part.begins_with("NumDmg$"):
-			effect_data.parameters["NumDamage"] = int(part.substr(8))
+			parameters["NumDamage"] = int(part.substr(8))
 		elif part.begins_with("Pow$"):
-			effect_data.parameters["PowerBonus"] = int(part.substr(5))
+			parameters["PowerBonus"] = int(part.substr(5))
 		elif part.begins_with("Duration$"):
-			effect_data.parameters["Duration"] = part.substr(10)
-		elif part.begins_with("SpellDescription$"):
-			effect_data.description = part.substr(18)
+			parameters["Duration"] = part.substr(10)
 		# Add more spell effect types as needed (Mill, Draw, Heal, etc.)
 	
-	return effect_data
+	if effect_type_str.is_empty():
+		return null
+	
+	# Convert to EffectType enum
+	var effect_type = EffectType.string_to_type(effect_type_str)
+	
+	# Create SpellAbility instance
+	var spell_ability = SpellAbility.new(card_data, effect_type)
+	spell_ability.effect_parameters = parameters
+	
+	return spell_ability
 
 # Parse abilities from card properties
-func parse_abilities(properties: Dictionary) -> Array[Dictionary]:
-	var abilities: Array[Dictionary] = []
+func parse_abilities(properties: Dictionary, card_data: CardData) -> Array[CardAbility]:
+	var abilities: Array[CardAbility] = []
 	var svar_effects: Dictionary = {}
 	
 	# First pass: collect all SVar definitions
 	for key in properties.keys():
 		if key == "SVar":
-			# Parse the SVar line which has format "TrigToken:DB$ Token | TokenScript$ goblin"
+			# Parse the SVar line which has format "SVar:CreateOneMoreToken$ ReplaceToken | Type$ AddToken | Amount$ 1"
 			var svar_line = properties[key]
-			# Split on the first colon to get effect name and parameters
-			var svar_parts = svar_line.split(":", false, 1)
+			# Split on $ to get name and definition
+			var svar_parts = svar_line.split("$", false, 1)
 			if svar_parts.size() >= 2:
-				var effect_name = svar_parts[0].strip_edges()
-				var effect_value = svar_parts[1].strip_edges()
-				svar_effects[effect_name] = effect_value
+				var svar_name = svar_parts[0].strip_edges()
+				var svar_definition = svar_parts[1].strip_edges()
+				
+				# Parse the definition to extract effect type and parameters
+				var parsed_svar = _parse_svar_definition(svar_definition)
+				svar_effects[svar_name] = parsed_svar
 	
 	# Second pass: parse triggered abilities and activated abilities
 	for key in properties.keys():
 		if key == "T":
-			var trigger_ability = parse_triggered_ability(properties[key], svar_effects)
+			var trigger_ability = parse_triggered_ability(properties[key], svar_effects, card_data)
 			if trigger_ability:
 				abilities.append(trigger_ability)
 		elif key == "R":
-			var replacement_effect = parse_replacement_effect(properties[key], svar_effects)
+			var replacement_effect = parse_replacement_effect(properties[key], svar_effects, card_data)
 			if replacement_effect:
 				abilities.append(replacement_effect)
-		elif key == "AA":
-			var activated_ability = parse_activated_ability(properties[key], svar_effects)
+		elif key == "AA" or key == "A":
+			var activated_ability = parse_activated_ability(properties[key], svar_effects, card_data)
 			if activated_ability:
 				abilities.append(activated_ability)
 	
 	return abilities
 
 # Parse a single triggered ability
-func parse_triggered_ability(trigger_text: String, svar_effects: Dictionary) -> Dictionary:
-	var ability_data = {
-		"type": "TriggeredAbility",
-		"trigger_type": TriggerType.Type.CARD_ENTERS,  # Store enum value, not string
-		"trigger_conditions": {},
-		"effect_type": "",  # Modern format using enum strings
-		"effect_parameters": {},
-		"description": ""
-	}
+func parse_triggered_ability(trigger_text: String, svar_effects: Dictionary, card_data: CardData) -> TriggeredAbility:
+	var trigger_type: TriggerType.Type = TriggerType.Type.CARD_ENTERS
+	var trigger_conditions: Dictionary = {}
+	var effect_parameters: Dictionary = {}
+	var legacy_effect_name: String = ""
 	
 	var trigger_parts = trigger_text.split(" | ")
-	var legacy_effect_name = ""  # Temporary storage for conversion
 	
 	# Parse trigger conditions and parameters
 	for part in trigger_parts:
 		part = part.strip_edges()
 		if part.begins_with("Mode$"):
 			var mode = part.substr(6)  # Remove "Mode$ "
-			# Convert string to enum immediately during parsing using centralized method
-			ability_data.trigger_type = TriggerType.string_to_type(mode)
+			trigger_type = TriggerType.string_to_type(mode)
 		elif part.begins_with("Origin$"):
-			ability_data.trigger_conditions["Origin"] = part.substr(8)
+			trigger_conditions[TriggeredAbility.TriggerCondition.ORIGIN] = part.substr(8)
 		elif part.begins_with("Destination$"):
-			ability_data.trigger_conditions["Destination"] = part.substr(13)
+			trigger_conditions[TriggeredAbility.TriggerCondition.DESTINATION] = part.substr(13)
 		elif part.begins_with("ValidCard$"):
-			ability_data.trigger_conditions["ValidCard"] = part.substr(11)
+			trigger_conditions[TriggeredAbility.TriggerCondition.VALID_CARD] = part.substr(11)
 		elif part.begins_with("ValidActivatingPlayer$"):
-			ability_data.trigger_conditions["ValidActivatingPlayer"] = part.substr(23)
+			trigger_conditions[TriggeredAbility.TriggerCondition.VALID_ACTIVATING_PLAYER] = part.substr(23)
 		elif part.begins_with("TriggerZones$"):
-			ability_data.trigger_conditions["TriggerZones"] = part.substr(14)
+			trigger_conditions[TriggeredAbility.TriggerCondition.TRIGGER_ZONES] = part.substr(14)
 		elif part.begins_with("Phase$"):
-			ability_data.trigger_conditions["Phase"] = part.substr(7)
+			trigger_conditions[TriggeredAbility.TriggerCondition.PHASE] = part.substr(7)
 		elif part.begins_with("Condition$"):
-			ability_data.trigger_conditions["Condition"] = part.substr(11)
+			trigger_conditions[TriggeredAbility.TriggerCondition.CONDITION] = part.substr(11)
 		elif part.begins_with("Execute$"):
 			legacy_effect_name = part.substr(9)
-		elif part.begins_with("TriggerDescription$"):
-			ability_data.description = part.substr(20)
 	
-	# Get effect parameters from SVar and convert effect name to modern effect_type
+	# Get effect parameters from SVar
 	if legacy_effect_name in svar_effects:
-		ability_data.effect_parameters = parse_effect_parameters(svar_effects[legacy_effect_name])
+		var svar_data = svar_effects[legacy_effect_name]
+		effect_parameters = svar_data.get("parameters", {})
+		# Use the effect type from SVar if available
+		if not svar_data.get("effect_type", "").is_empty():
+			legacy_effect_name = svar_data["effect_type"]
 	
-	# Convert effect name to modern effect_type format
-	# This enforces the new enum-based system
-	ability_data.effect_type = _normalize_effect_name(legacy_effect_name)
+	# Set default trigger zone to Battlefield if not specified
+	if not trigger_conditions.has(TriggeredAbility.TriggerCondition.TRIGGER_ZONES):
+		trigger_conditions[TriggeredAbility.TriggerCondition.TRIGGER_ZONES] = GameZone.parse_trigger_zones("Battlefield")
+	else:
+		# Convert the string zone to enum array
+		var zone_str = trigger_conditions[TriggeredAbility.TriggerCondition.TRIGGER_ZONES]
+		trigger_conditions[TriggeredAbility.TriggerCondition.TRIGGER_ZONES] = GameZone.parse_trigger_zones(zone_str)
 	
-	return ability_data
+	# Convert trigger type to GameEventType
+	var game_event = _convert_trigger_type_to_game_event(trigger_type, trigger_conditions)
+	
+	# Convert effect name to EffectType
+	var effect_type_str = _normalize_effect_name(legacy_effect_name)
+	var effect_type = EffectType.string_to_type(effect_type_str)
+	
+	# Create the TriggeredAbility instance directly
+	var ability = TriggeredAbility.new(card_data, game_event, effect_type)
+	ability.trigger_conditions = trigger_conditions
+	ability.effect_parameters = effect_parameters
+	
+	return ability
+
+# Helper to convert TriggerType.Type to TriggeredAbility.GameEventType
+func _convert_trigger_type_to_game_event(trigger_type: TriggerType.Type, conditions: Dictionary) -> TriggeredAbility.GameEventType:
+	"""Convert TriggerType.Type enum to TriggeredAbility.GameEventType"""
+	match trigger_type:
+		TriggerType.Type.CARD_ENTERS:
+			return TriggeredAbility.GameEventType.CARD_ENTERED_PLAY
+		TriggerType.Type.CARD_ATTACKS:
+			return TriggeredAbility.GameEventType.ATTACK_DECLARED
+		TriggerType.Type.CARD_DRAWN:
+			return TriggeredAbility.GameEventType.CARD_DRAWN
+		TriggerType.Type.PHASE:
+			# For phase triggers, check the Phase condition
+			var phase = conditions.get(TriggeredAbility.TriggerCondition.PHASE, "")
+			match phase:
+				"BeginningOfTurn":
+					return TriggeredAbility.GameEventType.BEGINNING_OF_TURN
+				"EndOfTurn":
+					return TriggeredAbility.GameEventType.END_OF_TURN
+				_:
+					return TriggeredAbility.GameEventType.BEGINNING_OF_TURN  # Default
+		_:
+			push_warning("Unknown TriggerType: " + str(trigger_type))
+			return TriggeredAbility.GameEventType.CARD_ENTERED_PLAY  # Default fallback
 
 # Helper to normalize legacy effect names to modern effect types
 func _normalize_effect_name(legacy_name: String) -> String:
-	"""Convert legacy effect names (TrigToken, TrigDraw) to modern effect types (CreateToken, Draw)"""
+	"""Convert legacy effect names (TrigToken, TrigDraw, PlayMe) to modern effect types (CreateToken, Draw, Cast)"""
 	match legacy_name:
 		"TrigToken":
 			return "CreateToken"
@@ -241,20 +286,61 @@ func _normalize_effect_name(legacy_name: String) -> String:
 			return "AddType"
 		"Token":
 			return "CreateToken"
+		"PlayMe":
+			return "Cast"
 		_:
 			# Unknown effect - return as-is and let EffectType.string_to_type handle it
 			return legacy_name
 
-# Parse a single replacement effect
-func parse_replacement_effect(replacement_text: String, svar_effects: Dictionary) -> Dictionary:
-	var ability_data = {
-		"type": "ReplacementEffect",
-		"event_type": "",  # What event this replaces (e.g., "CreateToken")
-		"replacement_conditions": {},
-		"effect_name": "",
-		"effect_parameters": {},
-		"description": ""
+# Helper to parse SVar definition into effect type and parameters
+func _parse_svar_definition(definition: String) -> Dictionary:
+	"""Parse SVar definition like 'ReplaceToken | Type$ AddToken | Amount$ 1' into effect type and parameters"""
+	var result = {
+		"effect_type": "",
+		"parameters": {}
 	}
+	
+	var parts = definition.split(" | ")
+	if parts.size() > 0:
+		# First part is the effect type (e.g., "ReplaceToken", "Token", "Cast")
+		result["effect_type"] = parts[0].strip_edges()
+		
+		# Remaining parts are parameters
+		for i in range(1, parts.size()):
+			var part = parts[i].strip_edges()
+			if part.begins_with("TokenScript$"):
+				result["parameters"]["TokenScript"] = part.substr(13)
+			elif part.begins_with("Type$"):
+				result["parameters"]["Type"] = part.substr(6)
+			elif part.begins_with("Amount$"):
+				result["parameters"]["Amount"] = part.substr(8)
+			elif part.begins_with("Target$"):
+				result["parameters"]["Target"] = part.substr(8)
+			elif part.begins_with("Defined$"):
+				result["parameters"]["Defined"] = part.substr(9)
+			elif part.begins_with("NumCards$"):
+				result["parameters"]["NumCards"] = part.substr(10)
+			elif part.begins_with("Types$"):
+				result["parameters"]["Types"] = part.substr(7)
+			elif part.begins_with("Duration$"):
+				result["parameters"]["Duration"] = part.substr(10)
+	
+	return result
+
+# Parse a single replacement effect
+func parse_replacement_effect(replacement_text: String, svar_effects: Dictionary, card_data: CardData) -> ReplacementAbility:
+	"""
+	Parse a replacement effect (R:) that modifies how effects resolve.
+	Example: "If one or more Goblin token would be created, create that many plus one instead"
+	
+	Note: This returns a ReplacementAbility that registers an AbilityModifier
+	which intercepts and modifies effects as they resolve.
+	"""
+	var event_type: String = ""
+	var replacement_conditions: Dictionary = {}
+	var effect_name: String = ""
+	var effect_parameters: Dictionary = {}
+	var description: String = ""
 	
 	var replacement_parts = replacement_text.split(" | ")
 	
@@ -262,78 +348,197 @@ func parse_replacement_effect(replacement_text: String, svar_effects: Dictionary
 	for part in replacement_parts:
 		part = part.strip_edges()
 		if part.begins_with("Event$"):
-			var event_string = part.substr(7)  # Remove "Event$ "
-			ability_data.event_type = event_string
+			event_type = part.substr(7)  # Remove "Event$ "
 		elif part.begins_with("ActiveZones$"):
-			ability_data.replacement_conditions["ActiveZones"] = part.substr(13)
+			replacement_conditions["ActiveZones"] = part.substr(13)
 		elif part.begins_with("ValidToken$"):
-			ability_data.replacement_conditions["ValidToken"] = part.substr(12)
+			replacement_conditions["ValidToken"] = part.substr(12)
 		elif part.begins_with("ReplaceWith$"):
-			ability_data.effect_name = part.substr(13)
+			effect_name = part.substr(13)
 		elif part.begins_with("Description$"):
-			ability_data.description = part.substr(13)
+			description = part.substr(13)
 	
 	# Get effect parameters from SVar
-	if ability_data.effect_name in svar_effects:
-		ability_data.effect_parameters = parse_effect_parameters(svar_effects[ability_data.effect_name])
+	if effect_name in svar_effects:
+		var svar_data = svar_effects[effect_name]
+		effect_parameters = svar_data.get("parameters", {})
+		# Use the effect type from SVar
+		if not svar_data.get("effect_type", "").is_empty():
+			effect_name = svar_data["effect_type"]
 	
-	return ability_data
+	# Convert effect name to EffectType
+	var effect_type_str = _normalize_effect_name(effect_name)
+	var effect_type = EffectType.string_to_type(effect_type_str)
+	
+	# Build conditions with event type
+	var conditions = replacement_conditions.duplicate()
+	conditions["EventType"] = event_type
+	
+	# Build modifications from effect parameters
+	var modifications = effect_parameters.duplicate()
+	
+	# Create the appropriate ReplacementEffect based on effect type
+	var replacement_effect_instance = _create_replacement_effect(card_data, effect_type_str, conditions, modifications)
+	if not replacement_effect_instance:
+		push_error("Failed to create replacement effect for ", effect_type_str)
+		return null
+	
+	# Create ReplacementAbility instance
+	var ability = ReplacementAbility.new(card_data, effect_type, replacement_effect_instance)
+	ability.effect_parameters = effect_parameters
+	ability.effect_parameters["event_type"] = event_type
+	ability.effect_parameters["replacement_conditions"] = replacement_conditions
+	ability.effect_parameters["description"] = description
+	
+	return ability
+
+# Helper to create appropriate ReplacementEffect instance based on effect type
+func _create_replacement_effect(owner: CardData, effect_type_str: String, conditions: Dictionary, modifications: Dictionary) -> ReplacementEffect:
+	"""Create the appropriate ReplacementEffect subclass based on effect type"""
+	var effect: ReplacementEffect = null
+	
+	match effect_type_str:
+		"ReplaceToken":
+			effect = ReplaceTokenEffect.new(owner, conditions, modifications)
+		_:
+			print("⚠️ Unknown replacement effect type: ", effect_type_str)
+			return null
+	
+	# Validate parameters
+	if not effect.validate_parameters(modifications):
+		print("⚠️ Invalid parameters for ", effect_type_str)
+		return null
+	
+	return effect
 
 # Parse a single activated ability
-func parse_activated_ability(activated_text: String, svar_effects: Dictionary) -> Dictionary:
-	var ability_data = {
-		"type": "ActivatedAbility",
-		"effect_type": "",  # The type of effect (e.g., "PumpAll")
-		"activation_costs": [],  # Array of costs to activate (e.g., "Sac.Self", "Pay.1")
-		"target_conditions": {},  # Targeting/validation conditions
-		"effect_parameters": {},  # Parameters for the effect
-		"description": ""
-	}
+func parse_activated_ability(activated_text: String, _svar_effects: Dictionary, card_data: CardData) -> ActivatedAbility:
+	var effect_type_str: String = ""
+	var activation_costs: Array[Dictionary] = []
+	var target_conditions: Dictionary = {}
+	var effect_parameters: Dictionary = {}
+	var description: String = ""
 	
 	var activated_parts = activated_text.split(" | ")
 	
 	# Parse activated ability conditions and parameters
 	for part in activated_parts:
 		part = part.strip_edges()
-		if part.begins_with("$ "):
-			# The effect type comes right after "$ " (e.g., "$ PumpAll")
-			ability_data.effect_type = part.substr(2).strip_edges()
+		if part.begins_with("AB$ "):
+			# New format: "AB$ Draw" (e.g., "A:AB$ Draw | Cost$ ...")
+			effect_type_str = part.substr(4).strip_edges()
+		elif part.begins_with("$ "):
+			# Old format: "$ PumpAll" (e.g., "AA:$ PumpAll | Cost$ ...")
+			effect_type_str = part.substr(2).strip_edges()
 		elif part.begins_with("Cost$"):
-			# Parse the cost components (e.g., "Sac.Self+Pay.1")
+			# Parse the cost components (e.g., "Sac.Self+Pay.1" or "{T} Sac<filter>")
 			var cost_string = part.substr(6)  # Remove "Cost$ "
-			ability_data.activation_costs = parse_activation_costs(cost_string)
+			activation_costs = parse_activation_costs(cost_string)
 		elif part.begins_with("ValidCards$"):
-			ability_data.target_conditions["ValidCards"] = part.substr(12)
+			target_conditions["ValidCards"] = part.substr(12)
 		elif part.begins_with("ValidTargets$"):
-			ability_data.target_conditions["ValidTargets"] = part.substr(14)
+			target_conditions["ValidTargets"] = part.substr(14)
 		elif part.begins_with("KW$"):
-			ability_data.effect_parameters["KW"] = part.substr(4)
+			effect_parameters["KW"] = part.substr(4)
 		elif part.begins_with("Duration$"):
-			ability_data.effect_parameters["Duration"] = part.substr(10)
+			effect_parameters["Duration"] = part.substr(10)
 		elif part.begins_with("NumTarget$"):
-			ability_data.effect_parameters["NumTarget"] = part.substr(11)
+			effect_parameters["NumTarget"] = part.substr(11)
+		elif part.begins_with("NumCards$"):
+			effect_parameters["NumCards"] = part.substr(10)
 		elif part.begins_with("Amount$"):
-			ability_data.effect_parameters["Amount"] = part.substr(8)
+			effect_parameters["Amount"] = part.substr(8)
 		elif part.begins_with("Description$"):
-			ability_data.description = part.substr(13)
+			description = part.substr(13)
 	
-	return ability_data
+	# Convert effect name to EffectType
+	var effect_type = EffectType.string_to_type(effect_type_str)
+	
+	# Create ActivatedAbility instance
+	var ability = ActivatedAbility.new(card_data, effect_type)
+	ability.activation_costs = activation_costs
+	ability.effect_parameters = effect_parameters
+	ability.targeting_requirements = target_conditions
+	
+	return ability
 
-# Parse activation costs from cost string (e.g., "Sac.Self+Pay.1")
+# Parse activation costs from cost string (e.g., "T Sac<1:Card.Creature>" or "Sac.Self+Pay.1")
 func parse_activation_costs(cost_string: String) -> Array[Dictionary]:
 	var costs: Array[Dictionary] = []
-	var cost_parts = cost_string.split("+")
+	
+	# Parse costs - can be space-separated (new format) or +-separated (old format)
+	var cost_parts: Array[String] = []
+	
+	# Check if this uses the new format with angle brackets
+	if "<" in cost_string:
+		# New format: parse space-separated costs, but preserve content inside <>
+		var temp_parts = cost_string.split(" ", false)
+		var i = 0
+		while i < temp_parts.size():
+			var part = temp_parts[i]
+			
+			# If this part contains '<', check if it also contains '>'
+			if "<" in part:
+				if ">" in part:
+					# Complete part with both brackets
+					cost_parts.append(part.strip_edges())
+				else:
+					# Incomplete - need to combine with following parts until we find '>'
+					var combined = part
+					i += 1
+					while i < temp_parts.size():
+						combined += " " + temp_parts[i]
+						if ">" in temp_parts[i]:
+							break
+						i += 1
+					cost_parts.append(combined.strip_edges())
+			else:
+				# Regular part without brackets
+				if not part.strip_edges().is_empty():
+					cost_parts.append(part.strip_edges())
+			
+			i += 1
+	else:
+		# Old format: parse +-separated costs
+		var packed_array = cost_string.split("+")
+		for item in packed_array:
+			cost_parts.append(item.strip_edges())
 	
 	for cost_part in cost_parts:
-		cost_part = cost_part.strip_edges()
+		if cost_part.is_empty():
+			continue
+		
 		var cost_data = {}
 		
-		if cost_part.begins_with("Sac."):
+		# Check for tap cost (new format: T)
+		if cost_part == "T":
+			cost_data["type"] = "Tap"
+			cost_data["target"] = "Self"
+		# Check for sacrifice with filter (new format: Sac<count:filter> or Sac<filter>)
+		elif cost_part.begins_with("Sac<") and cost_part.ends_with(">"):
+			cost_data["type"] = "Sacrifice"
+			# Extract the content from between < and >
+			var inner_content = cost_part.substr(4, cost_part.length() - 5)
+			
+			# Check if there's a count prefix (e.g., "1:Card.Creature")
+			if ":" in inner_content:
+				var parts = inner_content.split(":", false, 1)
+				cost_data["count"] = int(parts[0].strip_edges())
+				cost_data["target"] = parts[1].strip_edges()
+			else:
+				# No count specified, default to 1
+				cost_data["count"] = 1
+				cost_data["target"] = inner_content.strip_edges()
+		# Old format sacrifice (Sac.Self)
+		elif cost_part.begins_with("Sac."):
 			cost_data["type"] = "Sacrifice"
 			cost_data["target"] = cost_part.substr(4)  # Remove "Sac."
+			cost_data["count"] = 1
+		# Old format mana payment (Pay.1)
 		elif cost_part.begins_with("Pay."):
 			cost_data["type"] = "PayMana"
 			cost_data["amount"] = int(cost_part.substr(4))  # Remove "Pay." and convert to int
+		# Old format tap (Tap.Self)
 		elif cost_part.begins_with("Tap."):
 			cost_data["type"] = "Tap"
 			cost_data["target"] = cost_part.substr(4)  # Remove "Tap."
@@ -342,7 +547,8 @@ func parse_activation_costs(cost_string: String) -> Array[Dictionary]:
 			cost_data["type"] = "Unknown"
 			cost_data["raw"] = cost_part
 		
-		costs.append(cost_data)
+		if not cost_data.is_empty():
+			costs.append(cost_data)
 	
 	return costs
 
@@ -353,9 +559,7 @@ func parse_effect_parameters(effect_text: String) -> Dictionary:
 	
 	for part in parts:
 		part = part.strip_edges()
-		if part.begins_with("DB$"):
-			parameters["DB"] = part.substr(4)
-		elif part.begins_with("TokenScript$"):
+		if part.begins_with("TokenScript$"):
 			parameters["TokenScript"] = part.substr(13)
 		elif part.begins_with("Defined$"):
 			parameters["Defined"] = part.substr(9)
@@ -567,34 +771,7 @@ func duplicateCardScript(original: CardData) -> CardData:
 	if not original:
 		return null
 	
-	var copy = CardData.new()
-	
-	# Copy simple properties
-	copy.cardName = original.cardName
-	copy.goldCost = original.goldCost
-	copy.power = original.power
-	copy.text_box = original.text_box
-	copy.cardArt = original.cardArt
-	copy.playerControlled = original.playerControlled
-	copy.playerOwned = original.playerOwned
-	
-	# Deep copy arrays by manually copying each element
-	for card_type in original.types:
-		copy.types.append(card_type)
-	
-	for subtype in original.subtypes:
-		copy.subtypes.append(subtype)
-	
-	for ability in original.abilities:
-		copy.abilities.append(ability)
-	
-	for additional_cost in original.additionalCosts:
-		# Deep copy dictionaries manually
-		var cost_copy = {}
-		for key in additional_cost:
-			cost_copy[key] = additional_cost[key]
-		copy.additionalCosts.append(cost_copy)
-	
+	var copy = [original].duplicate(true)[0]
 	return copy
 
 func getCardByName(n: String) -> CardData:

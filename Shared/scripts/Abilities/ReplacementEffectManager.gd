@@ -22,13 +22,10 @@ static func apply_replacement_effects(effect_context: Dictionary, game_context: 
 	var all_cards = game_context.getAllCardsInPlay()
 	
 	for card in all_cards:
-		if not card.cardData or card.cardData.abilities.is_empty():
+		if not card.cardData or card.cardData.replacement_abilities.is_empty():
 			continue
 		
-		for ability in card.cardData.abilities:
-			if ability.get("type", "") != "ReplacementEffect":
-				continue
-			
+		for ability in card.cardData.replacement_abilities:
 			# Check if this replacement effect applies
 			if _should_replacement_apply(ability, effect_context, card, game_context):
 				# Apply the replacement effect
@@ -36,10 +33,10 @@ static func apply_replacement_effects(effect_context: Dictionary, game_context: 
 	
 	return modified_context
 
-static func _should_replacement_apply(replacement_ability: Dictionary, effect_context: Dictionary, replacement_source: Card, game_context: Game) -> bool:
+static func _should_replacement_apply(replacement_ability: ReplacementAbility, effect_context: Dictionary, replacement_source: Card, game_context: Game) -> bool:
 	"""Check if a replacement effect should apply to the given effect"""
 	var effect_type = effect_context.get("effect_type", "")
-	var ability_event_type = replacement_ability.get("event_type", "")
+	var ability_event_type = replacement_ability.effect_parameters.get("event_type", "")
 	
 	# Standardize event type comparison
 	var standardized_effect_type = _standardize_event_type(effect_type)
@@ -49,7 +46,7 @@ static func _should_replacement_apply(replacement_ability: Dictionary, effect_co
 		return false
 	
 	# Check ActiveZones condition
-	var conditions = replacement_ability.get("replacement_conditions", {})
+	var conditions = replacement_ability.effect_parameters.get("replacement_conditions", {})
 	var active_zones = conditions.get("ActiveZones", "Any")
 	
 	if active_zones != "Any":
@@ -112,10 +109,10 @@ static func _is_zone_condition_met(zone_condition: String, actual_zone: GameZone
 		_:
 			return false
 
-static func _apply_replacement(replacement_ability: Dictionary, effect_context: Dictionary, replacement_source: Card) -> Dictionary:
+static func _apply_replacement(replacement_ability: ReplacementAbility, effect_context: Dictionary, replacement_source: Card) -> Dictionary:
 	"""Apply a replacement effect to modify the effect context"""
 	var modified_context = effect_context.duplicate()
-	var effect_parameters = replacement_ability.get("effect_parameters", {})
+	var effect_parameters = replacement_ability.effect_parameters
 	var replacement_type = effect_parameters.get("Type", "")
 	
 	match replacement_type:

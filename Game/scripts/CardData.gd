@@ -16,8 +16,12 @@ var types: Array[CardType] = []
 var subtypes: Array[String] = []
 var power: int
 var text_box: String
-# Contain all abilities from the card textBox to be useable by the game
-var abilities: Array[CardAbility] = []
+# Abilities from the card textBox - split by type for clarity and type safety
+var triggered_abilities: Array[TriggeredAbility] = []
+var activated_abilities: Array[ActivatedAbility] = []
+var static_abilities: Array[StaticAbility] = []  # S: effects - continuous effects like "Goblins get +1 power"
+var replacement_abilities: Array[ReplacementAbility] = []  # R: effects - replacement effects like "create one more token"
+var spell_abilities: Array[SpellAbility] = []
 # Keyword abilities (separate from complex abilities)
 var keywords: Array[String] = []  # Simple keywords like "Flying", "Spellshield"
 # Additional costs beyond gold cost (sacrifice, replace, etc.)
@@ -46,8 +50,9 @@ func describe() -> String:
 		subtypes_str = ", subtypes: [" + ", ".join(subtypes) + "]"
 	
 	var abilities_str = ""
-	if abilities.size() > 0:
-		abilities_str = ", abilities: " + str(abilities.size())
+	var total_abilities = triggered_abilities.size() + activated_abilities.size() + static_abilities.size() + replacement_abilities.size() + spell_abilities.size()
+	if total_abilities > 0:
+		abilities_str = ", abilities: " + str(total_abilities)
 	
 	var additional_costs_str = ""
 	if hasAdditionalCosts():
@@ -316,9 +321,30 @@ func get_card_object() -> Card:
 ## Ability management methods
 
 func add_ability(ability: CardAbility):
-	"""Add an ability to this card"""
-	abilities.append(ability)
+	"""Add an ability to this card - routes to appropriate array based on type"""
+	if ability is TriggeredAbility:
+		triggered_abilities.append(ability)
+	elif ability is ActivatedAbility:
+		activated_abilities.append(ability)
+	elif ability is ReplacementAbility:
+		replacement_abilities.append(ability)
+	elif ability is StaticAbility:
+		static_abilities.append(ability)
+	elif ability is SpellAbility:
+		spell_abilities.append(ability)
+	else:
+		push_warning("Unknown ability type: " + str(ability))
 	dirty_data.emit()
+
+func get_all_abilities() -> Array[CardAbility]:
+	"""Get all abilities combined (for backward compatibility)"""
+	var all_abilities: Array[CardAbility] = []
+	all_abilities.append_array(triggered_abilities)
+	all_abilities.append_array(activated_abilities)
+	all_abilities.append_array(static_abilities)
+	all_abilities.append_array(replacement_abilities)
+	all_abilities.append_array(spell_abilities)
+	return all_abilities
 
 func add_keyword(keyword: String):
 	"""Add a keyword ability to this card"""
@@ -335,29 +361,3 @@ func remove_keyword(keyword: String):
 func has_keyword(keyword: String) -> bool:
 	"""Check if this card has a specific keyword"""
 	return keyword in keywords
-
-## Backward compatibility methods for Dictionary-based abilities
-
-func add_ability_from_dict(ability_dict: Dictionary):
-	"""Add an ability from dictionary format (backward compatibility)"""
-	var type_str = ability_dict.get("type", "")
-	var ability: CardAbility = null
-	
-	match type_str:
-		"TriggeredAbility":
-			ability = TriggeredAbility.from_dictionary(self, ability_dict)
-		"ActivatedAbility":
-			ability = ActivatedAbility.from_dictionary(self, ability_dict)
-		"StaticAbility":
-			ability = StaticAbility.from_dictionary(self, ability_dict)
-		"SpellEffect":
-			ability = SpellAbility.from_dictionary(self, ability_dict)
-		"KeywordAbility":
-			# Keywords are handled separately
-			var keyword = ability_dict.get("keyword", "")
-			if keyword != "":
-				add_keyword(keyword)
-			return
-	
-	if ability:
-		abilities.append(ability)

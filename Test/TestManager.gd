@@ -26,7 +26,9 @@ func assert_test(condition: bool, message: String = "Assertion failed") -> bool:
 
 func assert_test_equal(actual, expected, message: String = "") -> bool:
 	"""Assert that two values are equal"""
-	if actual != expected:
+	# Use == for comparison to handle type conversions gracefully
+	var equals = (actual == expected)
+	if not equals:
 		var error_msg = message if message != "" else "Expected %s but got %s" % [expected, actual]
 		return assert_test(false, error_msg)
 	return true
@@ -1098,25 +1100,25 @@ func test_activated_ability_parsing() -> bool:
 		return false
 	
 	# Check that the card has abilities
-	if not assert_test(hersir_card.cardData.abilities.size() > 0, "Hersir should have abilities"):
+	if not assert_test(hersir_card.cardData.get_all_abilities().size() > 0, "Hersir should have abilities"):
 		return false
 	
 	# Look for the activated ability
 	var activated_ability = null
-	for ability in hersir_card.cardData.abilities:
-		if ability.get("type") == "ActivatedAbility":
-			activated_ability = ability
-			break
+	for ability in hersir_card.cardData.activated_abilities:
+		activated_ability = ability
+		break
 	
 	if not assert_test_not_null(activated_ability, "Should find activated ability"):
 		return false
 	
 	# Test the parsed activated ability structure
-	if not assert_test_equal(activated_ability.get("effect_type"), "PumpAll", "Effect type should be PumpAll"):
+	# Note: PumpAll is mapped to ADD_KEYWORD effect type
+	if not assert_test_equal(activated_ability.effect_type, EffectType.Type.ADD_KEYWORD, "Effect type should be ADD_KEYWORD (PumpAll)"):
 		return false
 	
 	# Test activation costs parsing
-	var costs = activated_ability.get("activation_costs", [])
+	var costs = activated_ability.activation_costs
 	if not assert_test_equal(costs.size(), 2, "Should have 2 activation costs"):
 		return false
 	
@@ -1140,12 +1142,12 @@ func test_activated_ability_parsing() -> bool:
 		return false
 	
 	# Test target conditions
-	var target_conditions = activated_ability.get("target_conditions", {})
+	var target_conditions = activated_ability.targeting_requirements
 	if not assert_test_equal(target_conditions.get("ValidCards"), "Creature.YouCtrl", "Valid cards should be Creature.YouCtrl"):
 		return false
 	
 	# Test effect parameters
-	var effect_params = activated_ability.get("effect_parameters", {})
+	var effect_params = activated_ability.effect_parameters
 	if not assert_test_equal(effect_params.get("KW"), "Spellshield", "Keyword should be Spellshield"):
 		return false
 	if not assert_test_equal(effect_params.get("Duration"), "EndOfTurn", "Duration should be EndOfTurn"):
@@ -1215,19 +1217,18 @@ func test_tap_system() -> bool:
 	
 	# Find activated abilities with tap cost
 	var tap_abilities = []
-	for ability in test_card.cardData.abilities:
-		if ability.get("type") == "ActivatedAbility":
-			var costs = ability.get("activation_costs", [])
-			for cost in costs:
-				if cost.get("type") == "Tap":
-					tap_abilities.append(ability)
-					break
+	for ability in test_card.cardData.activated_abilities:
+		var costs = ability.activation_costs
+		for cost in costs:
+			if cost.get("type") == "Tap":
+				tap_abilities.append(ability)
+				break
 	
 	if tap_abilities.size() > 0:
 		var ability = tap_abilities[0]
 		
 		# Check if we can pay costs (should be true)
-		if assert_test_true(AbilityManagerAL.canPayActivationCosts(test_card, ability, game), "Should be able to pay tap costs when untapped"):
+		if assert_test_true(CardPaymentManagerAL.canPayCosts(ability.activation_costs, test_card), "Should be able to pay tap costs when untapped"):
 			# Activate the ability
 			await AbilityManagerAL.activateAbility(test_card, ability, game)
 			
@@ -1236,7 +1237,7 @@ func test_tap_system() -> bool:
 				return false
 			
 			# Try to use ability again (should fail)
-			if not assert_test_false(AbilityManagerAL.canPayActivationCosts(test_card, ability, game), "Should not be able to pay tap costs when already tapped"):
+			if not assert_test_false(CardPaymentManagerAL.canPayCosts(ability.activation_costs, test_card), "Should not be able to pay tap costs when already tapped"):
 				return false
 	
 	print("✅ Tap system test passed!")
@@ -1267,10 +1268,10 @@ func test_temporary_keyword_effects() -> bool:
 	await get_tree().process_frame
 	
 	# Step 3: Verify target doesn't have Spellshield initially
-	var initial_abilities = target_card.cardData.abilities.size()
+	var initial_abilities = target_card.cardData.get_all_abilities().size()
 	var has_spellshield_initial = false
-	for ability in target_card.cardData.abilities:
-		if ability.get("keyword") == "Spellshield":
+	for ability in target_card.cardData.get_all_abilities():
+		if ability.effect_parameters.get("KW") == "Spellshield":
 			has_spellshield_initial = true
 			break
 	
@@ -1282,10 +1283,9 @@ func test_temporary_keyword_effects() -> bool:
 	
 	# Find the activated ability
 	var activated_ability = null
-	for ability in hersir_card.cardData.abilities:
-		if ability.get("type") == "ActivatedAbility":
-			activated_ability = ability
-			break
+	for ability in hersir_card.cardData.activated_abilities:
+		activated_ability = ability
+		break
 	
 	if not assert_test_not_null(activated_ability, "Hersir should have activated ability"):
 		return false
@@ -1297,8 +1297,8 @@ func test_temporary_keyword_effects() -> bool:
 	
 	# Step 6: Verify target now has Spellshield
 	var has_spellshield_after = false
-	for ability in target_card.cardData.abilities:
-		if ability.get("keyword") == "Spellshield":
+	for ability in target_card.cardData.get_all_abilities():
+		if ability.effect_parameters.get("KW") == "Spellshield":
 			has_spellshield_after = true
 			break
 	
@@ -1329,8 +1329,8 @@ func test_temporary_keyword_effects() -> bool:
 	
 	# Step 9: Verify Spellshield was removed
 	var has_spellshield_after_turn = false
-	for ability in target_card.cardData.abilities:
-		if ability.get("keyword") == "Spellshield":
+	for ability in target_card.cardData.get_all_abilities():
+		if ability.effect_parameters.get("KW") == "Spellshield":
 			has_spellshield_after_turn = true
 			break
 	
@@ -1625,14 +1625,16 @@ func test_replace_ui_optional_selection() -> bool:
 	# Step 4: Start casting process without pre-selections (should trigger UI)
 	print("🎮 Starting card casting process - expecting UI to appear...")
 	
-	# Use a coroutine to handle the card play and UI interaction
-	var handle_card_play_with_ui = func():
-		print("🃏 Attempting to play card (should show selection UI)...")
+	# Create a flag to track if card play completed
+	var card_play_completed = false
+	
+	# Start the card play in a separate coroutine
+	var play_card_async = func():
 		await game.tryPlayCard(childbearer_card, game.player_base)
+		card_play_completed = true
 		print("✅ Card play process completed")
 	
-	# Start the card play task
-	var card_play_task = handle_card_play_with_ui.call()
+	play_card_async.call()
 	
 	# Step 5: Wait a few frames for UI to appear and check it's visible
 	var ui_appeared = false
@@ -1667,7 +1669,14 @@ func test_replace_ui_optional_selection() -> bool:
 		return false
 	
 	# Step 7: Wait for card play to complete
-	await card_play_task
+	var timeout = 50  # Maximum frames to wait
+	while not card_play_completed and timeout > 0:
+		await get_tree().process_frame
+		timeout -= 1
+	
+	if not assert_test_true(card_play_completed, "Card play should have completed"):
+		return false
+	
 	await get_tree().process_frame
 	
 	# Step 8: Verify final state - both cards should be in play (normal casting)
@@ -1712,7 +1721,7 @@ func test_eyepatch_cast_from_deck():
 		return false
 	
 	# Duplicate the card data and add it to player's deck
-	var eyepatch_copy = CardLoaderAL.duplicateCardScript(eyepatch_data)
+	var eyepatch_copy = game.createCardData(eyepatch_data)
 	game.deck.add_card(eyepatch_copy)
 	print("📚 Added Eyepatch to deck. Deck size: ", game.deck.cards.size())
 	
@@ -1822,7 +1831,7 @@ func test_goblin_emblem_replacement_effect():
 	
 	# Step 5: Count Goblin tokens specifically
 	var goblin_tokens = all_cards.filter(func(card): 
-		return card.cardData.cardName.to_lower() == "goblin" and card.cardData.types.has("Token")
+		return card.cardData.cardName.to_lower() == "goblin" and card.isToken
 	)
 	var token_count = goblin_tokens.size()
 	
@@ -1845,4 +1854,142 @@ func test_goblin_emblem_replacement_effect():
 		return false
 	
 	print("✅ Goblin Emblem replacement effect test passed!")
+	return true
+
+func test_warcamp_activated_ability() -> bool:
+	"""Test Punglynd Warcamp's activated ability with tap and sacrifice cost"""
+	print("=== Testing Warcamp Activated Ability ===")
+	
+	# Step 1: Create Warcamp card in play
+	var warcamp_card = createCardFromName("Punglynd Warcamp", true)
+	if not assert_test_not_null(warcamp_card, "Should create Punglynd Warcamp"):
+		return false
+	
+	GameUtility.reparentWithoutMoving(warcamp_card, game.player_base)
+	warcamp_card.setFlip(true)
+	warcamp_card.getAnimator().make_small()
+	await get_tree().process_frame
+	
+	# Step 2: Create Punglynd Child token in play (without Grown-up subtype initially)
+	var token_data = CardLoaderAL.load_token_by_name("Punglynd Child")
+	if not assert_test_not_null(token_data, "Should be able to load Punglynd Child token"):
+		return false
+	
+	var child_card:Card = game.createCardFromData(CardLoaderAL.duplicateCardScript(token_data), true)
+	if not assert_test_not_null(child_card, "Should be able to create Punglynd Child card"):
+		return false
+	
+	GameUtility.reparentWithoutMoving(child_card, game.player_base)
+	child_card.setFlip(true)
+	child_card.getAnimator().make_small()
+	await get_tree().process_frame
+	
+	# Verify child does not have Grown-up subtype initially
+	if not assert_test_false("Grown-up" in child_card.cardData.subtypes, "Child should not have Grown-up subtype initially"):
+		return false
+	
+	# Step 3: Add Goblin Pair to deck
+	game.deck.cards.clear()
+	game.deck.update_size()
+	
+	var goblin_pair_data = CardLoaderAL.getCardByName("Goblin Pair")
+	if not assert_test_not_null(goblin_pair_data, "Should be able to load Goblin Pair"):
+		return false
+	
+	addCardToDeck(goblin_pair_data, true)
+	
+	if not assert_test_equal(game.deck.get_card_count(), 1, "Deck should have 1 card"):
+		return false
+	
+	# Step 4: Find Warcamp's activated ability
+	var activated_ability = null
+	if warcamp_card.cardData.activated_abilities.size() > 0:
+		activated_ability=warcamp_card.cardData.activated_abilities[0]
+	
+	if not assert_test_not_null(activated_ability, "Warcamp should have activated ability"):
+		return false
+	
+	# Verify the ability has the correct effect type (Draw)
+	var effect_type_str = EffectType.type_to_string(activated_ability.effect_type)
+	if not assert_test_equal(effect_type_str, "Draw", "Ability should be Draw effect"):
+		return false
+	
+	# Step 5: Try to activate the ability - should fail because child is not a valid sacrifice target
+	print("🔍 Attempting to activate ability without valid sacrifice target...")
+	var can_pay = CardPaymentManagerAL.canPayCosts(activated_ability.activation_costs, warcamp_card)
+	if not assert_test_false(can_pay, "Should not be able to activate ability without valid sacrifice target"):
+		return false
+	print("✅ Ability correctly prevented when no valid targets")
+	
+	# Step 6: Add Grown-up subtype to the child token
+	print("📝 Adding Grown-up subtype to child token...")
+	child_card.cardData.subtypes.append("Grown-up")
+	child_card.updateDisplay()  # Update the visual display
+	await get_tree().process_frame
+	
+	if not assert_test_true("Grown-up" in child_card.cardData.subtypes, "Child should have Grown-up subtype now"):
+		return false
+	
+	# Step 7: Verify ability can now be activated
+	print("🔍 Checking if ability can be activated now...")
+	can_pay = CardPaymentManagerAL.canPayCosts(activated_ability.activation_costs, warcamp_card)
+	if not assert_test_true(can_pay, "Should be able to activate ability with valid sacrifice target"):
+		return false
+	print("✅ Ability can be activated with valid target")
+	
+	# Step 8: Store initial state
+	var initial_hand_count = game.player_hand.get_child_count()
+	var initial_base_count = game.player_base.getCards().size()
+	
+	# Verify warcamp is untapped
+	if not assert_test_false(warcamp_card.cardData.is_tapped(), "Warcamp should be untapped"):
+		return false
+	
+	# Step 9: Create pre-selection for the sacrifice (child token)
+	print("🎮 Activating Warcamp ability with child sacrifice...")
+	var selections = SelectionManager.CardPlaySelections.new()
+	selections.sacrifice_targets.push_back(child_card)
+	
+	# Activate the ability with pre-selections
+	await AbilityManagerAL.activateAbility(warcamp_card, activated_ability, game, selections)
+	await get_tree().process_frame
+	
+	# Step 10: Verify warcamp is now tapped
+	if not assert_test_true(warcamp_card.cardData.is_tapped(), "Warcamp should be tapped after activation"):
+		return false
+	print("✅ Warcamp is tapped")
+	
+	# Step 11: Verify child was sacrificed (removed from play)
+	var cards_in_base = game.player_base.getCards()
+	var child_still_in_play = false
+	for card in cards_in_base:
+		if card == child_card:
+			child_still_in_play = true
+			break
+	
+	if not assert_test_false(child_still_in_play, "Child token should have been sacrificed"):
+		return false
+	print("✅ Child token was sacrificed")
+	
+	# Step 12: Verify base count decreased by 1 (child removed)
+	var final_base_count = game.player_base.getCards().size()
+	if not assert_test_equal(final_base_count, initial_base_count - 1, "Base should have one less card"):
+		return false
+	
+	# Step 13: Verify card was drawn (hand increased by 1)
+	var final_hand_count = game.player_hand.get_child_count()
+	if not assert_test_equal(final_hand_count, initial_hand_count + 1, "Hand should increase by 1"):
+		return false
+	print("✅ Card was drawn")
+	
+	# Step 14: Verify the drawn card is Goblin Pair
+	var drawn_card = game.player_hand.get_children()[-1] as Card
+	if not assert_test_not_null(drawn_card, "Should have drawn a card"):
+		return false
+	
+	if not assert_test_equal(drawn_card.cardData.cardName.to_lower(), "goblin pair", "Drawn card should be Goblin Pair"):
+		return false
+	print("✅ Goblin Pair was drawn")
+	
+	print("✅ Warcamp activated ability test passed!")
 	return true

@@ -8,12 +8,14 @@ var source_card_data: CardData  ## The card that provides this modifier
 var modifier_type: String  ## Type of modification ("AddToken", "IncreaseDamage", etc.)
 var conditions: Dictionary  ## Conditions for when this modifier applies
 var modifications: Dictionary  ## The modifications to apply
+var replacement_effect: ReplacementEffect = null  ## The replacement effect implementation
 
-func _init(source: CardData, type: String, cond: Dictionary, mods: Dictionary):
+func _init(source: CardData, type: String, cond: Dictionary, mods: Dictionary, effect: ReplacementEffect = null):
 	source_card_data = source
 	modifier_type = type
 	conditions = cond
 	modifications = mods
+	replacement_effect = effect
 
 func applies_to_ability(ability_effect_type: String, effect_parameters: Dictionary, game_context: Game) -> bool:
 	"""
@@ -64,6 +66,16 @@ func apply_modifications(effect_parameters: Dictionary) -> Dictionary:
 	@param effect_parameters: Dictionary - Original effect parameters
 	@return: Dictionary - Modified effect parameters
 	"""
+	# If we have a ReplacementEffect instance, use it
+	if replacement_effect:
+		# Create context with parameters and static ability info
+		var effect_context = effect_parameters.duplicate()
+		effect_context["static_ability_parameters"] = modifications
+		
+		# Apply the replacement effect
+		return replacement_effect.apply_modification(effect_context, source_card_data, null)
+	
+	# Fallback to old dictionary-based system for backward compatibility
 	var modified_params = effect_parameters.duplicate()
 	
 	match modifier_type:

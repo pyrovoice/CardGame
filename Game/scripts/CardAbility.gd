@@ -5,6 +5,7 @@ var effect_type: EffectType.Type  # What effect does this ability have
 var effect_parameters: Dictionary  # Parameters for the effect (token name, damage amount, etc.)
 var trigger_conditions: Dictionary  # Conditions that must be met (ValidCards, Self, etc.)
 var targeting_requirements: Dictionary  # For abilities that need targets
+var replacement_effect: ReplacementEffect = null  # For R: effects - the replacement effect implementation
 
 func _init(p_owner: CardData):
 	owner_card_data = weakref(p_owner)

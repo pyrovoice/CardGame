@@ -8,6 +8,7 @@ enum GameEventType {
 	ATTACK_DECLARED,      # When this or another card attacks
 	CARD_DIED,            # When this or another card dies
 	CARD_ENTERED_PLAY,    # When this or another card enters play
+	CARD_DRAWN,           # When a card is drawn
 	DAMAGE_DEALT,         # When damage is dealt
 	TURN_STARTED,         # At the start of a turn
 	SPELL_CAST,           # When a spell is cast
@@ -15,11 +16,22 @@ enum GameEventType {
 	BEGINNING_OF_TURN     # At beginning of turn
 }
 
+enum TriggerCondition {
+	ORIGIN,                  # Origin zone for movement triggers
+	DESTINATION,             # Destination zone for movement triggers
+	VALID_CARD,              # Filter for which cards trigger this ability
+	VALID_ACTIVATING_PLAYER, # Filter for which player's actions trigger this
+	TRIGGER_ZONES,           # Zones where this ability is active
+	PHASE,                   # Phase condition for turn-based triggers
+	CONDITION                # Additional conditions for triggering
+}
+
 # Mapping from GameEventType to game.gd signal names
 const EVENT_TO_SIGNAL = {
 	GameEventType.ATTACK_DECLARED: "attack_declared",
 	GameEventType.CARD_DIED: "card_died",
 	GameEventType.CARD_ENTERED_PLAY: "card_entered_play",
+	GameEventType.CARD_DRAWN: "card_drawn",
 	GameEventType.DAMAGE_DEALT: "damage_dealt",
 	GameEventType.TURN_STARTED: "turn_started",
 	GameEventType.SPELL_CAST: "spell_cast",
@@ -94,21 +106,45 @@ func _on_game_event(event_card_data: CardData = null, context: Dictionary = {}):
 	var ability_desc = event_to_string(game_event_trigger) + " -> " + EffectType.type_to_string(effect_type)
 	print("⚡ [TRIGGER] ", owner.cardName, " ability triggered: ", ability_desc)
 	
-	game.trigger_queue.add_trigger(owner, self, context)
+	game.trigger_queue.add_resolvable(owner, self, context)
 
 func _check_trigger_conditions(owner: CardData, event_card_data: CardData, context: Dictionary, game: Node) -> bool:
 	"""Check if the trigger conditions for this ability are met"""
-	# Check "Self" condition - ability only triggers for this card
-	if trigger_conditions.get("Self", false):
-		if event_card_data != owner:
-			return false
+	# Check "TriggerZones" - ability only active when owner is in specified zones
+	var trigger_zones = trigger_conditions.get(TriggerCondition.TRIGGER_ZONES, [])
+	if trigger_zones is Array and trigger_zones.size() > 0:
+		var owner_card = owner.get_card_object()
+		if owner_card:
+			var owner_zone = game.getCardZone(owner_card)
+			
+			# Check if owner's zone is in the list of valid trigger zones
+			if owner_zone not in trigger_zones:
+				return false  # Card is not in a valid trigger zone
 	
-	# Check "ValidCards" condition - filter what cards trigger this
-	var valid_cards_filter = trigger_conditions.get("ValidCards", "")
-	if valid_cards_filter != "":
-		# TODO: Implement card filtering based on ValidCards
-		# For now, accept all
-		pass
+	# Check "ValidCard" condition (from card files: ValidCard$ Card.Self)
+	# This filters what cards can trigger this ability
+	var valid_card_filter = trigger_conditions.get(TriggerCondition.VALID_CARD, "")
+	if valid_card_filter != "":
+		# Special case: "Card.Self" means only this card can trigger this ability
+		if valid_card_filter == "Card.Self":
+			var matches = event_card_data == owner
+			print("  🔍 [TRIGGER CHECK] ", owner.cardName, " checking Card.Self: event=", event_card_data.cardName if event_card_data else "null", ", matches=", matches)
+			if not matches:
+				return false
+		else:
+			# Get the Card object from CardData to use with filtering system
+			var event_card = event_card_data.get_card_object() if event_card_data else null
+			if not event_card:
+				print("  🔍 [TRIGGER CHECK] ", owner.cardName, " - event card object not found")
+				return false  # No card to validate against
+			
+			# Use GameHelper to check if the event card matches the filter
+			var cards_to_check: Array[Card] = [event_card]
+			var matching_cards = GameHelper.filterCardsByParameters(cards_to_check, valid_card_filter, game)
+			
+			print("  🔍 [TRIGGER CHECK] ", owner.cardName, " checking filter '", valid_card_filter, "': matches=", matching_cards.size() > 0)
+			if matching_cards.size() == 0:
+				return false  # Card doesn't match the filter
 	
 	return true
 
@@ -123,6 +159,8 @@ static func event_to_string(event: GameEventType) -> String:
 			return "CardDied"
 		GameEventType.CARD_ENTERED_PLAY:
 			return "CardEnteredPlay"
+		GameEventType.CARD_DRAWN:
+			return "CardDrawn"
 		GameEventType.DAMAGE_DEALT:
 			return "DamageDealt"
 		GameEventType.TURN_STARTED:
@@ -144,6 +182,8 @@ static func string_to_event(event_str: String) -> GameEventType:
 			return GameEventType.CARD_DIED
 		"CardEnteredPlay", "Enters":
 			return GameEventType.CARD_ENTERED_PLAY
+		"CardDrawn":
+			return GameEventType.CARD_DRAWN
 		"DamageDealt":
 			return GameEventType.DAMAGE_DEALT
 		"TurnStarted":
@@ -155,31 +195,3 @@ static func string_to_event(event_str: String) -> GameEventType:
 		"BeginningOfTurn":
 			return GameEventType.BEGINNING_OF_TURN
 	return GameEventType.CARD_ENTERED_PLAY  # Default
-
-## Conversion methods for backward compatibility
-
-func to_dictionary() -> Dictionary:
-	"""Convert to dictionary format for backward compatibility"""
-	return {
-		"type": "TriggeredAbility",
-		"trigger": event_to_string(game_event_trigger),
-		"effect_type": EffectType.type_to_string(effect_type),
-		"effect_parameters": effect_parameters.duplicate(),
-		"trigger_conditions": trigger_conditions.duplicate(),
-		"targeting_requirements": targeting_requirements.duplicate()
-	}
-
-static func from_dictionary(owner: CardData, dict: Dictionary) -> TriggeredAbility:
-	"""Create a TriggeredAbility from dictionary format"""
-	var trigger_str = dict.get("trigger", "")
-	var trigger_event = string_to_event(trigger_str)
-	
-	var effect_str = dict.get("effect_type", "")
-	var effect = EffectType.string_to_type(effect_str)
-	
-	var ability = TriggeredAbility.new(owner, trigger_event, effect)
-	ability.effect_parameters = dict.get("effect_parameters", {})
-	ability.trigger_conditions = dict.get("trigger_conditions", {})
-	ability.targeting_requirements = dict.get("targeting_requirements", {})
-	
-	return ability

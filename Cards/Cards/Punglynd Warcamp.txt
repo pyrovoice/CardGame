@@ -1,6 +1,10 @@
 Name:Punglynd Warcamp
 Types:Legendary Relic
-AC:$ SacrificePermanent | ValidCard$ Card.YouCtrl+Creature+NonToken/Card.YouCtrl+Creature+Grow-up | Count 3
-
+AC:$ SacrificePermanent | ValidCard$ Card.YouCtrl+Creature+NonToken/Card.YouCtrl+Creature+Grown-up | Count 3
+T:Mode$ Phase | Phase$ BeginningOfTurn | Execute$ TrigToken | TriggerDescription$ On turn start, create a Punglynd Child at base.
+SVar:TrigToken$ Token | TokenScript$ Punglynd Child
+AA:$ Draw | Cost$ T Sac<1:Card.Creature+NonToken/Card.Creature+Grown-up> |  NumCards$ 1 | Description$ {T}, sacrifice a non-token creature or a Punglynd Grown-up: Draw a card
 CardText:As additional cost to play me, sacrifice three non-token creatures. Punglynd Grown-ups can be sacrificed this way.
-{exhaust}: Create a Punglynd Child, or Sacrifice a creature to draw a card.
+On turn start, create a Punglynd Child at base.
+{T}, sacrifice a non-token creature or a Punglynd Grown-up: Draw a card.
+{T}: Move target 1-cost creature or target Punglyng creature from or to a battlefield.

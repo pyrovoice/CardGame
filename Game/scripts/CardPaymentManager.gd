@@ -11,22 +11,74 @@ func set_game_context(game: Game):
 	"""Set the current game context for payment operations"""
 	current_game = game
 
+func canPayCosts(costs: Array[Dictionary], source_card: Card) -> bool:
+	"""Check if costs can be paid - used for both card play and ability activation
+	
+	Args:
+		costs: Array of cost dictionaries (e.g., from activation_costs or additional_costs)
+		source_card: The card with the costs
+	"""
+	if not current_game:
+		return false
+		
+	for cost in costs:
+		var cost_type = cost.get("type", "")
+		match cost_type:
+			"Sacrifice":
+				var target = cost.get("target", "")
+				var count = cost.get("count", 1)
+				
+				if target == "Self":
+					# Can always sacrifice self if the card is in play
+					var source_zone = current_game.getCardZone(source_card)
+					if source_zone != GameZone.e.PLAYER_BASE and source_zone != GameZone.e.COMBAT_ZONE:
+						return false
+				else:
+					# Check if there are enough valid cards to sacrifice based on the filter
+					var all_cards = current_game.getAllCardsInPlay()
+					var valid_cards = GameHelper.filterCardsByParameters(all_cards, target, current_game)
+					if valid_cards.size() < count:
+						print("⚠️ Not enough valid cards to sacrifice (need ", count, ", found ", valid_cards.size(), ") for filter: ", target)
+						return false
+			
+			"PayMana":
+				var amount = cost.get("amount", 0)
+				if current_game.game_data.player_gold.getValue() < amount:
+					return false
+			
+			"Tap":
+				var target = cost.get("target", "")
+				if target == "Self":
+					# Check if the card can be tapped
+					if not source_card.cardData.can_tap():
+						return false
+				else:
+					print("❌ Unsupported tap target: ", target)
+					return false
+			
+			_:
+				print("❌ Unknown cost type: ", cost_type)
+				return false
+	
+	return true
+
 func canPayCard(card: Card) -> bool:
+	if not card or not card.cardData or not current_game:
+		return false
 	
 	var base_cost = card.cardData.goldCost
 	var can_afford_base = current_game.game_data.has_gold(base_cost, card.cardData.playerControlled)
 	
 	# First check if card can be afforded at base cost
 	if can_afford_base:
-		# Check additional costs (but skip Replace costs - they're optional alternatives)
-		if card.cardData.hasAdditionalCosts():
-			var additional_costs_result = canPayNonReplaceAdditionalCosts(card.cardData)
-			return additional_costs_result
+		# Convert additional costs to cost array format and check if they can be paid
+		var cost_array = _convertAdditionalCostsToCostArray(card.cardData.additionalCosts, true)
+		if cost_array.size() > 0:
+			return canPayCosts(cost_array, card)
 		return true
 	
 	# If not affordable at base cost, check if Replace can make it affordable
 	if hasReplaceOption(card):
-		
 		# Get valid replace targets to see if any make it affordable
 		for cost_data in card.cardData.additionalCosts:
 			if cost_data.get("cost_type", "") == "Replace":
@@ -40,6 +92,108 @@ func canPayCard(card: Card) -> bool:
 				break
 	
 	return false
+
+func _convertAdditionalCostsToCostArray(additional_costs: Array[Dictionary], skip_replace: bool = false) -> Array[Dictionary]:
+	"""Convert additional costs (SacrificePermanent, Replace) to unified cost array format"""
+	var costs: Array[Dictionary] = []
+	
+	for cost_data in additional_costs:
+		var cost_type = cost_data.get("cost_type", "")
+		
+		# Skip Replace costs if requested (they're optional alternatives)
+		if skip_replace and cost_type == "Replace":
+			continue
+		
+		match cost_type:
+			"SacrificePermanent":
+				var sacrifice_cost = {
+					"type": "Sacrifice",
+					"target": cost_data.get("valid_card", "Card"),
+					"count": cost_data.get("count", 1)
+				}
+				costs.append(sacrifice_cost)
+			# Add more cost type conversions as needed
+	
+	return costs
+
+func payCosts(costs: Array[Dictionary], source_card: Card, pre_selections: SelectionManager.CardPlaySelections = null) -> bool:
+	"""Pay costs - used for both card play and ability activation
+	
+	Args:
+		costs: Array of cost dictionaries to pay
+		source_card: The card with the costs
+		pre_selections: Optional pre-selected cards (e.g., sacrifice targets) to skip user selection
+	"""
+	if not current_game:
+		return false
+		
+	for cost in costs:
+		var cost_type = cost.get("type", "")
+		match cost_type:
+			"Sacrifice":
+				var target = cost.get("target", "")
+				var count = cost.get("count", 1)
+				
+				if target == "Self":
+					print("🔥 Sacrificing ", source_card.cardData.cardName, " for cost")
+					# Move the card to graveyard
+					current_game.putInOwnerGraveyard(source_card)
+				else:
+					# Check if we have pre-selected sacrifice targets
+					var selected_cards: Array[Card] = []
+					
+					if pre_selections != null and pre_selections.sacrifice_targets.size() > 0:
+						# Use pre-selected cards
+						print("🎯 Using pre-selected sacrifice targets (", pre_selections.sacrifice_targets.size(), " cards)")
+						selected_cards = pre_selections.sacrifice_targets
+					else:
+						# Need to select card(s) to sacrifice based on the filter
+						print("🔍 Selecting ", count, " card(s) to sacrifice with filter: ", target)
+						var all_cards = current_game.getAllCardsInPlay()
+						var valid_cards = GameHelper.filterCardsByParameters(all_cards, target, current_game)
+						if valid_cards.size() < count:
+							print("❌ Not enough valid cards to sacrifice")
+							return false
+						
+						# Use selection manager to let player choose which card(s) to sacrifice
+						selected_cards = await current_game.start_card_selection(
+							{"filter": target, "count": count},
+							valid_cards,
+							"sacrifice_for_cost",
+							source_card
+						)
+					
+					if selected_cards.size() < count:
+						print("❌ Not enough cards selected for sacrifice (need ", count, ", got ", selected_cards.size(), ")")
+						return false
+					
+					# Sacrifice all selected cards
+					for card_to_sacrifice in selected_cards:
+						print("🔥 Sacrificing ", card_to_sacrifice.cardData.cardName, " for cost")
+						current_game.putInOwnerGraveyard(card_to_sacrifice)
+			
+			"PayMana":
+				var amount = cost.get("amount", 0)
+				print("💰 Paying ", amount, " mana")
+				var current_gold = current_game.game_data.player_gold.getValue()
+				current_game.game_data.player_gold.setValue(current_gold - amount)
+			
+			"Tap":
+				var target = cost.get("target", "")
+				if target == "Self":
+					print("🔄 Tapping ", source_card.cardData.cardName)
+					source_card.cardData.tap()
+				else:
+					print("❌ Unsupported tap target: ", target)
+					return false
+			
+			_:
+				print("❌ Unknown cost type: ", cost_type)
+				return false
+	
+	# Small delay to show the cost payment
+	await current_game.get_tree().process_frame
+	return true
 
 func canPayCardData(card_data: CardData) -> bool:
 	"""Check if player can pay for the card data's cost (gold + additional costs)"""
@@ -76,7 +230,7 @@ func tryPayCard(card: Card, selected_additional_cards: Array[Card] = []) -> bool
 	
 	print("💰 Paid ", gold_cost, " gold for ", card.cardData.cardName)
 	
-	# Pay additional costs (including Replace if selected)
+	# Pay additional costs using payAdditionalCosts (handles Replace target logic)
 	if card.cardData.hasAdditionalCosts() or selected_additional_cards.size() > 0:
 		if not await payAdditionalCosts(card.cardData.getAdditionalCosts(), selected_additional_cards):
 			print("Failed to pay additional costs!")

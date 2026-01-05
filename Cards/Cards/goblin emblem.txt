@@ -2,5 +2,5 @@ Name:Goblin Emblem
 ManaCost:4
 Types:Relic Goblin
 R:Event$ CreateToken | ActiveZones$ Battlefield | ValidToken$ Card.YouCtrl+Creature.Goblin | ReplaceWith$ CreateOneMoreToken | Description$ If one or more Goblin token would be created, create that many plus one instead
-SVar:CreateOneMoreToken:DB$ ReplaceToken | Type$ AddToken | Amount$ 1
+SVar:CreateOneMoreToken$ ReplaceToken | Type$ AddToken | Amount$ 1
 CardText:If one or more Goblin token would be created, create that many plus one instead

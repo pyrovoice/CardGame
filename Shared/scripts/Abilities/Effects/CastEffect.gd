@@ -10,49 +10,16 @@ func execute(parameters: Dictionary, source_card_data: CardData, game_context: G
 		# Cast the source card itself (e.g., Eyepatch the Pirate from deck)
 		print("🎭 [CAST] Casting ", source_card_data.cardName, " from its current zone")
 		
-		# Try to get the Card object to determine zone
+		# Get or create the Card object
 		var source_card = source_card_data.get_card_object()
 		
-		# Determine current zone
-		var current_zone: GameZone.e
-		if source_card and is_instance_valid(source_card):
-			current_zone = game_context.getCardZone(source_card)
-		else:
-			# Card object doesn't exist yet - must be in deck or hand as CardData
-			# Check deck first
-			var deck_to_check = game_context.deck if source_card_data.playerControlled else game_context.deck_opponent
-			if deck_to_check.cards.has(source_card_data):
-				current_zone = GameZone.e.DECK
-			else:
-				# Must be in hand
-				var hand_to_check = game_context.hand if source_card_data.playerControlled else game_context.hand_opponent
-				if hand_to_check.cards.has(source_card_data):
-					current_zone = GameZone.e.HAND
-				else:
-					print("❌ Cannot find card in any zone")
-					return
+		if not source_card or not is_instance_valid(source_card):
+			# Card doesn't have an object yet - create it
+			source_card = game_context.createCardFromData(source_card_data, source_card_data.playerControlled)
 		
-		print("  Current zone: ", GameZone.zoneToString(current_zone))
-		
-		# Cast/play the card
-		match current_zone:
-			GameZone.e.DECK:
-				# Play from deck - move to battlefield
-				print("  Playing from deck to battlefield")
-				await game_context.playCardFromDeck(source_card_data)
-			
-			GameZone.e.HAND:
-				# Play from hand - use normal play mechanism
-				print("  Playing from hand (TODO: implement)")
-				# TODO: Implement playing from hand
-			
-			GameZone.e.GRAVEYARD:
-				# Play from graveyard
-				print("  Playing from graveyard (TODO: implement)")
-				# TODO: Implement playing from graveyard
-			
-			_:
-				print("❌ Cannot cast from zone: ", GameZone.zoneToString(current_zone))
+		# Use tryPlayCard with pay_cost=false and from_default_zones=false to bypass cost and zone checks
+		# The function will handle removing from deck/graveyard and entering the battlefield
+		await game_context.tryPlayCard(source_card, game_context.player_base, null, false, false)
 	else:
 		print("❌ Unsupported Cast target: ", target)
 
