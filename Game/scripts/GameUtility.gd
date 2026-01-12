@@ -21,7 +21,21 @@ static func getAllCardsInPlay(game: Game) -> Array[Card]:
 		cz.ennemySpots.filter(func(c: CombatantFightingSpot): return c.getCard() != null).map(func(c: CombatantFightingSpot): cards.push_back(c.getCard()))
 	return cards
 
-static func createCardFromData(game: Game, cardData: CardData, player_controlled: bool, isToken: bool):
+static func find_container_for_card_data(game: Game, cardData: CardData) -> CardContainer:
+	"""Find which container currently has this CardData"""
+	if game.deck.cards.has(cardData):
+		return game.deck
+	elif game.deck_opponent.cards.has(cardData):
+		return game.deck_opponent
+	elif game.graveyard.cards.has(cardData):
+		return game.graveyard
+	elif game.graveyard_opponent.cards.has(cardData):
+		return game.graveyard_opponent
+	elif game.extra_deck.cards.has(cardData):
+		return game.extra_deck
+	return null
+
+static func createCardFromData(game: Game, cardData: CardData, player_controlled: bool, isToken: bool, container: CardContainer = null):
 	if cardData == null:
 		return null
 	
@@ -35,13 +49,31 @@ static func createCardFromData(game: Game, cardData: CardData, player_controlled
 	
 	if card_instance == null:
 		push_error("Card instance is null! Check if Card.gd is attached to Card.tscn root.")
-		print("❌ [CREATE CARD DEBUG] card_instance is null after instantiate!")
 		return
 	
-	game.add_child(card_instance)
-	cardData.playerControlled = player_controlled
-	cardData.playerOwned = player_controlled
+	# If no container provided, try to find which container has this CardData
+	if container == null:
+		container = find_container_for_card_data(game, cardData)
+	
+	# Remove CardData from its container if found
+	if container and container is CardContainer:
+		if container.cards.has(cardData):
+			container.cards.erase(cardData)
+			container.update_size()
+			print("📤 Removed ", cardData.cardName, " from ", container.name)
+	
+	# Parent to the container (if provided), otherwise parent to game
+	if container:
+		container.add_child(card_instance)
+	else:
+		game.add_child(card_instance)
+	
+	# Set data and configure card
+	print("🔍 [CREATECARD] Before setData - ", cardData.cardName, " isTapped: ", cardData.isTapped)
 	card_instance.setData(cardData)
+	print("🔍 [CREATECARD] After setData - ", cardData.cardName, " isTapped: ", cardData.isTapped)
+	card_instance.playerControlled = player_controlled
+	cardData.playerControlled = player_controlled  # Sync CardData playerControlled flag
 	card_instance.name = cardData.cardName + "_" + str(Game.getObjectCountAndIncrement())
 	card_instance.isToken = isToken
 	game.connect_card_to_highlight_manager(card_instance)

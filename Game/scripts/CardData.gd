@@ -9,8 +9,6 @@ enum CardType { CREATURE, SPELL, RELIC, LEGENDARY, TOKEN }
 var cardName: String
 var goldCost: int
 
-
-#Creature, spell, permanent, boss - can have multiple types
 var types: Array[CardType] = []
 #Goblin, Fire, Elemental... Can have up to 3
 var subtypes: Array[String] = []
@@ -32,17 +30,9 @@ var cardArt: Texture2D
 var playerControlled: bool  # Whether this card is controlled by the player
 var playerOwned: bool       # Whether this card is owned by the player
 var card_object: WeakRef  # Reference to Card object (using WeakRef to avoid cycles)
-# Movement tracking
-var hasMoved: bool = false  # Track if the card has moved this turn
-# Attack tracking
 var hasAttackedThisTurn: bool = false  # Track if the card attacked this turn
-# Tap state
 var isTapped: bool = false  # Track if the card is currently tapped
-# Temporary effects tracking
 var temporary_effects: Array[TemporaryEffect] = []  # Track temporary effects applied to this card
-# Static ability effects tracking (effects this card is providing to others)
-#TODO var active_static_effects: Array[StaticAbilityEffect] = []  # Static effects this card provides while in play
-
 	
 func describe() -> String:
 	var subtypes_str = ""
@@ -214,10 +204,6 @@ func _formatValidCardDescription(valid_card: String) -> String:
 	
 	return result
 
-# Movement and attack tracking methods
-func reset_movement_tracking():
-	"""Reset movement tracking at the start of turn"""
-	hasMoved = false
 
 func reset_attack_tracking():
 	"""Reset attack tracking at the start of turn"""
@@ -225,7 +211,6 @@ func reset_attack_tracking():
 
 func reset_turn_tracking():
 	"""Reset all turn-based tracking (movement, attacks, etc.) at start of turn"""
-	reset_movement_tracking()
 	reset_attack_tracking()
 
 # Tap state methods

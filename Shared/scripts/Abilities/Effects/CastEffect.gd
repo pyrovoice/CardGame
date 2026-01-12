@@ -14,7 +14,7 @@ func execute(parameters: Dictionary, source_card_data: CardData, game_context: G
 		var source_card = source_card_data.get_card_object()
 		
 		if not source_card or not is_instance_valid(source_card):
-			# Card doesn't have an object yet - create it
+			# Card doesn't have an object yet - create it (will auto-detect container)
 			source_card = game_context.createCardFromData(source_card_data, source_card_data.playerControlled)
 		
 		# Use tryPlayCard with pay_cost=false and from_default_zones=false to bypass cost and zone checks

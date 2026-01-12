@@ -667,9 +667,8 @@ func load_opponent_card_from_file(file_path: String) -> CardData:
 	
 	var card_data = parse_card_data(file_content)
 	
-	# Set opponent controller properties
+	# Set opponent ownership property
 	if card_data:
-		card_data.playerControlled = false
 		card_data.playerOwned = false
 	
 	# Extract card name from file path to load corresponding art
@@ -736,27 +735,6 @@ func load_all_cards():
 		
 		print("Loaded ", opponentCards.size(), " opponent cards")
 
-# Load a specific card by name
-func load_card_by_name(card_name: String) -> CardData:
-	var filter = cardData.filter(func(c:CardData): return c.cardName == card_name)
-	if filter.size() >= 1:
-		return filter[0]
-	return null
-
-# Load a specific token by name
-func load_token_by_name(token_name: String) -> CardData:
-	var filter = tokensData.filter(func(c:CardData): return c.cardName.contains(token_name))
-	if filter.size() >= 1:
-		return filter[0]
-	return null
-
-# Load a specific opponent card by name
-func load_opponent_card_by_name(opponent_name: String) -> CardData:
-	var filter = opponentCards.filter(func(c:CardData): return c.cardName == opponent_name)
-	if filter.size() >= 1:
-		return filter[0]
-	return null
-
 # Get a random opponent card
 func getRandomOpponentCard() -> CardData:
 	if opponentCards.size() > 0:
@@ -771,7 +749,7 @@ func duplicateCardScript(original: CardData) -> CardData:
 	if not original:
 		return null
 	
-	var copy = [original].duplicate(true)[0]
+	var copy = original.duplicate(true)
 	return copy
 
 func getCardByName(n: String) -> CardData:

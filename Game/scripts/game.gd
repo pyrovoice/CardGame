@@ -72,6 +72,7 @@ func createCardDatas(card_data_templates: Array[CardData]) -> Array[CardData]:
 func createCardData(card_data_template: CardData) -> CardData:
 	"""Create a new CardData by duplicating a template and registering its abilities to game signals"""
 	var new_card_data = CardLoaderAL.duplicateCardScript(card_data_template)
+	print("🔍 [CREATEDATA] After duplicateCardScript - ", new_card_data.cardName, " isTapped: ", new_card_data.isTapped)
 	
 	# Register all triggered abilities to game signals
 	for ability in new_card_data.triggered_abilities:
@@ -235,12 +236,14 @@ func tryPlayCard(card: Card, target_location: Node3D, pre_selections: SelectionM
 	current_casting_card = card
 	casting_card_original_parent = correct_hand
 	
-	GameUtility.reparentCardWithoutMovingRepresentation(card, self)
-	
-	# Move card to cast preparation position to show casting has started
-	await card.getAnimator().cast_position(card.is_facedown).finished
-	if !card.cardData.playerControlled:
-		await get_tree().create_timer(0.5).timeout
+	# Only do casting animations/reparenting for cards from hand/extra deck
+	if source_zone == GameZone.e.HAND or source_zone == GameZone.e.EXTRA_DECK:
+		GameUtility.reparentCardWithoutMovingRepresentation(card, self)
+		
+		# Move card to cast preparation position to show casting has started
+		await card.getAnimator().cast_position(card.is_facedown).finished
+		if !card.cardData.playerControlled:
+			await get_tree().create_timer(0.5).timeout
 	
 	# Collect all required player selections upfront (including casting choice)
 	if selection_data == null:
@@ -254,7 +257,7 @@ func tryPlayCard(card: Card, target_location: Node3D, pre_selections: SelectionM
 		return
 	
 	# Execute the card play with all collected selections
-	await tryPayAndSelectsForCardPlay(card, source_zone, target_location, selection_data, pay_cost)
+	await tryPayAndSelectsForCardPlay(card, source_zone, selection_data, pay_cost)
 	
 	if target_location is CombatantFightingSpot:
 		await executeCardAttacks(card, target_location as CombatantFightingSpot)
@@ -266,24 +269,7 @@ func _canPlayCard(source_zone: GameZone.e) -> bool:
 		return false
 	return true 
 	
-func _executeCardPlay(card: Card, source_zone: GameZone.e, _target_location: Node3D, spell_targets: Array):
-	# Remove card from its source zone's data structure
-	if source_zone == GameZone.e.EXTRA_DECK:
-		if card.cardData:
-			extra_deck.remove_card(card.cardData)
-	elif source_zone == GameZone.e.DECK:
-		# Remove from deck
-		var deck_to_check = deck if card.cardData.playerControlled else deck_opponent
-		if deck_to_check.cards.has(card.cardData):
-			deck_to_check.cards.erase(card.cardData)
-			deck_to_check.update_size()
-			print("  📤 Removed ", card.cardData.cardName, " from deck")
-	elif source_zone == GameZone.e.GRAVEYARD:
-		# Remove from graveyard
-		var graveyard_to_check = graveyard if card.cardData.playerControlled else graveyard_opponent
-		if graveyard_to_check.cards.has(card.cardData):
-			graveyard_to_check.cards.erase(card.cardData)
-			print("  📤 Removed ", card.cardData.cardName, " from graveyard")
+func _executeCardPlay(card: Card, source_zone: GameZone.e, spell_targets: Array):
 	
 	# Handle spells differently - they cast their effects then go to graveyard
 	if card.cardData.hasType(CardData.CardType.SPELL):
@@ -605,7 +591,6 @@ func updateDecks():
 
 func refilLDeck(deckToRefill: CardContainer, cards: Array[CardData], isPlayerOwned: bool):
 	for c:CardData in cards:
-		c.playerControlled = isPlayerOwned
 		c.playerOwned = isPlayerOwned
 	cards.shuffle()
 	deckToRefill.add_cards(cards)
@@ -671,11 +656,11 @@ static func getObjectCountAndIncrement():
 	objectCount +=1
 	return objectCount-1
 	
-func createCardFromData(cardData: CardData, player_controlled: bool):
-	return GameUtility.createCardFromData(self, cardData, player_controlled, false)
+func createCardFromData(cardData: CardData, player_controlled: bool, container: CardContainer = null):
+	return GameUtility.createCardFromData(self, cardData, player_controlled, false, container)
 
 func createToken(cardData: CardData, player_controlled: bool) -> Card:
-	return GameUtility.createCardFromData(self, cardData, player_controlled, true)
+	return GameUtility.createCardFromData(self, cardData, player_controlled, true, null)
 
 func playCardFromDeck(card_data: CardData):
 	# Check if card exists in deck
@@ -1122,7 +1107,7 @@ func _getSpellTargetsIfRequired(card: Card, preselected_targets: Array[Card] = [
 	
 	return selected_targets
 
-func tryPayAndSelectsForCardPlay(card: Card, source_zone: GameZone.e, target_location: Node3D, selection_data: SelectionManager.CardPlaySelections, pay_cost: bool = true):
+func tryPayAndSelectsForCardPlay(card: Card, source_zone: GameZone.e, selection_data: SelectionManager.CardPlaySelections, pay_cost: bool = true):
 	"""Execute card play with all selections already collected"""
 	# Validate that the card is still valid
 	if not card or not is_instance_valid(card) or not card.cardData:
@@ -1132,7 +1117,7 @@ func tryPayAndSelectsForCardPlay(card: Card, source_zone: GameZone.e, target_loc
 	# Skip payment if pay_cost is false (e.g., casting from deck via effect)
 	if not pay_cost:
 		print("💫 Skipping payment for card (cast via effect)")
-		await _executeCardPlay(card, source_zone, target_location, [])
+		await _executeCardPlay(card, source_zone, [])
 		return
 	
 	# Pay costs first
@@ -1198,7 +1183,7 @@ func tryPayAndSelectsForCardPlay(card: Card, source_zone: GameZone.e, target_loc
 		else:
 			print("⚠️ Skipping invalid spell target")
 	
-	await _executeCardPlay(card, source_zone, target_location, valid_spell_targets)
+	await _executeCardPlay(card, source_zone, valid_spell_targets)
 
 func _startAdditionalCostSelection(card: Card, additional_costs: Array[Dictionary], preselected_cards: Array[Card] = []) -> Array[Card]:
 	"""Start the selection process for paying additional costs and return selected cards"""

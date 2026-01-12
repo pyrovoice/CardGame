@@ -22,6 +22,7 @@ var cardData: CardData
 var objectID
 var damage = 0
 var isToken = false
+var playerControlled: bool = true  # Which player controls this card
 
 static var objectUUID = -1
 static func getNextID():

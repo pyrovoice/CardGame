@@ -12,6 +12,7 @@ var current_test_error: String = ""    # Store current test error message
 @onready var run_all_button: Button = $AllTests
 @onready var run_failed_button: Button = $FailedTests  
 @onready var test_grid_container: GridContainer = $GridContainer
+@onready var failed_tests_2: Button = $FailedTests2
 
 # === CUSTOM ASSERT SYSTEM ===
 
@@ -61,6 +62,7 @@ func _ready():
 	# Connect buttons
 	run_all_button.pressed.connect(_on_run_all_tests)
 	run_failed_button.pressed.connect(_on_run_failed_tests)
+	failed_tests_2.pressed.connect(_on_run_until_failure)
 	
 	# Initialize UI
 	_populate_test_buttons()
@@ -82,6 +84,16 @@ func _on_run_failed_tests():
 	_restore_animation_speed()
 	if test_runner:
 		await test_runner.cleanup_game()  # Final cleanup after failed tests
+		game = null  # Clear reference to destroyed game
+		test_runner.show_test_manager()
+
+func _on_run_until_failure():
+	"""Button handler to run all tests until first failure"""
+	await runTestsUntilFailure()
+	_update_test_button_states()
+	_restore_animation_speed()
+	if test_runner:
+		await test_runner.cleanup_game()  # Final cleanup
 		game = null  # Clear reference to destroyed game
 		test_runner.show_test_manager()
 
@@ -195,6 +207,42 @@ func runFailedTests():
 	print("Now Passed: ", passed)
 	print("Still Failed: ", failed)
 	print("Total Rerun: ", passed + failed)
+	
+	return {"passed": passed, "failed": failed, "results": test_results}
+
+func runTestsUntilFailure():
+	"""Run all tests in order and stop at the first failure"""
+	print("=== Running Tests Until First Failure ===")
+	test_results.clear()
+	
+	var test_methods = _discover_test_methods()
+	var passed = 0
+	var failed = 0
+	
+	for test_method in test_methods:
+		print("\n--- Running: ", test_method, " ---")
+		
+		var result = await _run_single_test(test_method)
+		test_results.append(result)
+		
+		# Update session results
+		session_test_results[test_method] = result
+		
+		if result.passed:
+			print("✅ PASSED: ", test_method, " (", result.get("duration_ms", 0), "ms)")
+			passed += 1
+		else:
+			print("❌ FAILED: ", test_method)
+			print("   Error: ", result.error)
+			failed += 1
+			print("\n⚠️ Stopping execution at first failure")
+			break  # Stop at first failure
+	
+	print("\n=== Test Results (Stopped on Failure) ===")
+	print("Passed: ", passed)
+	print("Failed: ", failed)
+	print("Total Run: ", passed + failed)
+	print("Total Tests: ", test_methods.size())
 	
 	return {"passed": passed, "failed": failed, "results": test_results}
 
@@ -344,12 +392,7 @@ func beforeEach():
 
 func createCardFromName(card_name: String, player_controlled: bool = true) -> Card:
 	"""Universal helper to create a card from either token or card name"""
-	# First try to load as a token
-	var card_data = CardLoaderAL.load_token_by_name(card_name)
-	if not card_data:
-		# If token not found, try to load as regular card
-		card_data = CardLoaderAL.getCardByName(card_name)
-	
+	var card_data = CardLoaderAL.getCardByName(card_name)
 	if not assert_test_not_null(card_data, "Card/token not found: " + card_name):
 		return null
 	
@@ -373,8 +416,7 @@ func addCardToExtraDeck(card: CardData):
 func addCardToDeck(card_data: CardData, player_deck: bool = true):
 	"""Helper to add card to deck"""
 	var deck = game.deck if player_deck else game.deck_opponent
-	# Set proper control flags for the card data
-	card_data.playerControlled = player_deck
+	# Set proper ownership flag for the card data
 	card_data.playerOwned = player_deck
 	deck.cards.push_back(card_data)
 	deck.update_size()
@@ -478,12 +520,6 @@ func test_card_creation():
 		return false
 	return true
 
-func test_failure_example():
-	"""Example test that demonstrates failure handling"""
-	if not assert_test_true(false, "This test is designed to fail for demonstration"):
-		return false
-	return true
-
 func test_card_play_basic():
 	"""Test basic card playing functionality"""
 	var card = createCardFromName("goblin pair")
@@ -506,16 +542,27 @@ func test_card_play_basic():
 
 func test_insufficient_gold():
 	"""Test that cards can't be played without enough gold"""
-	var card = createCardFromName("goblin pair")  # costs 3
+	var card = createCardFromName("goblin pair")  # costs 1
 	addCardToHand(card)
-	setPlayerGold(0)  # Not enough
+	setPlayerGold(0)  # Not enough to pay 1 gold cost
+	
+	# Verify gold is actually 0 before attempting to play
+	var gold_before = game.game_data.player_gold.getValue()
+	print("🪙 Gold before tryPlayCard: ", gold_before)
+	if not assert_test_equal(gold_before, 0, "Gold should be 0 before play attempt"):
+		return false
 	
 	await game.tryPlayCard(card, game.player_base)
 	
-	# Card should still be in hand
+	# Card should still be in hand (payment should have failed)
 	if not assertCardCount(0, "play"):
 		return false
 	if not assertCardCount(1, "hand"):
+		return false
+	
+	# Verify gold is still 0 (no payment occurred)
+	var gold_after = game.game_data.player_gold.getValue()
+	if not assert_test_equal(gold_after, 0, "Gold should still be 0 after failed payment"):
 		return false
 	
 func test_animation_completion():
@@ -537,8 +584,7 @@ func test_animation_completion():
 
 func test_goblin_pair():
 	"""Test Goblin Pair card creation and spawning"""
-	var cardData = CardLoaderAL.getCardByName("goblin pair")
-	var c = game.createCardFromData(CardLoaderAL.duplicateCardScript(cardData), true)
+	var c = createCardFromName("goblin pair")
 	addCardToHand(c)
 	game.game_data.player_gold.setValue(99)
 	await game.tryPlayCard(c, game.player_base)
@@ -546,6 +592,18 @@ func test_goblin_pair():
 	if not assert_test_equal(cardsInPlay.size(), 2, "Goblin Pair should spawn 2 cards"):
 		return false
 
+func test_card_creation_isolated_scripts():
+	var gob1 = CardLoaderAL.getCardByName("Goblin Kid")
+	var gob2 = CardLoaderAL.getCardByName("Goblin Kid")
+	gob1.cardName = "ChangedName"
+	gob1.isTapped = true
+	if not assert_test_true(gob2.cardName == "Goblin Kid", "Name isolation issue"):
+		return false
+		
+	if not assert_test_true(gob2.isTapped == false, "Value isolation issue"):
+		return false
+	return true
+		
 func test_goblin_boss_extra_deck_casting():
 	"""Test playing Goblin Boss from extra deck with proper selection"""
 	# Setup: Give player plenty of gold
@@ -1014,12 +1072,8 @@ func test_replace_mechanism() -> bool:
 	if not assert_test(not CardPaymentManagerAL.hasReplaceOption(drengr_card), "Should not have Replace option with no valid targets"):
 		return false
 	
-	# Create a valid target (1-cost creature) - using natural token data
-	var token_data = CardLoaderAL.load_token_by_name("Punglynd Child")
-	if not assert_test_not_null(token_data, "Should be able to load Punglynd Child token"):
-		return false
-	
-	var target_creature = game.createCardFromData(CardLoaderAL.duplicateCardScript(token_data), true)
+	# Create a valid target (1-cost creature)
+	var target_creature = createCardFromName("Punglynd Child", true)
 	if not assert_test_not_null(target_creature, "Should be able to create Punglynd Child card"):
 		return false
 	GameUtility.reparentWithoutMoving(target_creature, game.player_base)
@@ -1061,8 +1115,7 @@ func test_replace_with_additional_reduction() -> bool:
 		return false
 	
 	# Create a Grown-up target for extra reduction
-	var d = CardLoaderAL.load_token_by_name("Punglynd Child")
-	var grownup_target = game.createCardFromData(CardLoaderAL.duplicateCardScript(d), true)
+	var grownup_target = createCardFromName("Punglynd Child", true)
 	grownup_target.cardData.subtypes.append("Grown-up")
 	GameUtility.reparentWithoutMoving(grownup_target, game.player_base)
 	await get_tree().process_frame
@@ -1436,11 +1489,7 @@ func test_punglynd_child_growup():
 	print("🧪 Testing Punglynd Child grow-up ability...")
 	
 	# Step 1: Create Punglynd Child token
-	var token_data = CardLoaderAL.load_token_by_name("Punglynd Child")
-	if not assert_test_not_null(token_data, "Should be able to load Punglynd Child token"):
-		return false
-	
-	var child_card = game.createCardFromData(CardLoaderAL.duplicateCardScript(token_data), true)
+	var child_card = createCardFromName("Punglynd Child", true)
 	if not assert_test_not_null(child_card, "Should be able to create Punglynd Child card"):
 		return false
 	
@@ -1499,11 +1548,7 @@ func test_replace_with_insufficient_gold() -> bool:
 		return false
 	
 	# Step 2: Create a Punglynd Child token in player base
-	var child_token_data = CardLoaderAL.load_token_by_name("Punglynd Child")
-	if not assert_test_not_null(child_token_data, "Should be able to load Punglynd Child token"):
-		return false
-	
-	var child_card = game.createCardFromData(CardLoaderAL.duplicateCardScript(child_token_data), true)
+	var child_card = createCardFromName("Punglynd Child", true)
 	if not assert_test_not_null(child_card, "Should be able to create Punglynd Child card"):
 		return false
 	
@@ -1518,11 +1563,7 @@ func test_replace_with_insufficient_gold() -> bool:
 		return false
 	
 	# Step 3: Create Punglynd Childbearer and add to hand
-	var childbearer_data = CardLoaderAL.getCardByName("Punglynd Childbearer")
-	if not assert_test_not_null(childbearer_data, "Should be able to load Punglynd Childbearer"):
-		return false
-	
-	var childbearer_card = game.createCardFromData(childbearer_data, true)
+	var childbearer_card = createCardFromName("Punglynd Childbearer", true)
 	if not assert_test_not_null(childbearer_card, "Should be able to create Punglynd Childbearer"):
 		return false
 	
@@ -1765,7 +1806,7 @@ func test_eyepatch_cast_from_deck():
 	print("✅ Both Goblin and Eyepatch are in play")
 	
 	# Step 8: Verify the goblin token is also in play
-	var goblin_in_play = cards_in_play.any(func(card): return card.cardData.cardName == "Goblin")
+	var goblin_in_play = cards_in_play.any(func(card): return card.cardData.cardName == "goblin")
 	if not assert_test_true(goblin_in_play, "Goblin token should be on battlefield"):
 		return false
 	print("✅ Goblin token confirmed in play")
@@ -1871,11 +1912,7 @@ func test_warcamp_activated_ability() -> bool:
 	await get_tree().process_frame
 	
 	# Step 2: Create Punglynd Child token in play (without Grown-up subtype initially)
-	var token_data = CardLoaderAL.load_token_by_name("Punglynd Child")
-	if not assert_test_not_null(token_data, "Should be able to load Punglynd Child token"):
-		return false
-	
-	var child_card:Card = game.createCardFromData(CardLoaderAL.duplicateCardScript(token_data), true)
+	var child_card:Card = createCardFromName("Punglynd Child", true)
 	if not assert_test_not_null(child_card, "Should be able to create Punglynd Child card"):
 		return false
 	

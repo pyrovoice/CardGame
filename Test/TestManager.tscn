@@ -27,6 +27,14 @@ offset_right = 256.0
 offset_bottom = 55.0
 text = "Run Failed Tests"
 
+[node name="FailedTests2" type="Button" parent="."]
+layout_mode = 0
+offset_left = 279.0
+offset_top = 18.0
+offset_right = 405.0
+offset_bottom = 56.0
+text = "Run To Fail"
+
 [node name="GridContainer" type="GridContainer" parent="."]
 layout_mode = 0
 offset_left = 26.0
