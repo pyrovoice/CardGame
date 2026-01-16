@@ -69,6 +69,7 @@ func start_selection_and_wait(requirement: Dictionary, possible_cards: Array[Car
 	
 	# Show UI and highlight cards
 	_show_selection_ui(true)
+	print("🔍 [SELECTION] UI shown, highlighting ", possible_cards.size(), " possible cards")
 	for card in possible_cards:
 		card.set_selectable(true)
 	_update_ui()
@@ -76,7 +77,7 @@ func start_selection_and_wait(requirement: Dictionary, possible_cards: Array[Car
 	# Wait for either completion or cancellation
 	var result = await selection_completed
 	
-	if result and result.selected_cards:
+	if result:
 		print("Selection completed with ", result.selected_cards.size(), " cards")
 		return result.selected_cards
 	else:

@@ -2,6 +2,6 @@ Name:Punglynd Child
 Types:Creature Punglynd
 ManaCost:1
 Power:0
-T:Mode$ Phase | Phase$ End of Turn | Execute$ TrigGrowup | TriggerZones$ Battlefield | Condition$ Self.Attacked+ThisTurn
+T:Mode$ Phase | Phase$ EndOfTurn | Execute$ TrigGrowup | TriggerZones$ Battlefield | Condition$ Self.Attacked+ThisTurn
 SVar:TrigGrowup$ AddType | Target$ Self | Types$ Grown-up | Duration$ Permanent
 CardText:At the end of each turn, if I attacked this turn, I Grow-up.

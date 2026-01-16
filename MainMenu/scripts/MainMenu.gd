@@ -12,6 +12,8 @@ func _ready():
 	test_button.pressed.connect(_on_test_button_pressed)
 
 func _on_play_game_pressed():
+	# Setup decks before starting the game
+	DeckConfigAL.setup_default_decks()
 	get_tree().change_scene_to_file("res://Game/scenes/game.tscn")
 
 func _on_card_album_pressed():

@@ -54,11 +54,11 @@ static func _apply_keyword_modification(target_card: Card, keyword: String, dura
 	
 	print("  ✨ Granting ", keyword, " to ", target_card.cardData.cardName)
 	
-	# Add the keyword to the card's keywords array
-	target_card.cardData.add_keyword(keyword)
-	
-	# Track for removal if not permanent
-	_track_modification_for_removal(target_card, "keyword", {"keyword": keyword}, duration)
+	# Track the temporary effect (will be checked dynamically when querying keywords)
+	var duration_enum = _string_to_duration_enum(duration)
+	var temp_effect = TemporaryEffect.create_keyword_effect(keyword, duration_enum, target_card.cardData)
+	target_card.cardData.add_temporary_effect(temp_effect)
+	target_card.cardData.dirty_data.emit()
 
 static func _apply_type_modification(target_card: Card, type_string: String, duration: String):
 	"""Internal: Apply type modification to a card"""
@@ -67,12 +67,13 @@ static func _apply_type_modification(target_card: Card, type_string: String, dur
 		return
 	
 	if CardData.isValidCardTypeString(type_string):
-		var card_type = CardData.stringToCardType(type_string)
-		target_card.cardData.addType(card_type)
 		print("  ✨ Added type ", type_string, " to ", target_card.cardData.cardName)
 		
-		# Track for removal if not permanent
-		_track_modification_for_removal(target_card, "type", {"type_to_remove": type_string}, duration)
+		# Track the temporary effect (will be checked dynamically when querying types)
+		var duration_enum = _string_to_duration_enum(duration)
+		var temp_effect = TemporaryEffect.create_type_effect(type_string, false, duration_enum, target_card.cardData)
+		target_card.cardData.add_temporary_effect(temp_effect)
+		target_card.cardData.dirty_data.emit()
 	else:
 		print("❌ Invalid card type: ", type_string)
 
@@ -82,11 +83,13 @@ static func _apply_subtype_modification(target_card: Card, subtype: String, dura
 		print("❌ No subtype specified for modification")
 		return
 	
-	target_card.cardData.addSubtype(subtype)
 	print("  ✨ Added subtype ", subtype, " to ", target_card.cardData.cardName)
 	
-	# Track for removal if not permanent
-	_track_modification_for_removal(target_card, "type", {"type_to_remove": subtype}, duration)
+	# Track the temporary effect (will be checked dynamically when querying subtypes)
+	var duration_enum = _string_to_duration_enum(duration)
+	var temp_effect = TemporaryEffect.create_type_effect(subtype, true, duration_enum, target_card.cardData)
+	target_card.cardData.add_temporary_effect(temp_effect)
+	target_card.cardData.dirty_data.emit()
 
 static func _apply_power_modification(target_card: Card, amount: int, duration: String, is_boost: bool):
 	"""Internal: Apply power modification to a card (boost or reduction)"""
@@ -95,28 +98,25 @@ static func _apply_power_modification(target_card: Card, amount: int, duration: 
 		return
 	
 	var actual_amount = amount if is_boost else -amount
-	var old_power = target_card.cardData.power
-	target_card.cardData.power += actual_amount
-	
 	var symbol = "+" if is_boost else "-"
-	print("  💪 Modifying ", target_card.cardData.cardName, " power: ", old_power, " → ", target_card.cardData.power, " (", symbol, amount, ")")
+	print("  💪 Modifying ", target_card.cardData.cardName, " power: (", symbol, amount, ")")
 	
-	# Track for removal if not permanent
-	_track_modification_for_removal(target_card, "power_boost", {"power_bonus": actual_amount}, duration)
+	# Track the temporary effect (will be calculated dynamically when querying power)
+	var duration_enum = _string_to_duration_enum(duration)
+	var temp_effect = TemporaryEffect.create_power_boost_effect(actual_amount, duration_enum, target_card.cardData)
+	target_card.cardData.add_temporary_effect(temp_effect)
+	target_card.cardData.dirty_data.emit()
 
-static func _track_modification_for_removal(target_card: Card, effect_type: String, effect_data: Dictionary, duration: String):
-	"""Internal: Track a modification for later removal based on duration"""
-	match duration:
+static func _string_to_duration_enum(duration_str: String) -> TemporaryEffect.Duration:
+	"""Convert string to duration enum"""
+	match duration_str:
+		"EndOfTurn":
+			return TemporaryEffect.Duration.END_OF_TURN
+		"EndOfCombat":
+			return TemporaryEffect.Duration.END_OF_COMBAT
 		"Permanent":
-			# Nothing to track - modification is permanent
-			pass
-		"EndOfTurn", "WhileSourceInPlay":
-			# Create effect entry with duration
-			var effect_entry = effect_data.duplicate()
-			effect_entry["type"] = effect_type
-			effect_entry["duration"] = duration
-			
-			target_card.cardData.add_temporary_effect(effect_entry)
-			print("  ⏰ Scheduled removal at ", duration, " (", target_card.cardData.temporary_effects.size(), " effects tracked)")
+			return TemporaryEffect.Duration.PERMANENT
+		"WhileSourceInPlay":
+			return TemporaryEffect.Duration.CUSTOM
 		_:
-			print("❌ Unsupported duration: ", duration)
+			return TemporaryEffect.Duration.END_OF_TURN

@@ -11,8 +11,8 @@ func execute(parameters: Dictionary, source_card_data: CardData, game_context: G
 		return
 	
 	# Load the token data from the tokensData array
-	var token_data = CardLoaderAL.load_token_by_name(token_script)
-	if not token_data:
+	var token_template = CardLoaderAL.getCardByName(token_script)
+	if not token_template:
 		print("❌ Failed to load token: " + token_script)
 		return
 	
@@ -21,6 +21,8 @@ func execute(parameters: Dictionary, source_card_data: CardData, game_context: G
 	
 	# Create the tokens
 	for i in range(tokens_to_create):
+		# Duplicate and register abilities for each token
+		var token_data = game_context.createCardData(token_template)
 		var card = game_context.createToken(token_data, source_card_data.playerControlled)
 		game_context.executeCardEnters(card, GameZone.e.UNKNOWN, GameZone.e.UNKNOWN)
 

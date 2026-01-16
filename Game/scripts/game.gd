@@ -4,14 +4,14 @@ class_name Game
 const OpponentAIScript = preload("res://Game/scripts/OpponentAI.gd")
 
 # Game event signals for triggered abilities to listen to
-signal card_entered_play(card_data: CardData, context: Dictionary)
-signal card_died(card_data: CardData, context: Dictionary)
-signal attack_declared(card_data: CardData, context: Dictionary)
-signal damage_dealt(source_card_data: CardData, target_card_data: CardData, amount: int, context: Dictionary)
-signal spell_cast(card_data: CardData, context: Dictionary)
-signal beginning_of_turn(context: Dictionary)
-signal end_of_turn(context: Dictionary)
-signal card_drawn(cards: Array, is_player: bool, context: Dictionary)
+signal card_entered_play(card_data: CardData)
+signal card_died(card_data: CardData)
+signal attack_declared(card_data: CardData)
+signal damage_dealt(source_card_data: CardData, target_card_data: CardData, amount: int)
+signal spell_cast(card_data: CardData)
+signal beginning_of_turn(card_data: CardData)
+signal end_of_turn(card_data: CardData)
+signal card_drawn(cards: Array, is_player: bool)
 
 @onready var player_control: PlayerControl = $playerControl
 @onready var player_hand: CardHand = $PlayerHand
@@ -74,17 +74,8 @@ func createCardData(card_data_template: CardData) -> CardData:
 	var new_card_data = CardLoaderAL.duplicateCardScript(card_data_template)
 	print("🔍 [CREATEDATA] After duplicateCardScript - ", new_card_data.cardName, " isTapped: ", new_card_data.isTapped)
 	
-	# Register all triggered abilities to game signals
-	for ability in new_card_data.triggered_abilities:
-		ability.register_to_game(self)
-	
-	# Apply static abilities to game
-	for ability in new_card_data.static_abilities:
-		ability.apply_to_game(self)
-	
-	# Register replacement effects
-	for ability in new_card_data.replacement_abilities:
-		ability.apply_to_game(self)
+	# Subscribe card data to game signals (registers all abilities and signal listeners)
+	new_card_data.subscribe_to_game_signals(self)
 	
 	return new_card_data
 
@@ -95,14 +86,15 @@ func _ready() -> void:
 	activeHand = player_hand
 	# Set PlayerControl reference to activeHand
 	player_control.activeHand = activeHand
-	game_data.playerDeckList.deck_cards = createCardDatas([CardLoaderAL.getCardByName("Goblin Emblem"), 
-		CardLoaderAL.getCardByName("Punglynd Childbearer"),
-		CardLoaderAL.getCardByName("Goblin Warchief"),
-		CardLoaderAL.getCardByName("Goblin Pair"),
-		CardLoaderAL.getCardByName("Bolt")
-		])
-	game_data.playerDeckList.extra_deck_cards = createCardDatas(CardLoaderAL.extraDeckCardData)
-	game_data.opponentDeckList.deck_cards = createCardDatas(CardLoaderAL.opponentCards)
+	
+	# Load deck configuration from DeckConfig (set by MainMenu or tests)
+	if DeckConfigAL.has_deck_configuration():
+		game_data.playerDeckList.deck_cards = createCardDatas(DeckConfigAL.player_deck_cards)
+		game_data.playerDeckList.extra_deck_cards = createCardDatas(DeckConfigAL.player_extra_deck_cards)
+		game_data.opponentDeckList.deck_cards = createCardDatas(DeckConfigAL.opponent_deck_cards)
+	else:
+		# No deck configuration - leave empty (for tests)
+		print("⚠️ No deck configuration found - decks will be empty")
 	
 	# Setup UI to follow SignalInt signals
 	game_ui.setup_game_data(game_data)
@@ -147,14 +139,14 @@ func onTurnStart(skipFirstTurn = false):
 	if !skipFirstTurn:
 		await resolve_unresolved_combats()
 		# Trigger end of turn phase (cards will clean up their own temporary effects)
-		trigger_phase("EndOfTurn")
+		await trigger_phase("EndOfTurn")
 		game_data.start_new_turn()
 		reset_all_card_turn_tracking()
 		# Untap all player cards at start of turn
 		untap_all_player_cards()
 		game_data.reset_combat_resolution_flags()
 		# Trigger beginning of turn phase
-		trigger_phase("BeginningOfTurn")
+		await trigger_phase("BeginningOfTurn")
 	await drawCard()
 	@warning_ignore("integer_division")
 	await drawCard(game_data.danger_level.getValue()/3, false)
@@ -206,14 +198,21 @@ func tryMoveCard(card: Card, target_location: Node3D) -> void:
 	
 func tryPlayCard(card: Card, target_location: Node3D, pre_selections: SelectionManager.CardPlaySelections = null, pay_cost = true, from_default_zones = true) -> void:
 	if not card:
+		print("❌ [TRYPLAYCARD] Card is null")
 		return
 	
+	print("🎮 [TRYPLAYCARD] Attempting to play: ", card.cardData.cardName)
 	var source_zone = getCardZone(card)
+	print("🎮 [TRYPLAYCARD] Source zone: ", GameZone.e.keys()[source_zone])
 	
 	if from_default_zones && not _canPlayCard(source_zone):
+		print("❌ [TRYPLAYCARD] Cannot play from this zone")
 		return
 	if pay_cost && not CardPaymentManagerAL.canPayCard(card):
+		print("❌ [TRYPLAYCARD] Cannot pay for card")
 		return
+	
+	print("✅ [TRYPLAYCARD] Passed initial checks, proceeding with card play")
 	
 	# Use CardPlaySelections directly
 	var selection_data: SelectionManager.CardPlaySelections
@@ -247,6 +246,7 @@ func tryPlayCard(card: Card, target_location: Node3D, pre_selections: SelectionM
 	
 	# Collect all required player selections upfront (including casting choice)
 	if selection_data == null:
+		print("🎮 [TRYPLAYCARD] Calling _collectAllPlayerSelections for ", card.cardData.cardName)
 		selection_data = await _collectAllPlayerSelections(card)
 	else:
 		print("🎯 Skipping selection collection - using pre-specified selections")
@@ -351,7 +351,7 @@ func executeCardAttacks(card: Card, combat_spot: CombatantFightingSpot):
 		return
 	
 	# Emit attack_declared signal for triggered abilities
-	attack_declared.emit(card.cardData, {})
+	attack_declared.emit(card.cardData)
 	
 	# Resolve state-based actions after attack
 	resolveStateBasedAction()
@@ -432,10 +432,7 @@ func drawCard(howMany: int = 1, player = true):
 	await get_tree().create_timer(cards.size() * 0.2 + 0.6).timeout
 	
 	# Emit card_drawn signal for triggered abilities
-	var context = {
-		"cards": cards
-	}
-	card_drawn.emit(cards, player, context)
+	card_drawn.emit(cards, player)
 	resolveStateBasedAction()
 
 func resolveCombats():
@@ -693,7 +690,7 @@ func executeCardEnters(card: Card, source_zone: GameZone.e, target_zone: GameZon
 	
 	# Emit card_entered_play signal to trigger any "when a card enters play" abilities
 	# Abilities are already registered when game starts, so they're listening to signals
-	emit_game_event(TriggeredAbility.GameEventType.CARD_ENTERED_PLAY, card.cardData, {"from_zone": source_zone, "to_zone": target_zone})
+	emit_game_event(TriggeredAbility.GameEventType.CARD_ENTERED_PLAY, card.cardData)
 	
 	# Apply static abilities (only active while on battlefield)
 	for ability in card.cardData.static_abilities:
@@ -702,9 +699,6 @@ func executeCardEnters(card: Card, source_zone: GameZone.e, target_zone: GameZon
 	# Register replacement effects (only active while on battlefield)
 	for ability in card.cardData.replacement_abilities:
 		ability.apply_to_game(self)
-	
-	# Subscribe card data to game signals for self-managed temporary effects
-	card.cardData.subscribe_to_game_signals(self)
 	
 	# Resolve state-based actions after card enters
 	resolveStateBasedAction()
@@ -957,18 +951,10 @@ func _collectAllPlayerSelections(card: Card, pre_selections: SelectionManager.Ca
 		print("🎯 Using provided pre-selections for card play")
 		return pre_selections
 	
-	# Debug logging for Punglynd Childbearer
-	if card.cardData.cardName == "Punglynd Childbearer":
-		print("🔍 [PUNGLYND DEBUG] Starting selection collection for ", card.cardData.cardName)
-		print("🔍 [PUNGLYND DEBUG] Can pay card (current check): ", CardPaymentManagerAL.canPayCard(card))
-	
 	# Step 1: Check for alternative casting options (Replace)
 	var has_replace = CardPaymentManagerAL.hasReplaceOption(card)
+	print("🔍 [REPLACE CHECK] hasReplaceOption returned: ", has_replace, " for ", card.cardData.cardName)
 	if has_replace:
-		print("🎯 [CASTING CHOICE] Card ", card.cardData.cardName, " has Replace option available!")
-		if card.cardData.cardName == "Punglynd Childbearer":
-			print("🔍 [PUNGLYND DEBUG] ✅ Replace option confirmed available")
-		
 		# Get valid replacement targets for selection
 		var replace_cost_data = null
 		for cost_data in card.cardData.additionalCosts:
@@ -1004,11 +990,6 @@ func _collectAllPlayerSelections(card: Card, pre_selections: SelectionManager.Ca
 					return selection_data
 				elif selected_replace_target.size() > 0:
 					selection_data.set_replace_target(selected_replace_target[0])
-					print("🎯 [CASTING CHOICE] Player chose Replace with: ", selected_replace_target[0].cardData.cardName)
-				else:
-					print("🎯 [CASTING CHOICE] Player chose normal casting")
-		else:
-			print("🎯 [CASTING CHOICE] Card ", card.cardData.cardName, " has no alternative casting options")
 	
 	# Step 2: Check for additional costs that require selection
 	if card.cardData.hasAdditionalCosts():
@@ -1145,9 +1126,7 @@ func tryPayAndSelectsForCardPlay(card: Card, source_zone: GameZone.e, selection_
 		if not game_data.has_gold(replace_cost, card.cardData.playerControlled):
 			print("❌ Cannot afford Replace cost: ", replace_cost)
 			return
-		
-		print("💰 [REPLACE PAYMENT] Using Replace - sacrificing: ", replace_target.cardData.cardName, " (cost: ", replace_cost, ")")
-	
+			
 	# Validate sacrifice target cards are still valid before payment
 	var valid_sacrifice_cards: Array[Card] = []
 	for cost_card in sacrifice_targets:
@@ -1253,12 +1232,12 @@ func trigger_phase(phase_name: String):
 	"""Trigger all phase-based abilities for a specific phase"""
 	match phase_name:
 		"BeginningOfTurn":
-			await emit_game_event(TriggeredAbility.GameEventType.BEGINNING_OF_TURN, null, {})
+			await emit_game_event(TriggeredAbility.GameEventType.BEGINNING_OF_TURN, null)
 		"EndOfTurn":
-			await emit_game_event(TriggeredAbility.GameEventType.END_OF_TURN, null, {})
+			await emit_game_event(TriggeredAbility.GameEventType.END_OF_TURN, null)
 			await end_of_turn_return_cards_to_base()
 		"TurnStarted":
-			await emit_game_event(TriggeredAbility.GameEventType.TURN_STARTED, null, {})
+			await emit_game_event(TriggeredAbility.GameEventType.TURN_STARTED, null)
 
 func end_of_turn_return_cards_to_base():
 	"""Return all player-controlled cards from combat locations to playerBase"""
@@ -1320,25 +1299,24 @@ func resolve_queue():
 	is_resolving_triggers = false
 	print("✅ [RESOLVABLE QUEUE] Resolution complete")
 
-func emit_game_event(event_type: TriggeredAbility.GameEventType, card_data: CardData = null, context: Dictionary = {}):
+func emit_game_event(event_type: TriggeredAbility.GameEventType, card_data: CardData = null):
 	"""Emit a game event signal - abilities listening to this event will add themselves to the trigger queue"""
 	match event_type:
 		TriggeredAbility.GameEventType.CARD_ENTERED_PLAY:
-			card_entered_play.emit(card_data, context)
+			card_entered_play.emit(card_data)
 		TriggeredAbility.GameEventType.CARD_DIED:
-			card_died.emit(card_data, context)
+			card_died.emit(card_data)
 		TriggeredAbility.GameEventType.ATTACK_DECLARED:
-			attack_declared.emit(card_data, context)
+			attack_declared.emit(card_data)
 		TriggeredAbility.GameEventType.DAMAGE_DEALT:
-			var target = context.get("target")
-			var amount = context.get("amount", 0)
-			damage_dealt.emit(card_data, target, amount, context)
+			# Note: damage_dealt has different signature with target and amount
+			pass  # This event type should not be emitted through this function
 		TriggeredAbility.GameEventType.SPELL_CAST:
-			spell_cast.emit(card_data, context)
+			spell_cast.emit(card_data)
 		TriggeredAbility.GameEventType.END_OF_TURN:
-			end_of_turn.emit(context)
+			end_of_turn.emit(card_data)
 		TriggeredAbility.GameEventType.BEGINNING_OF_TURN:
-			beginning_of_turn.emit(context)
+			beginning_of_turn.emit(card_data)
 	
 	# After emitting the event, resolve any resolvables that were added to the queue
 	await resolve_queue()

@@ -47,14 +47,14 @@ func executeAbilityEffect(source_card_data: CardData, ability, game_context: Gam
 	Uses enum-based effect types for type safety and consistency.
 	Uses CardData instead of Card object, so effects work even if the Card has been destroyed.
 	
-	Accepts TriggeredAbility, ActivatedAbility, StaticAbility, ReplacementAbility, or Dictionary (legacy)
+	Accepts TriggeredAbility, ActivatedAbility, StaticAbility, ReplacementAbility, SpellAbility, or Dictionary (legacy)
 	"""
 	var effect_type_str: String
 	var effect_parameters: Dictionary
 	var target_conditions: Dictionary
 	
 	# Check ability type and extract data
-	if ability is TriggeredAbility or ability is ActivatedAbility or ability is StaticAbility or ability is ReplacementAbility:
+	if ability is TriggeredAbility or ability is ActivatedAbility or ability is StaticAbility or ability is ReplacementAbility or ability is SpellAbility:
 		effect_type_str = EffectType.type_to_string(ability.effect_type)
 		effect_parameters = ability.effect_parameters
 		target_conditions = ability.trigger_conditions if "trigger_conditions" in ability else {}
@@ -65,6 +65,9 @@ func executeAbilityEffect(source_card_data: CardData, ability, game_context: Gam
 	else:
 		print("❌ Invalid ability type: ", typeof(ability))
 		return
+	
+	if effect_type_str.is_empty():
+		print("❌ No effect_type specified for ability on card: ", source_card_data.cardName)
 	
 	if effect_type_str.is_empty():
 		print("❌ No effect_type specified for ability on card: ", source_card_data.cardName)

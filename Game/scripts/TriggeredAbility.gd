@@ -84,11 +84,10 @@ func unregister_from_game(game: Node):
 		
 		var owner = get_owner()
 		var card_name = owner.cardName if owner else "Unknown"
-		print("📡 [ABILITY UNREGISTER] ", card_name, " from '", signal_name, "'")
 
 ## Signal callback
 
-func _on_game_event(event_card_data: CardData = null, context: Dictionary = {}):
+func _on_game_event(event_card_data: CardData = null):
 	"""Called when the relevant game event fires"""
 	var owner = get_owner()
 	if not owner:
@@ -99,16 +98,16 @@ func _on_game_event(event_card_data: CardData = null, context: Dictionary = {}):
 		return  # Game was destroyed (shouldn't happen)
 	
 	# Check if trigger conditions are met
-	if not _check_trigger_conditions(owner, event_card_data, context, game):
+	if not _check_trigger_conditions(owner, event_card_data, game):
 		return
 	
 	# Add to trigger queue
 	var ability_desc = event_to_string(game_event_trigger) + " -> " + EffectType.type_to_string(effect_type)
 	print("⚡ [TRIGGER] ", owner.cardName, " ability triggered: ", ability_desc)
 	
-	game.trigger_queue.add_resolvable(owner, self, context)
+	game.trigger_queue.add_resolvable(owner, self)
 
-func _check_trigger_conditions(owner: CardData, event_card_data: CardData, context: Dictionary, game: Node) -> bool:
+func _check_trigger_conditions(owner: CardData, event_card_data: CardData, game: Node) -> bool:
 	"""Check if the trigger conditions for this ability are met"""
 	# Check "TriggerZones" - ability only active when owner is in specified zones
 	var trigger_zones = trigger_conditions.get(TriggerCondition.TRIGGER_ZONES, [])
@@ -128,23 +127,32 @@ func _check_trigger_conditions(owner: CardData, event_card_data: CardData, conte
 		# Special case: "Card.Self" means only this card can trigger this ability
 		if valid_card_filter == "Card.Self":
 			var matches = event_card_data == owner
-			print("  🔍 [TRIGGER CHECK] ", owner.cardName, " checking Card.Self: event=", event_card_data.cardName if event_card_data else "null", ", matches=", matches)
 			if not matches:
 				return false
 		else:
 			# Get the Card object from CardData to use with filtering system
 			var event_card = event_card_data.get_card_object() if event_card_data else null
 			if not event_card:
-				print("  🔍 [TRIGGER CHECK] ", owner.cardName, " - event card object not found")
 				return false  # No card to validate against
 			
 			# Use GameHelper to check if the event card matches the filter
 			var cards_to_check: Array[Card] = [event_card]
 			var matching_cards = GameHelper.filterCardsByParameters(cards_to_check, valid_card_filter, game)
 			
-			print("  🔍 [TRIGGER CHECK] ", owner.cardName, " checking filter '", valid_card_filter, "': matches=", matching_cards.size() > 0)
 			if matching_cards.size() == 0:
 				return false  # Card doesn't match the filter
+	
+	# Check "Condition" field (e.g., "Self.Attacked+ThisTurn")
+	var condition_str = trigger_conditions.get(TriggerCondition.CONDITION, "")
+	if condition_str != "":
+		var owner_card = owner.get_card_object()
+		if not owner_card:
+			return false
+		
+		# Use AbilityManager to evaluate the condition
+		var condition_met = AbilityManagerAL.evaluateCondition(condition_str, owner_card, null)
+		if not condition_met:
+			return false
 	
 	return true
 

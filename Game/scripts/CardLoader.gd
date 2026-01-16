@@ -75,8 +75,8 @@ func parse_card_data(card_text: String) -> CardData:
 				card_data.addType(card_type)
 			else:
 				# If it's not a main type, treat it as a subtype
-				if type_part != "" and card_data.subtypes.size() < 3:
-					card_data.subtypes.append(type_part)
+				if type_part != "" and card_data._subtypes.size() < 3:
+					card_data.addSubtype(type_part)
 	
 	# Parse abilities
 	var abilities = parse_abilities(properties, card_data)
@@ -214,7 +214,7 @@ func parse_triggered_ability(trigger_text: String, svar_effects: Dictionary, car
 		elif part.begins_with("TriggerZones$"):
 			trigger_conditions[TriggeredAbility.TriggerCondition.TRIGGER_ZONES] = part.substr(14)
 		elif part.begins_with("Phase$"):
-			trigger_conditions[TriggeredAbility.TriggerCondition.PHASE] = part.substr(7)
+			trigger_conditions[TriggeredAbility.TriggerCondition.PHASE] = part.substr(7).strip_edges()
 		elif part.begins_with("Condition$"):
 			trigger_conditions[TriggeredAbility.TriggerCondition.CONDITION] = part.substr(11)
 		elif part.begins_with("Execute$"):
@@ -269,6 +269,7 @@ func _convert_trigger_type_to_game_event(trigger_type: TriggerType.Type, conditi
 				"EndOfTurn":
 					return TriggeredAbility.GameEventType.END_OF_TURN
 				_:
+					push_warning("Unknown phase trigger: " + phase)
 					return TriggeredAbility.GameEventType.BEGINNING_OF_TURN  # Default
 		_:
 			push_warning("Unknown TriggerType: " + str(trigger_type))
@@ -458,7 +459,7 @@ func parse_activated_ability(activated_text: String, _svar_effects: Dictionary, 
 	var ability = ActivatedAbility.new(card_data, effect_type)
 	ability.activation_costs = activation_costs
 	ability.effect_parameters = effect_parameters
-	ability.targeting_requirements = target_conditions
+	ability.trigger_conditions = target_conditions
 	
 	return ability
 
@@ -744,12 +745,104 @@ func getRandomOpponentCard() -> CardData:
 func getRandomCard() -> CardData:
 	return cardData[randi_range(0, cardData.size() - 1)]
 
+# Helper functions to duplicate abilities with new owner reference
+func _duplicate_triggered_ability(original: TriggeredAbility, new_owner: CardData) -> TriggeredAbility:
+	var copy = TriggeredAbility.new(new_owner, original.game_event_trigger, original.effect_type)
+	copy.effect_parameters = original.effect_parameters.duplicate()
+	copy.trigger_conditions = original.trigger_conditions.duplicate()
+	copy.targeting_requirements = original.targeting_requirements.duplicate()
+	return copy
+
+func _duplicate_activated_ability(original: ActivatedAbility, new_owner: CardData) -> ActivatedAbility:
+	var copy = ActivatedAbility.new(new_owner, original.effect_type)
+	copy.effect_parameters = original.effect_parameters.duplicate()
+	copy.trigger_conditions = original.trigger_conditions.duplicate()
+	copy.targeting_requirements = original.targeting_requirements.duplicate()
+	for cost in original.activation_costs:
+		copy.activation_costs.append(cost.duplicate())
+	return copy
+
+func _duplicate_static_ability(original: StaticAbility, new_owner: CardData) -> StaticAbility:
+	var copy = StaticAbility.new(new_owner, original.effect_type)
+	copy.effect_parameters = original.effect_parameters.duplicate()
+	copy.trigger_conditions = original.trigger_conditions.duplicate()
+	copy.targeting_requirements = original.targeting_requirements.duplicate()
+	return copy
+
+func _duplicate_replacement_ability(original: ReplacementAbility, new_owner: CardData) -> ReplacementAbility:
+	# Note: replacement_effect is shared reference for now (may need deeper copy if it holds state)
+	var copy = ReplacementAbility.new(new_owner, original.effect_type, original.replacement_effect)
+	copy.effect_parameters = original.effect_parameters.duplicate()
+	copy.trigger_conditions = original.trigger_conditions.duplicate()
+	copy.targeting_requirements = original.targeting_requirements.duplicate()
+	return copy
+
+func _duplicate_spell_ability(original: SpellAbility, new_owner: CardData) -> SpellAbility:
+	var copy = SpellAbility.new(new_owner, original.effect_type)
+	copy.effect_parameters = original.effect_parameters.duplicate()
+	copy.trigger_conditions = original.trigger_conditions.duplicate()
+	copy.targeting_requirements = original.targeting_requirements.duplicate()
+	return copy
+
 # Custom deep copy method for CardData objects to replace broken duplicate() method
 func duplicateCardScript(original: CardData) -> CardData:
 	if not original:
 		return null
 	
-	var copy = original.duplicate(true)
+	# Create a new CardData instance
+	var copy = CardData.new()
+	
+	# Copy basic properties
+	copy.cardName = original.cardName
+	copy.goldCost = original.goldCost
+	copy.power = original.power
+	copy.text_box = original.text_box
+	
+	# Deep copy types array
+	copy._types = original._types.duplicate()
+	
+	# Deep copy subtypes array
+	copy._subtypes = original._subtypes.duplicate()
+	
+	# Deep copy keywords array
+	copy._keywords = original._keywords.duplicate()
+	
+	# Deep copy additional costs
+	var costs: Array[Dictionary] = []
+	for cost in original.additionalCosts:
+		costs.append(cost.duplicate())
+	copy.additionalCosts = costs
+	
+	# Deep copy abilities - each ability needs to reference the new card
+	for ability in original.triggered_abilities:
+		copy.triggered_abilities.append(_duplicate_triggered_ability(ability, copy))
+	
+	for ability in original.activated_abilities:
+		copy.activated_abilities.append(_duplicate_activated_ability(ability, copy))
+	
+	for ability in original.static_abilities:
+		copy.static_abilities.append(_duplicate_static_ability(ability, copy))
+	
+	for ability in original.replacement_abilities:
+		copy.replacement_abilities.append(_duplicate_replacement_ability(ability, copy))
+	
+	for ability in original.spell_abilities:
+		copy.spell_abilities.append(_duplicate_spell_ability(ability, copy))
+	
+	# Copy card art reference (texture resources are shared, not duplicated)
+	copy.cardArt = original.cardArt
+	
+	# Copy controller/ownership properties
+	copy.playerControlled = original.playerControlled
+	copy.playerOwned = original.playerOwned
+	
+	# Don't copy runtime state (these should be fresh for new cards)
+	copy.hasAttackedThisTurn = false
+	copy.isTapped = false
+	copy.card_object = null
+	var temp_effects: Array[TemporaryEffect] = []
+	copy.temporary_effects = temp_effects
+	
 	return copy
 
 func getCardByName(n: String) -> CardData:

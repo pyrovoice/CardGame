@@ -28,6 +28,8 @@ func shuffle():
 func draw_card_from_top(howMany = 1) -> Array[Card]:
 	var cardsDrawn:Array[Card] = []
 	for i in range(0, howMany):
+		if cards.is_empty():
+			break
 		cardsDrawn.push_back(draw_specific_card(cards[0]))
 	return cardsDrawn
 	

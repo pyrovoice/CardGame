@@ -24,6 +24,7 @@ func ensure_game_loaded() -> Game:
 		game_instance = game_scene.instantiate()
 		game_instance.name = "Game"
 		game_instance.doStartGame = false
+		# Note: DeckConfig is not set up for tests, so game_data decks will be empty
 		add_child(game_instance)
 		
 		# Wait for the game to be fully added to the scene tree and ready

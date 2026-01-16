@@ -69,9 +69,7 @@ static func createCardFromData(game: Game, cardData: CardData, player_controlled
 		game.add_child(card_instance)
 	
 	# Set data and configure card
-	print("🔍 [CREATECARD] Before setData - ", cardData.cardName, " isTapped: ", cardData.isTapped)
 	card_instance.setData(cardData)
-	print("🔍 [CREATECARD] After setData - ", cardData.cardName, " isTapped: ", cardData.isTapped)
 	card_instance.playerControlled = player_controlled
 	cardData.playerControlled = player_controlled  # Sync CardData playerControlled flag
 	card_instance.name = cardData.cardName + "_" + str(Game.getObjectCountAndIncrement())

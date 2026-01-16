@@ -10,8 +10,15 @@ enum Duration {
 	CUSTOM        # Custom duration logic
 }
 
+enum ModificationType {
+	ADDITIVE,      # Add to existing value (+2 power, add keyword)
+	REPLACEMENT    # Replace entire value (becomes 0, gain control)
+}
+
 var effect_type: EffectType.Type
 var duration: Duration
+var modification_type: ModificationType = ModificationType.ADDITIVE
+var property_name: String = ""     # Name of the property this effect modifies
 var source_card_data: WeakRef  # Weak reference to the CardData that granted this effect
 
 # Type-specific data
@@ -19,6 +26,7 @@ var keyword: String = ""           # For ADD_KEYWORD type
 var type_to_add: String = ""       # For ADD_TYPE type
 var subtype_to_add: String = ""    # For ADD_TYPE type (subtype)
 var power_bonus: int = 0           # For PUMP type
+var replacement_value = null       # For REPLACEMENT modifications
 var granted_ability: Dictionary = {}  # For ABILITY type (if we add it later)
 
 func _init(p_effect_type: EffectType.Type, p_duration: Duration, p_source_data: CardData = null):
@@ -31,22 +39,33 @@ func _init(p_effect_type: EffectType.Type, p_duration: Duration, p_source_data: 
 static func create_keyword_effect(keyword_name: String, effect_duration: Duration, source_data: CardData = null) -> TemporaryEffect:
 	"""Create a temporary keyword effect (e.g., Spellshield, Flying)"""
 	var effect = TemporaryEffect.new(EffectType.Type.ADD_KEYWORD, effect_duration, source_data)
+	effect.property_name = "keywords"
+	effect.modification_type = ModificationType.ADDITIVE
 	effect.keyword = keyword_name
 	return effect
 
 static func create_type_effect(type_name: String, is_subtype: bool, effect_duration: Duration, source_data: CardData = null) -> TemporaryEffect:
 	"""Create a temporary type/subtype effect"""
 	var effect = TemporaryEffect.new(EffectType.Type.ADD_TYPE, effect_duration, source_data)
+	effect.modification_type = ModificationType.ADDITIVE
 	if is_subtype:
+		effect.property_name = "subtypes"
 		effect.subtype_to_add = type_name
 	else:
+		effect.property_name = "types"
 		effect.type_to_add = type_name
 	return effect
 
-static func create_power_boost_effect(power_change: int, effect_duration: Duration, source_data: CardData = null) -> TemporaryEffect:
+static func create_power_boost_effect(power_change: int, effect_duration: Duration, source_data: CardData = null, is_replacement: bool = false) -> TemporaryEffect:
 	"""Create a temporary power boost effect"""
 	var effect = TemporaryEffect.new(EffectType.Type.PUMP, effect_duration, source_data)
-	effect.power_bonus = power_change
+	effect.property_name = "power"
+	if is_replacement:
+		effect.modification_type = ModificationType.REPLACEMENT
+		effect.replacement_value = power_change
+	else:
+		effect.modification_type = ModificationType.ADDITIVE
+		effect.power_bonus = power_change
 	return effect
 
 static func create_ability_effect(ability: Dictionary, effect_duration: Duration, source_data: CardData = null) -> TemporaryEffect:
@@ -129,91 +148,6 @@ func _get_duration_string() -> String:
 			return "custom duration"
 	return "unknown"
 
-## Conversion methods for backward compatibility with Dictionary format
 
-func to_dictionary() -> Dictionary:
-	"""Convert to dictionary format for backward compatibility"""
-	var dict = {
-		"effect_type": effect_type,
-		"duration": _duration_enum_to_string(duration),
-		"source": get_source_card_name()
-	}
-	
-	match effect_type:
-		EffectType.Type.ADD_KEYWORD:
-			dict["type"] = "keyword"
-			dict["keyword"] = keyword
-		EffectType.Type.ADD_TYPE:
-			dict["type"] = "type"
-			if type_to_add != "":
-				dict["type_to_add"] = type_to_add
-			else:
-				dict["type_to_remove"] = subtype_to_add  # Legacy naming
-		EffectType.Type.PUMP:
-			dict["type"] = "power_boost"
-			dict["power_bonus"] = power_bonus
-		_:
-			dict["type"] = "unknown"
-	
-	return dict
 
-static func from_dictionary(dict: Dictionary, source_card_data: CardData = null) -> TemporaryEffect:
-	"""Create a TemporaryEffect from dictionary format (for backward compatibility)
-	Note: source_card_data should be provided if available, otherwise source is lost"""
-	var type_str = dict.get("type", "")
-	var effect_type_enum: EffectType.Type
-	
-	match type_str:
-		"keyword":
-			effect_type_enum = EffectType.Type.ADD_KEYWORD
-		"type":
-			effect_type_enum = EffectType.Type.ADD_TYPE
-		"power_boost":
-			effect_type_enum = EffectType.Type.PUMP
-		"ability":
-			effect_type_enum = EffectType.Type.ADD_KEYWORD  # No ABILITY type yet
-		_:
-			effect_type_enum = EffectType.Type.ADD_KEYWORD
-	
-	var duration_str = dict.get("duration", "EndOfTurn")
-	var duration_enum = _string_to_duration_enum(duration_str)
-	
-	var effect = TemporaryEffect.new(effect_type_enum, duration_enum, source_card_data)
-	
-	# Set type-specific data
-	match effect_type_enum:
-		EffectType.Type.ADD_KEYWORD:
-			effect.keyword = dict.get("keyword", "")
-		EffectType.Type.ADD_TYPE:
-			effect.type_to_add = dict.get("type_to_add", "")
-			effect.subtype_to_add = dict.get("type_to_remove", "")  # Legacy naming
-		EffectType.Type.PUMP:
-			effect.power_bonus = dict.get("power_bonus", 0)
-	
-	return effect
 
-static func _duration_enum_to_string(duration_enum: Duration) -> String:
-	"""Convert duration enum to string"""
-	match duration_enum:
-		Duration.END_OF_TURN:
-			return "EndOfTurn"
-		Duration.END_OF_COMBAT:
-			return "EndOfCombat"
-		Duration.PERMANENT:
-			return "Permanent"
-		Duration.CUSTOM:
-			return "Custom"
-	return "EndOfTurn"
-
-static func _string_to_duration_enum(duration_str: String) -> Duration:
-	"""Convert string to duration enum"""
-	match duration_str:
-		"EndOfTurn":
-			return Duration.END_OF_TURN
-		"EndOfCombat":
-			return Duration.END_OF_COMBAT
-		"Permanent":
-			return Duration.PERMANENT
-		"Custom":
-			return Duration.CUSTOM
-	return Duration.END_OF_TURN

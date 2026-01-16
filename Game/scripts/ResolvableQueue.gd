@@ -6,17 +6,15 @@ class_name ResolvableQueue extends RefCounted
 class QueuedResolvable:
 	var source_card_data: CardData  # The card whose ability is resolving
 	var ability  # The ability that is resolving (CardAbility or Dictionary for backward compatibility)
-	var resolvable_context: Dictionary  # Context data about the resolvable (what card died, etc.)
 	
-	func _init(p_source: CardData, p_ability, p_context: Dictionary = {}):
+	func _init(p_source: CardData, p_ability):
 		source_card_data = p_source
 		ability = p_ability
-		resolvable_context = p_context
 
 var queue: Array[QueuedResolvable] = []
 
-func add_resolvable(source_card_data: CardData, ability, context: Dictionary = {}):
-	var resolvable = QueuedResolvable.new(source_card_data, ability, context)
+func add_resolvable(source_card_data: CardData, ability):
+	var resolvable = QueuedResolvable.new(source_card_data, ability)
 	queue.append(resolvable)
 
 func has_resolvables() -> bool:

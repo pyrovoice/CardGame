@@ -9,10 +9,11 @@ enum CardType { CREATURE, SPELL, RELIC, LEGENDARY, TOKEN }
 var cardName: String
 var goldCost: int
 
-var types: Array[CardType] = []
+# Core properties with _ prefix are modified through _get() interception
+var _types: Array[CardType] = []
 #Goblin, Fire, Elemental... Can have up to 3
-var subtypes: Array[String] = []
-var power: int
+var _subtypes: Array[String] = []
+var _power: int
 var text_box: String
 # Abilities from the card textBox - split by type for clarity and type safety
 var triggered_abilities: Array[TriggeredAbility] = []
@@ -21,7 +22,7 @@ var static_abilities: Array[StaticAbility] = []  # S: effects - continuous effec
 var replacement_abilities: Array[ReplacementAbility] = []  # R: effects - replacement effects like "create one more token"
 var spell_abilities: Array[SpellAbility] = []
 # Keyword abilities (separate from complex abilities)
-var keywords: Array[String] = []  # Simple keywords like "Flying", "Spellshield"
+var _keywords: Array[String] = []  # Simple keywords like "Flying", "Spellshield"
 # Additional costs beyond gold cost (sacrifice, replace, etc.)
 var additionalCosts: Array[Dictionary] = []
 # Card artwork texture
@@ -33,11 +34,73 @@ var card_object: WeakRef  # Reference to Card object (using WeakRef to avoid cyc
 var hasAttackedThisTurn: bool = false  # Track if the card attacked this turn
 var isTapped: bool = false  # Track if the card is currently tapped
 var temporary_effects: Array[TemporaryEffect] = []  # Track temporary effects applied to this card
+
+## Property interception - automatically applies temporary effects
+func _get(property):
+	"""Intercept property reads to apply temporary effects"""
+	var base_prop = "_" + property
+	
+	# Check if this is a managed property
+	if base_prop in self:
+		var base_value = get(base_prop)
+		return _apply_modification_layers(property, base_value)
+	
+	return null  # Let normal property access continue
+
+func _set(property, value):
+	"""Intercept property writes to redirect to base properties"""
+	var base_prop = "_" + property
+	
+	# Check if this is a managed property
+	if base_prop in self:
+		set(base_prop, value)
+		return true
+	
+	return false  # Let normal property assignment continue
+
+func _apply_modification_layers(property_name: String, base_value):
+	"""Apply temporary effect modifications in layers"""
+	var result = base_value
+	
+	# For arrays, duplicate to avoid modifying base
+	if result is Array:
+		result = result.duplicate()
+	
+	# Layer 1: Additive modifications
+	for effect in temporary_effects:
+		if effect.property_name == property_name and effect.modification_type == TemporaryEffect.ModificationType.ADDITIVE:
+			result = _apply_additive_effect(result, effect)
+	
+	# Layer 2: Replacement effects (override everything)
+	for effect in temporary_effects:
+		if effect.property_name == property_name and effect.modification_type == TemporaryEffect.ModificationType.REPLACEMENT:
+			result = effect.replacement_value
+			break  # First replacement wins
+	
+	return result
+
+func _apply_additive_effect(current_value, effect: TemporaryEffect):
+	"""Apply an additive effect based on the value type"""
+	if current_value is int:
+		# For power, add the bonus
+		return current_value + effect.power_bonus
+	elif current_value is Array:
+		# For keywords/types/subtypes, add to array
+		if effect.keyword != "" and effect.keyword not in current_value:
+			current_value.append(effect.keyword)
+		elif effect.type_to_add != "":
+			var card_type = CardData.stringToCardType(effect.type_to_add)
+			if card_type not in current_value:
+				current_value.append(card_type)
+		elif effect.subtype_to_add != "" and effect.subtype_to_add not in current_value:
+			current_value.append(effect.subtype_to_add)
+	
+	return current_value
 	
 func describe() -> String:
 	var subtypes_str = ""
-	if subtypes.size() > 0:
-		subtypes_str = ", subtypes: [" + ", ".join(subtypes) + "]"
+	if self.subtypes.size() > 0:
+		subtypes_str = ", subtypes: [" + ", ".join(self.subtypes) + "]"
 	
 	var abilities_str = ""
 	var total_abilities = triggered_abilities.size() + activated_abilities.size() + static_abilities.size() + replacement_abilities.size() + spell_abilities.size()
@@ -55,7 +118,7 @@ func describe() -> String:
 		goldCost,
 		types_str,
 		subtypes_str,
-		power,
+		self.power,  # Use property accessor to get modified value
 		abilities_str,
 		additional_costs_str,
 		text_box
@@ -100,18 +163,20 @@ static func getAllCardTypeStrings() -> Array[String]:
 
 func getTypesAsString() -> String:
 	"""Get all types as a space-separated string"""
-	if types.is_empty():
+	var current_types = self.types  # Use property accessor
+	if current_types.is_empty():
 		return ""
 	var type_strings: Array[String] = []
-	for card_type in types:
+	for card_type in current_types:
 		type_strings.append(getTypeAsString(card_type))
 	return " ".join(type_strings)
 
 func getSubtypesAsString() -> String:
 	"""Get subtypes as a space-separated string"""
-	if subtypes.is_empty():
+	var current_subtypes = self.subtypes  # Use property accessor
+	if current_subtypes.is_empty():
 		return ""
-	return " ".join(subtypes)
+	return " ".join(current_subtypes)
 
 func getFullTypeString() -> String:
 	"""Get the full type string including subtypes (e.g., 'Boss Creature Goblin')"""
@@ -122,29 +187,29 @@ func getFullTypeString() -> String:
 	return types_str
 
 func hasType(card_type: CardType) -> bool:
-	"""Check if this card has a specific type"""
-	return card_type in types
+	"""Check if this card has a specific type (including temporary types)"""
+	return card_type in self.types  # Use property accessor
 
 func hasSubtype(card_type: String) -> bool:
-	"""Check if this card has a specific type"""
-	return card_type in subtypes
+	"""Check if this card has a specific subtype (including temporary subtypes)"""
+	return card_type in self.subtypes  # Use property accessor
 	
 func addType(card_type: CardType):
 	"""Add a type to this card if it doesn't already have it"""
-	if card_type not in types:
-		types.append(card_type)
+	if card_type not in _types:
+		_types.append(card_type)
 		dirty_data.emit()
 
 func addSubtype(subtype: String):
 	"""Add a subtype to this card if it doesn't already have it"""
-	if subtype not in subtypes:
-		subtypes.append(subtype)
+	if subtype not in _subtypes:
+		_subtypes.append(subtype)
 		dirty_data.emit()
 
 func removeType(card_type: CardType):
 	"""Remove a type from this card"""
-	if card_type in types:
-		types.erase(card_type)
+	if card_type in _types:
+		_types.erase(card_type)
 		dirty_data.emit()
 
 func hasAdditionalCosts() -> bool:
@@ -238,7 +303,20 @@ func add_temporary_effect(effect: TemporaryEffect):
 	temporary_effects.append(effect)
 
 func subscribe_to_game_signals(game: Node):
-	"""Subscribe to game signals for managing temporary effects"""
+	"""Subscribe to game signals and register all abilities"""
+	# Register all triggered abilities to game signals
+	for ability in triggered_abilities:
+		ability.register_to_game(game)
+	
+	# Apply static abilities to game
+	for ability in static_abilities:
+		ability.apply_to_game(game)
+	
+	# Register replacement effects
+	for ability in replacement_abilities:
+		ability.apply_to_game(game)
+	
+	# Subscribe to end_of_turn signal for managing temporary effects
 	if game.has_signal("end_of_turn"):
 		if not game.is_connected("end_of_turn", _on_end_of_turn):
 			game.end_of_turn.connect(_on_end_of_turn)
@@ -251,7 +329,7 @@ func unsubscribe_from_game_signals(game: Node):
 			game.end_of_turn.disconnect(_on_end_of_turn)
 			print("  📡 [CARDDATA] ", cardName, " unsubscribed from end_of_turn signal")
 
-func _on_end_of_turn(context: Dictionary = {}):
+func _on_end_of_turn(event_card_data: CardData = null):
 	"""Handle end of turn cleanup for temporary effects"""
 	var effects_to_remove = get_temporary_effects_by_duration(TemporaryEffect.Duration.END_OF_TURN)
 	
@@ -259,7 +337,6 @@ func _on_end_of_turn(context: Dictionary = {}):
 		print("  🗑️ [CARDDATA] ", cardName, " removing ", effects_to_remove.size(), " end-of-turn effect(s)")
 		
 		for effect in effects_to_remove:
-			effect.remove_from_card(self)
 			clear_temporary_effect(effect)
 		
 		dirty_data.emit()
@@ -333,16 +410,16 @@ func get_all_abilities() -> Array[CardAbility]:
 
 func add_keyword(keyword: String):
 	"""Add a keyword ability to this card"""
-	if keyword not in keywords:
-		keywords.append(keyword)
+	if keyword not in _keywords:
+		_keywords.append(keyword)
 		dirty_data.emit()
 
 func remove_keyword(keyword: String):
 	"""Remove a keyword ability from this card"""
-	if keyword in keywords:
-		keywords.erase(keyword)
+	if keyword in _keywords:
+		_keywords.erase(keyword)
 		dirty_data.emit()
 
 func has_keyword(keyword: String) -> bool:
-	"""Check if this card has a specific keyword"""
-	return keyword in keywords
+	"""Check if this card has a specific keyword (including temporary ones)"""
+	return keyword in self.keywords  # Property accessor automatically includes temp effects

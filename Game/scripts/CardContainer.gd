@@ -31,7 +31,8 @@ func draw_specific_card(card_data: CardData, card_type: CardData.CardType = Card
 		cards.remove_at(index)
 		update_size()
 		# Create card instance from the card data, passing self as the container
-		var card = (get_parent() as Game).createCardFromData(card_data, card_data.playerControlled, self)
+		# Use playerOwned to determine control (set when added to deck)
+		var card = (get_parent() as Game).createCardFromData(card_data, card_data.playerOwned, self)
 		GameUtility.reparentWithoutMoving(card, self)
 		return card
 	return null

@@ -17,6 +17,7 @@ config/icon="res://icon.svg"
 
 [autoload]
 
+DeckConfigAL="*res://Shared/scripts/DeckConfig.gd"
 AbilityManagerAL="*res://Game/scripts/AbilityManager.gd"
 AnimationsManagerAL="*res://Shared/scripts/AnimationsManager.gd"
 CardPaymentManagerAL="*res://Game/scripts/CardPaymentManager.gd"

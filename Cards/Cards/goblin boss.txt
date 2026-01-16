@@ -1,5 +1,5 @@
 Name:Goblin Boss
-Types:Boss Creature Goblin
+Types:Legendary Creature Goblin
 Power:5
 CC:$ ControlPermanent | ValidCard$ Card.YouCtrl+Goblin | MinCount 4
 AC:$ SacrificePermanent | ValidCard$ Card.YouCtrl+Goblin | Count 2

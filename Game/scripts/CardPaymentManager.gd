@@ -78,17 +78,17 @@ func canPayCard(card: Card) -> bool:
 		return true
 	
 	# If not affordable at base cost, check if Replace can make it affordable
+	# Replace is an optional alternative casting method, but only valid if at least one target makes it affordable
 	if hasReplaceOption(card):
-		# Get valid replace targets to see if any make it affordable
+		# Check if any Replace target would make the cost affordable
 		for cost_data in card.cardData.additionalCosts:
 			if cost_data.get("cost_type", "") == "Replace":
 				var valid_targets = getValidReplaceTargets(card, cost_data)
-				if valid_targets.size() > 0:
-					# Check if any replacement would make it affordable
-					for target in valid_targets:
-						var replace_cost = calculateReplaceCost(card, target)
-						if current_game.game_data.has_gold(replace_cost, card.cardData.playerControlled):
-							return true
+				for target in valid_targets:
+					var replace_cost = calculateReplaceCost(card, target)
+					if current_game.game_data.has_gold(replace_cost, card.cardData.playerControlled):
+						# At least one Replace target makes it affordable
+						return true
 				break
 	
 	return false
@@ -228,7 +228,6 @@ func tryPayCard(card: Card, selected_additional_cards: Array[Card] = []) -> bool
 		print("Failed to pay gold cost!")
 		return false
 	
-	print("💰 Paid ", gold_cost, " gold for ", card.cardData.cardName)
 	
 	# Pay additional costs using payAdditionalCosts (handles Replace target logic)
 	if card.cardData.hasAdditionalCosts() or selected_additional_cards.size() > 0:
@@ -411,7 +410,6 @@ func payAdditionalCosts(additional_costs: Array[Dictionary], selected_cards: Arr
 	
 	# Sacrifice Replace targets first
 	for replace_target in replace_targets:
-		print("💰 [REPLACE SACRIFICE] Sacrificing Replace target: ", replace_target.cardData.cardName)
 		current_game.putInOwnerGraveyard(replace_target)
 	
 	# Process regular additional costs (like SacrificePermanent) with remaining cards

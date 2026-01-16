@@ -16,6 +16,7 @@ func _init(req: Dictionary, cards: Array[Card], type: String = ""):
 	selection_type = type
 	selected_cards = []
 	is_complete = false
+	_check_completion()  # Check initial completion state (handles optional requirements)
 
 # Add a card to the selection if it's valid
 func try_select_card(card: Card) -> bool:
@@ -36,6 +37,12 @@ func _check_completion():
 	var required_count = requirement.get("count", 1)
 	var min_count = requirement.get("min_count", required_count)
 	var max_count = requirement.get("max_count", required_count)
+	var is_optional = requirement.get("optional", false)
+	
+	# If optional, selection is always complete (even with 0 cards)
+	if is_optional:
+		is_complete = selected_cards.size() <= max_count
+		return
 	
 	# For exact match requirements (like "exactly 2 goblins")
 	is_complete = selected_cards.size() >= min_count and selected_cards.size() <= max_count
