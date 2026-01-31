@@ -1,0 +1,4 @@
+Name:Bone Collector
+Types:Relic
+CardText:When played, attach to a location.
+At the end of turn: Create a number of Skeleton tokens at this location equal to the number of non-Skeleton creatures that died at this location this turn.

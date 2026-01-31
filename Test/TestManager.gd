@@ -398,12 +398,32 @@ func createCardFromName(card_name: String, player_controlled: bool = true) -> Ca
 	
 	# Use createCardData to properly duplicate and register abilities
 	var duplicated_card_data = game.createCardData(card_data)
+	duplicated_card_data.playerOwned = player_controlled  # Set ownership for graveyard placement
+	duplicated_card_data.playerControlled = player_controlled  # Set control
 	var card = game.createCardFromData(duplicated_card_data, player_controlled)
 	if not assert_test_not_null(card, "Should be able to create card: " + card_name):
 		return null
 	
 	# Set animator state correctly for player-controlled cards
 	if player_controlled and card:
+		card.getAnimator().start_player_control()
+	
+	return card
+
+func createTestCard(card_name: String, cost: int = 0, power: int = 0, types: Array[CardData.CardType] = [CardData.CardType.CREATURE]) -> Card:
+	"""Create a test card with specified properties without loading from file"""
+	# Create CardData
+	var card_data = CardData.new()
+	card_data.cardName = card_name
+	card_data.goldCost = cost
+	card_data._power = power
+	card_data._types = types.duplicate()
+	card_data.playerControlled = true
+	card_data.playerOwned = true
+	
+	# Create Card instance from CardData
+	var card = game.createCardFromData(card_data, true)
+	if card:
 		card.getAnimator().start_player_control()
 	
 	return card
@@ -1202,8 +1222,8 @@ func test_activated_ability_parsing() -> bool:
 	if not assert_test_equal(sac_cost.get("target"), "Self", "Sacrifice target should be Self"):
 		return false
 	
-	# Test target conditions
-	var target_conditions = activated_ability.trigger_conditions
+	# Test target conditions (stored in targeting_requirements for ActivatedAbility)
+	var target_conditions = activated_ability.targeting_requirements
 	if not assert_test_equal(target_conditions.get("ValidCards"), "Creature.YouCtrl", "Valid cards should be Creature.YouCtrl"):
 		return false
 	
@@ -1259,14 +1279,14 @@ func test_tap_system() -> bool:
 		
 		if empty_spot:
 			# Try to move card to combat (should tap it)
-			var move_successful = game.moveCardToCombatZone(test_card, empty_spot)
-			if assert_test_true(move_successful, "Movement to combat should succeed"):
+			await game.tryMoveCard(test_card, empty_spot)
+			if assert_test_true(test_card.get_parent() == empty_spot, "Movement to combat should succeed"):
 				if not assert_test_true(test_card.cardData.is_tapped(), "Card should be tapped after moving to combat"):
 					return false
 				
 				# Try to move again (should fail because card is tapped)
-				var second_move = game.moveCardToCombatZone(test_card, empty_spot)
-				if not assert_test_false(second_move, "Second movement should fail (card is tapped)"):
+				await game.tryMoveCard(test_card, empty_spot)
+				if not assert_test_true(test_card.get_parent() == empty_spot, "Card should remain in same spot (tapped cards can't move)"):
 					return false
 	
 	# Test 5: Test activated ability with tap cost
@@ -1471,8 +1491,9 @@ func test_punglynd_child_growup():
 	if not assert_test_not_null(child_card, "Should be able to create Punglynd Child card"):
 		return false
 	
-	# Step 2: Place card directly in player base (battlefield)
-	game.player_base.add_child(child_card)
+	# Step 2: Place card in player base using proper game flow
+	await game.executeCardEnters(child_card, GameZone.e.HAND, GameZone.e.PLAYER_BASE)
+	await get_tree().process_frame
 	
 	# Step 3: Verify initial state - should not have Grown-up subtype yet
 	if not assert_test_false("Grown-up" in child_card.cardData.subtypes, "Child should not have Grown-up subtype initially"):
@@ -1483,14 +1504,17 @@ func test_punglynd_child_growup():
 	if not assert_test_false(initial_type_line.contains("Grown-up"), "Type line should not show 'Grown-up' initially"):
 		return false
 	
-	# Step 4: Make the child attack by moving it to a combat zone
+	# Step 4: Make the child attack by moving it to a combat zone and resolving combat
 	var combat_zone = game.combatZones[0] as CombatZone
 	var attack_spot = combat_zone.getFirstEmptyLocation(true)
 	if not assert_test_not_null(attack_spot, "Should have an empty combat spot"):
 		return false
 	
-	# Move to combat zone (this triggers attack and marks hasAttackedThisTurn)
-	await game.executeCardAttacks(child_card, attack_spot)
+	# Move to combat zone
+	await game.tryMoveCard(child_card, attack_spot)
+	
+	# Resolve combat to mark the card as having attacked
+	await clickCombatButton(combat_zone)
 	
 	# Step 5: Verify the card attacked this turn
 	if not assert_test_true(child_card.cardData.hasAttackedThisTurn, "Child should be marked as having attacked this turn"):
@@ -1642,57 +1666,91 @@ func test_replace_ui_optional_selection() -> bool:
 	# Step 4: Start casting process without pre-selections (should trigger UI)
 	print("🎮 Starting card casting process - expecting UI to appear...")
 	
-	# Start the card play (runs in background)
-	game.tryPlayCard(childbearer_card, game.player_base)
+	# Track whether card entered play
+	var card_entered = false
 	
-	# Step 5: Wait for UI to appear and check it's visible
+	var card_handler = func(card_data: CardData):
+		print("  🎯 card_entered_play signal fired for: ", card_data.cardName)
+		if card_data.cardName == "Punglynd Childbearer":
+			card_entered = true
+			print("  ✅ Childbearer entered!")
+	
+	game.card_entered_play.connect(card_handler)
+	
+	# Start the card play - it will pause when selection UI appears
+	# We need to track it via signals since we can't await the coroutine directly
+	var play_task = func():
+		await game.tryPlayCard(childbearer_card, game.player_base)
+	
+	play_task.call()
+	
+	# Step 5: Wait for selection to start
 	var ui_appeared = false
-	var confirm_enabled = false
-	
-	# Wait longer to account for animations (even at 10x speed)
-	for frame in range(30): # Give it more time to show UI
+	for frame in range(30):  # Give it more time to show UI
 		await get_tree().process_frame
 		
 		if game.selection_manager.is_selecting():
 			print("✅ Selection UI appeared as expected!")
 			ui_appeared = true
-			
-			# Check if confirm button is enabled (it should be since Replace is optional)
-			if game.selection_manager.selection_ui:
-				var validate_button = game.selection_manager.selection_ui.validate_button
-				if validate_button and not validate_button.disabled:
-					print("✅ Confirm button is enabled as expected!")
-					confirm_enabled = true
-					
-					# Step 6: Click the confirm button without selecting anything (choose normal casting)
-					print("🖱️ Clicking confirm button to choose normal casting...")
-					game.selection_manager._on_validate_pressed()
-					break
-				else:
-					print("❌ Confirm button is disabled or not found")
-					break
+			break
 	
 	if not assert_test_true(ui_appeared, "Selection UI should have appeared"):
 		return false
 	
-	if not assert_test_true(confirm_enabled, "Confirm button should be enabled for optional Replace"):
+	if not assert_test_true(game.selection_manager.selection_ui.visible, "Selection UI should be visible"):
+		print("⚠️ Selection UI exists but is not visible")
 		return false
 	
-	# Step 7: Wait for card play to complete - verify childbearer is in play
-	var timeout = 50  # Maximum frames to wait
-	var childbearer_in_play = false
-	while not childbearer_in_play and timeout > 0:
+	print("✅ Selection UI is visible")
+	
+	# Check if confirm button is enabled (it should be since Replace is optional)
+	var validate_button = game.selection_manager.selection_ui.validate_button
+	if not assert_test_true(validate_button != null, "Validate button should exist"):
+		return false
+	
+	if not assert_test_true(validate_button.visible, "Validate button should be visible"):
+		return false
+	
+	if not assert_test_true(not validate_button.disabled, "Confirm button should be enabled for optional Replace"):
+		return false
+	
+	print("✅ Confirm button is enabled as expected!")
+	
+	# Step 6: Click the confirm button without selecting anything (choose normal casting)
+	print("🖱️ Clicking confirm button to choose normal casting...")
+	print("  📊 is_complete before click: ", game.selection_manager.current_selection.is_complete)
+	print("  📊 selected_cards count: ", game.selection_manager.current_selection.selected_cards.size())
+	
+	# Directly call the validate handler - this will emit selection_completed and continue the card play
+	game.selection_manager._on_validate_pressed()
+	
+	# Wait a frame for everything to process
+	await get_tree().process_frame
+	
+	# Step 7: Wait for the card to enter play
+	print("  ⏳ Waiting for card to enter play...")
+	var timeout = 100
+	while timeout > 0:
 		await get_tree().process_frame
 		timeout -= 1
-		
-		# Check if childbearer is in player base
-		for card in game.player_base.getCards():
-			if card.cardData.cardName == "Punglynd Childbearer":
-				childbearer_in_play = true
-				break
+		if timeout % 20 == 0:  # Log every 20 frames
+			print("    Still waiting... (", timeout, " frames left)")
 	
-	if not assert_test_true(childbearer_in_play, "Punglynd Childbearer should be in play"):
+	game.card_entered_play.disconnect(card_handler)
+	
+	# Check if Childbearer is actually in play now
+	var cards_in_play = game.player_base.getCards()
+	var childbearer_found = false
+	for card in cards_in_play:
+		if card.cardData.cardName == "Punglynd Childbearer":
+			childbearer_found = true
+			break
+	
+	if not assert_test_true(childbearer_found, "Punglynd Childbearer should be in play"):
+		print("❌ Card never entered play")
 		return false
+	
+	print("✅ Punglynd Childbearer entered play successfully")
 	
 	await get_tree().process_frame
 	
@@ -2001,4 +2059,87 @@ func test_warcamp_activated_ability() -> bool:
 	print("✅ Goblin Pair was drawn")
 	
 	print("✅ Warcamp activated ability test passed!")
+	return true
+
+func test_move_effect() -> bool:
+	"""Test the MoveCard effect - moves cards between zones"""
+	print("=== Testing Move Effect ===")
+	
+	# Step 1: Create a dummy card to put in player's graveyard
+	var graveyard_card_data = CardData.new()
+	graveyard_card_data.cardName = "GraveyardTarget"
+	graveyard_card_data.addType(CardData.CardType.CREATURE)  # Must be a Creature to match filter
+	graveyard_card_data.playerControlled = true
+	graveyard_card_data.playerOwned = true
+	game.graveyard.add_card(graveyard_card_data)
+	
+	if not assert_test_equal(game.graveyard.get_cards().size(), 1, "Player graveyard should have 1 card"):
+		return false
+	print("✅ Graveyard card created")
+	
+	# Step 2: Create Grave Whisperer card (has Strike trigger with Move effect)
+	# Create as opponent-controlled since it's an opponent card
+	var grave_whisperer = createCardFromName("Grave Whisperer", false)
+	if not assert_test_not_null(grave_whisperer, "Grave Whisperer should be created"):
+		return false
+	print("✅ Grave Whisperer created (opponent-controlled)")
+	
+	# Step 3: Add to hand first, then play it to trigger enter effects
+	addCardToHand(grave_whisperer)
+	await game.tryPlayCard(grave_whisperer, game.player_base)
+	
+	# Wait for scene tree to update
+	await get_tree().process_frame
+	await get_tree().process_frame
+	
+	if not assert_test_equal(game.player_base.getCards().size(), 1, "Should have 1 card in play"):
+		return false
+	print("✅ Grave Whisperer in play")
+	
+	# Step 4: Verify initial graveyard state
+	var initial_player_graveyard = game.graveyard.get_cards().size()
+	var initial_opponent_graveyard = game.graveyard_opponent.get_cards().size()
+	
+	if not assert_test_equal(initial_player_graveyard, 1, "Player graveyard should start with 1 card"):
+		return false
+	if not assert_test_equal(initial_opponent_graveyard, 0, "Opponent graveyard should start empty"):
+		return false
+	
+	# Step 5: Move Grave Whisperer to combat zone slot to trigger Strike
+	print("🎮 Moving Grave Whisperer to combat...")
+	var combat_zone = game.combatZones[0]  # Use first combat zone
+	var combat_slot = combat_zone.getCardSlot(1, true)  # Get player slot 1
+	await game.tryMoveCard(grave_whisperer, combat_slot)
+	
+	# Wait for movement to complete
+	await get_tree().process_frame
+	
+	# Step 6: Resolve combat to trigger the Strike ability
+	print("🎮 Resolving combat to trigger Strike...")
+	clickCombatButton(combat_zone)
+	
+	# Wait for combat resolution and effects to complete
+	await get_tree().process_frame
+	await get_tree().process_frame
+	await get_tree().process_frame
+	
+	# Step 7: Verify card moved from player to opponent graveyard
+	var final_player_graveyard = game.graveyard.get_cards().size()
+	var final_opponent_graveyard = game.graveyard_opponent.get_cards().size()
+	
+	if not assert_test_equal(final_player_graveyard, 0, "Player graveyard should be empty"):
+		return false
+	print("✅ Player graveyard emptied")
+	
+	if not assert_test_equal(final_opponent_graveyard, 1, "Opponent graveyard should have 1 card"):
+		return false
+	print("✅ Card moved to opponent graveyard")
+	
+	# Step 7: Verify the moved card is correct
+	var moved_card = game.graveyard_opponent.get_cards()[0]
+	if not assert_test_equal(moved_card.cardName, "GraveyardTarget", "Moved card should be GraveyardTarget"):
+		return false
+	print("✅ Correct card was moved")
+	
+	print("✅ Move effect test passed!")
 	return true

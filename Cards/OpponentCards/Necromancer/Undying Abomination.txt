@@ -1,0 +1,3 @@
+Name:Undying Abomination
+Types:Creature,Aberration
+CardText:When the player kills me: Return me and 2 other random creatures from the opponent's graveyard to the opponent's deck.

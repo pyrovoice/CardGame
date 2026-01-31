@@ -1,0 +1,4 @@
+Name:Forbidden Ritual
+Types:Spell
+CardText:Cast at the beginning of combat at a location.
+At the end of this combat: Each player mills X cards, where X is the total damage dealt to this location during combat.

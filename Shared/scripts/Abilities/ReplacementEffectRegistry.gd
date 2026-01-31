@@ -60,7 +60,11 @@ static func _cleanup_invalid_effects():
 	
 	for effect in _replacement_effects:
 		var source_card = effect.source_card_data.get_card_object()
-		if not source_card or not is_instance_valid(source_card):
+		if not source_card:
+			print("  ⚠️ [CLEANUP] Card object is null for ", effect.source_card_data.cardName)
+			to_remove.append(effect)
+		elif not is_instance_valid(source_card):
+			print("  ⚠️ [CLEANUP] Card object is not valid for ", effect.source_card_data.cardName)
 			to_remove.append(effect)
 	
 	for effect in to_remove:

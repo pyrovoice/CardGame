@@ -1,0 +1,3 @@
+Name:Withering Curse
+Types:Spell
+CardText:Target the highest might creature at a location. Reduce its might this turn by an amount equal to the number of creatures in the opponent's graveyard (minimum 2).

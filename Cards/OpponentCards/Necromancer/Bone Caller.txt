@@ -1,0 +1,3 @@
+Name:Bone Caller
+Types:Creature,Cultist
+CardText:When played: Create a number of Skeleton tokens equal to the number of creatures in the opponent's graveyard (minimum 2). The Skeletons attack at random locations.

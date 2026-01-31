@@ -6,12 +6,14 @@ const OpponentAIScript = preload("res://Game/scripts/OpponentAI.gd")
 # Game event signals for triggered abilities to listen to
 signal card_entered_play(card_data: CardData)
 signal card_died(card_data: CardData)
-signal attack_declared(card_data: CardData)
+signal attack_declared(combat_zone: CombatZone)
 signal damage_dealt(source_card_data: CardData, target_card_data: CardData, amount: int)
 signal spell_cast(card_data: CardData)
 signal beginning_of_turn(card_data: CardData)
 signal end_of_turn(card_data: CardData)
 signal card_drawn(cards: Array, is_player: bool)
+signal card_changed_zones(card_data: CardData, from_zone: Node, to_zone: Node)
+signal strike(card_data: CardData)
 
 @onready var player_control: PlayerControl = $playerControl
 @onready var player_hand: CardHand = $PlayerHand
@@ -153,8 +155,310 @@ func onTurnStart(skipFirstTurn = false):
 	game_data.setOpponentGold()
 	await opponent_ai.execute_main_phase()
 
+func execute_move_card(card: Card, destination_zone: Node) -> bool:
+	"""Centralized zone change system - handles all card movements with appropriate animations and triggers
+	
+	Primary method when you have a Card object. For CardData-based movement (effects), use execute_move_card_from_data().
+	
+	All costs and selections should be paid/made before calling this.
+	Events and triggers fire AFTER animations complete.
+	
+	Args:
+		card: The Card object to move
+		destination_zone: Target zone Node (Graveyard, Deck, Hand, PlayerBase, CombatantFightingSpot, etc.)
+	
+	Returns:
+		bool: True if move was successful, false otherwise
+	"""
+	if not card:
+		push_error("execute_move_card: card is null")
+		return false
+	
+	if not destination_zone:
+		push_error("execute_move_card: destination_zone is null")
+		return false
+	
+	var origin_zone = card.get_parent()
+	var origin_type = _get_zone_type(origin_zone)
+	var dest_type = _get_zone_type(destination_zone)
+	
+	print("📦 Moving ", card.cardData.cardName, " from ", origin_type, " to ", dest_type)
+	
+	# Route to specific movement handlers based on transition type
+	match [origin_type, dest_type]:
+		["Deck", "Hand"]:
+			await _move_deck_to_hand(card, destination_zone)
+		[_, "PlayerBase"]:
+			await _move_to_battlefield(card, destination_zone)
+		["PlayerBase", "Player's Graveyard"], ["PlayerBase", "Opponent's Graveyard"], \
+		["Combat", "Player's Graveyard"], ["Combat", "Opponent's Graveyard"], \
+		["Unknown", "Player's Graveyard"], ["Unknown", "Opponent's Graveyard"]:
+			await _move_to_graveyard(card, destination_zone)
+		["PlayerBase", "Combat"]:
+			await _move_base_to_combat(card, destination_zone)
+		["Combat", "PlayerBase"]:
+			await _move_combat_to_base(card, destination_zone)
+		_:
+			await _move_generic(card, destination_zone)
+	
+	print("✅ Move complete: ", card.cardData.cardName)
+	return true
+
+func execute_move_card_from_data(card_data: CardData, origin_zone: Node, destination_zone: Node) -> bool:
+	"""CardData-based movement - finds or creates Card object then moves it
+	
+	Use this when you only have CardData (e.g., from graveyard/deck effects).
+	If you already have a Card object, use execute_move_card() instead.
+	
+	Args:
+		card_data: The CardData to move
+		origin_zone: Source zone Node to find the Card
+		destination_zone: Target zone Node
+	
+	Returns:
+		bool: True if move was successful, false otherwise
+	"""
+	if not card_data:
+		push_error("execute_move_card_from_data: card_data is null")
+		return false
+	
+	if not origin_zone or not destination_zone:
+		push_error("execute_move_card_from_data: Invalid zone(s)")
+		return false
+	
+	# Find or create the Card object from the origin zone
+	var card = _get_card_from_zone(card_data, origin_zone)
+	if not card:
+		push_error("execute_move_card_from_data: Could not find/create card")
+		return false
+	
+	# Use the main Card-based movement method
+	return await execute_move_card(card, destination_zone)
+
+
+func _get_zone_type(container: Node) -> String:
+	"""Determine the type of a zone container for routing"""
+	if container is CardContainer:
+		if container == deck or container == deck_opponent:
+			return "Deck"
+		elif container == graveyard:
+			return "Player's Graveyard"
+		elif container == graveyard_opponent:
+			return "Opponent's Graveyard"
+		elif container == extra_deck:
+			return "ExtraDeck"
+		else:
+			return "Container"
+	elif container is CardHand:
+		return "Hand"
+	elif container is PlayerBase:
+		return "PlayerBase"
+	elif container is CombatantFightingSpot:
+		return "Combat"
+	else:
+		return "Unknown"
+
+
+func _get_card_from_zone(card_data: CardData, zone_container: Node) -> Card:
+	"""Get or create a Card object from a zone for animation"""
+	var card: Card = null
+	
+	if zone_container is CardContainer:
+		# Create Card for animation (createCardFromData removes from container automatically)
+		if not zone_container.cards.has(card_data):
+			push_error("_get_card_from_zone: CardData not found in container")
+			return null
+		card = createCardFromData(card_data, card_data.playerControlled, zone_container)
+		GameUtility.reparentCardWithoutMovingRepresentation(card, self)
+		card.global_position = zone_container.global_position
+	elif zone_container is CardHand:
+		# Find existing Card in hand
+		for c in zone_container.get_children():
+			if c is Card and c.cardData == card_data:
+				card = c
+				GameUtility.reparentCardWithoutMovingRepresentation(card, self)
+				break
+	elif zone_container is PlayerBase:
+		# Find existing Card in PlayerBase
+		for c in zone_container.get_children():
+			if c is Card and c.cardData == card_data:
+				card = c
+				GameUtility.reparentCardWithoutMovingRepresentation(card, self)
+				break
+	elif zone_container is CombatantFightingSpot:
+		# Get card from combat spot
+		card = zone_container.getCard()
+		if card and card.cardData == card_data:
+			GameUtility.reparentCardWithoutMovingRepresentation(card, self)
+		else:
+			card = null
+	elif zone_container is Game:
+		# Card is parented to game node (e.g., during casting) - search direct children
+		for c in zone_container.get_children():
+			if c is Card and c.cardData == card_data:
+				card = c
+				# Already parented to game, no need to reparent
+				break
+	
+	return card
+
+func _move_deck_to_hand(card: Card, dest: Node):
+	"""Handle deck to hand movement - draw animation + trigger"""
+	# This should use drawCard() for proper multi-card draw animation
+	# But for single programmatic draws from effects:
+	var origin_pos = card.global_position
+	card.setFlip(true)
+	
+	# Simple draw animation
+	var draw_position = Vector3(0, 2, 1)
+	var animator = card.getAnimator()
+	animator.draw_card(
+		origin_pos,
+		draw_position,
+		dest.global_position,
+		0,
+		card.cardData.playerControlled and card.is_facedown
+	)
+	await get_tree().create_timer(0.6).timeout
+	
+	# Reparent to hand and arrange
+	GameUtility.reparentCardWithoutMovingRepresentation(card, dest)
+	dest.arrange_cards_fan([card])
+	
+	# Trigger card_drawn event
+	card_drawn.emit([card], card.cardData.playerControlled)
+
+func _move_to_battlefield(card: Card, dest: Node):
+	"""Handle any zone to battlefield - entering play"""
+	card.setFlip(true)
+	card.getAnimator().make_small()
+	
+	# Reparent to battlefield
+	GameUtility.reparentCardWithoutMovingRepresentation(card, dest)
+	
+	# Animate to battlefield
+	var target_position = player_base.getNextEmptyLocation()
+	if target_position == Vector3.INF:
+		push_error("No space on battlefield")
+		return
+	
+	var local_target = target_position + Vector3(0, 0.2, 0)
+	var tween = card.getAnimator().move_to_position(local_target, 0.8, dest)
+	if tween:
+		await tween.finished
+	
+	# Trigger card entered play
+	emit_game_event(TriggeredAbility.GameEventType.CARD_ENTERED_PLAY, card.cardData)
+	
+	# Apply static and replacement abilities
+	for ability in card.cardData.static_abilities:
+		ability.apply_to_game(self)
+	for ability in card.cardData.replacement_abilities:
+		ability.apply_to_game(self)
+
+func _move_to_graveyard(card: Card, dest: Node):
+	"""Handle battlefield/anywhere to graveyard - death"""
+	# Animate to graveyard
+	var tween = card.getAnimator().move_to_position(dest.global_position, 0.5)
+	if tween:
+		await tween.finished
+	
+	# Remove battlefield abilities if leaving battlefield
+	var origin_zone = card.get_parent()
+	var origin_type = _get_zone_type(origin_zone)
+	if origin_type == "PlayerBase" or origin_type == "Combat":
+		for ability in card.cardData.triggered_abilities:
+			ability.unregister_from_game(self)
+		for ability in card.cardData.static_abilities:
+			ability.remove_from_game(self)
+		for ability in card.cardData.replacement_abilities:
+			ability.remove_from_game(self)
+		
+		# Trigger card died
+		emit_game_event(TriggeredAbility.GameEventType.CARD_DIED, card.cardData)
+	
+	# Unsubscribe from game signals and add to graveyard
+	card.cardData.unsubscribe_from_game_signals(self)
+	dest.add_card(card.cardData)
+	
+	# Remove from parent immediately to prevent being found by getAllCardsInPlay() again
+	# queue_free() is deferred, so the card would stay in parent.get_children() otherwise
+	if card.get_parent():
+		card.get_parent().remove_child(card)
+	
+	card.queue_free()
+
+func _move_base_to_combat(card: Card, dest: Node):
+	"""Handle PlayerBase to Combat - attack movement"""
+	var origin_zone = card.get_parent()
+	
+	# Move to combat spot (setCard handles animation/positioning)
+	dest.setCard(card)
+	
+	# Emit generic zone change
+	card_changed_zones.emit(card.cardData, origin_zone, dest)
+
+func _move_combat_to_base(card: Card, dest: Node):
+	"""Handle Combat to PlayerBase - retreat movement"""
+	var origin_zone = card.get_parent()
+	
+	# Animate back to base
+	var target_position = player_base.getNextEmptyLocation()
+	if target_position == Vector3.INF:
+		return
+	
+	var local_target = target_position + Vector3(0, 0.2, 0)
+	var tween = card.getAnimator().move_to_position(local_target, 0.8, dest)
+	if tween:
+		await tween.finished
+	
+	# Emit generic zone change
+	card_changed_zones.emit(card.cardData, origin_zone, dest)
+
+func _move_generic(card: Card, dest: Node):
+	"""Handle any other zone transitions with generic animation"""
+	var origin_zone = card.get_parent()
+	var origin_type = _get_zone_type(origin_zone)
+	var dest_type = _get_zone_type(dest)
+	
+	card.setFlip(true)
+	
+	# Animate to destination
+	var tween = card.getAnimator().move_to_position(dest.global_position, 0.5)
+	if tween:
+		await tween.finished
+	
+	# Handle destination based on type
+	if dest is CardContainer:
+		# Add to container and destroy card
+		dest.add_card(card.cardData)
+		card.queue_free()
+	elif dest is CardHand:
+		# Reparent to hand and arrange
+		GameUtility.reparentCardWithoutMovingRepresentation(card, dest)
+		dest.arrange_cards_fan([card])
+	elif dest is CombatantFightingSpot:
+		dest.setCard(card)
+	else:
+		push_error("_move_generic: Unsupported destination type")
+		return
+	
+	# Remove battlefield abilities if leaving battlefield
+	if origin_type == "PlayerBase" or origin_type == "Combat":
+		for ability in card.cardData.static_abilities:
+			ability.remove_from_game(self)
+		for ability in card.cardData.replacement_abilities:
+			ability.remove_from_game(self)
+	
+	# Emit generic zone change trigger
+	card_changed_zones.emit(card.cardData, origin_zone, dest)
+
 func tryMoveCard(card: Card, target_location: Node3D) -> void:
-	"""Attempt to move a card to the specified location - handles different movement types based on source zone"""
+	"""Attempt to move a card to the specified location - handles user-initiated movement based on source zone
+	
+	This method is for USER INPUT (drag/drop, clicks). For programmatic card movement from effects,
+	use execute_move_card() instead.
+	"""
 	if not card:
 		return
 	
@@ -173,28 +477,43 @@ func tryMoveCard(card: Card, target_location: Node3D) -> void:
 		GameZone.e.PLAYER_BASE:
 			# Moving from PlayerBase to combat - this is an attack
 			if target_location is CombatantFightingSpot:
-				executeCardAttacks(card, target_location as CombatantFightingSpot)
-			else:
-				print("❌ Cannot move card from PlayerBase to non-combat location")
-		
+				var combat_spot = target_location as CombatantFightingSpot
+				
+				# Find empty slot if target is occupied
+				if combat_spot.getCard():
+					combat_spot = (combat_spot.get_parent() as CombatZone).getFirstEmptyLocation(card.cardData.playerControlled)
+				
+				if combat_spot == null:
+					print("No empty slot found for " + card.name)
+					return
+				
+				# Check if card can move (not tapped)
+				if not can_card_move(card):
+					return
+				
+				# Tap the card for movement and mark as attacked
+				card.cardData.tap()
+				card.cardData.hasAttackedThisTurn = true
+				
+				# Move using centralized system
+				await execute_move_card(card, combat_spot)
+	
 		GameZone.e.COMBAT_ZONE:
-			# Moving from combat back to PlayerBase - retreat/return
-			
+		# Moving from combat zone
 			if target_location is PlayerBase:
-				if (source_zone == GameZone.e.PLAYER_BASE and target_zone == GameZone.e.COMBAT_ZONE) or \
-				   (source_zone == GameZone.e.COMBAT_ZONE and target_zone == GameZone.e.PLAYER_BASE):
-					if can_card_move(card):
-						moveCardToPlayerBase(card)
-			elif source_zone == GameZone.e.COMBAT_ZONE and \
-			 card.get_parent().get_parent() == target_location.get_parent():
+			# Retreat from combat to base
+				if can_card_move(card):
+					# Tap card for movement
+					card.cardData.tap()
+					
+					# Move using centralized system
+					await execute_move_card(card, player_base)
+			elif target_location is CombatantFightingSpot and \
+			card.get_parent().get_parent() == target_location.get_parent():
+			# Swapping positions within the same combat zone
 				exchange_card_in_spots(card.get_parent(), target_location)
 			else:
-				print("❌ Cannot move card from CombatZone to non-PlayerBase location")
-				# Reset card to rest state when move fails
-				card.getAnimator().go_to_rest()
-		
-		_:
-			print("❌ Cannot move card from zone: ", source_zone)
+				print("❌ Cannot move card from combat to that location")
 	
 func tryPlayCard(card: Card, target_location: Node3D, pre_selections: SelectionManager.CardPlaySelections = null, pay_cost = true, from_default_zones = true) -> void:
 	if not card:
@@ -260,7 +579,19 @@ func tryPlayCard(card: Card, target_location: Node3D, pre_selections: SelectionM
 	await tryPayAndSelectsForCardPlay(card, source_zone, selection_data, pay_cost)
 	
 	if target_location is CombatantFightingSpot:
-		await executeCardAttacks(card, target_location as CombatantFightingSpot)
+		var combat_spot = target_location as CombatantFightingSpot
+		
+		# Find empty slot if target is occupied
+		if combat_spot.getCard():
+			combat_spot = (combat_spot.get_parent() as CombatZone).getFirstEmptyLocation(card.cardData.playerControlled)
+		
+		if combat_spot:
+			# Check if card can be tapped
+			if card.cardData.can_tap():
+				card.cardData.tap()
+				card.cardData.hasAttackedThisTurn = true
+				
+				await execute_move_card(card, combat_spot)
 
 func _canPlayCard(source_zone: GameZone.e) -> bool:
 	# Can play cards from hand or extra deck
@@ -274,12 +605,13 @@ func _executeCardPlay(card: Card, source_zone: GameZone.e, spell_targets: Array)
 	# Handle spells differently - they cast their effects then go to graveyard
 	if card.cardData.hasType(CardData.CardType.SPELL):
 		await _executeSpellWithTargets(card, spell_targets)
-		# Move spell to graveyard after effects resolve
-		putInOwnerGraveyard(card)
+		# Move spell to graveyard after effects resolve using centralized movement system
+		var dest_graveyard = graveyard if card.cardData.playerOwned else graveyard_opponent
+		await execute_move_card(card, dest_graveyard)
 	else:
 		# Non-spell cards enter the battlefield normally
 		await executeCardEnters(card, source_zone, GameZone.e.PLAYER_BASE)
-	resolveStateBasedAction()
+	await resolveStateBasedAction()
 
 func _executeSpellWithTargets(card: Card, targets: Array):
 	if not card.cardData.hasType(CardData.CardType.SPELL):
@@ -334,63 +666,14 @@ func _executeSpellDamageWithTargets(card: Card, parameters: Dictionary, targets:
 	AnimationsManagerAL.show_floating_text(self, target.global_position, "-" + str(damage_amount), Color.RED)
 	
 	# Resolve state-based actions after damage
-	resolveStateBasedAction()
+	await resolveStateBasedAction()
 
-func executeCardAttacks(card: Card, combat_spot: CombatantFightingSpot):
-	if combat_spot.getCard():
-		combat_spot = (combat_spot.get_parent() as CombatZone).getFirstEmptyLocation(card.cardData.playerControlled)
-	
-	if combat_spot == null:
-		print("No empty slot found" + card.name + " of " + str(card.cardData.playerControlled))
-		return
-	# Move the card to combat zone
-	var attack_successful = moveCardToCombatZone(card, combat_spot)
-	
-	if not attack_successful:
-		print("❌ Failed to move card to combat zone")
-		return
 	
 	# Emit attack_declared signal for triggered abilities
 	attack_declared.emit(card.cardData)
 	
 	# Resolve state-based actions after attack
-	resolveStateBasedAction()
-	
-
-func moveCardToCombatZone(card: Card, zone: CombatantFightingSpot) -> bool:
-	# Check if card can be tapped (required for movement)
-	if not card.cardData.can_tap():
-		print("❌ Cannot move card - already tapped: ", card.cardData.cardName)
-		return false
-	
-	# Tap the card for movement and mark as attacked
-	card.cardData.tap()
-	card.cardData.hasAttackedThisTurn = true
-	
-	# Let setCard handle the positioning and reparenting
-	zone.setCard(card)
-	return true
-
-func moveCardToPlayerBase(card: Card, require_tap: bool = true) -> Tween:
-	var target_position = player_base.getNextEmptyLocation()
-	if target_position == Vector3.INF:  # No empty location available
-		return null
-	
-	# Only check tapping for actual movement actions (not initial battlefield entry)
-	if require_tap:
-		# Check if card can be tapped (required for movement)
-		if not card.cardData.can_tap():
-			print("❌ Cannot move card - already tapped: ", card.cardData.cardName)
-			return null
-		
-		# Tap the card for movement
-		card.cardData.tap()
-	
-	# Use local position since card will be reparented to player_base
-	var local_target = target_position + Vector3(0, 0.2, 0)
-	
-	# Use the enhanced animate_card_to_position with reparenting
-	return card.getAnimator().move_to_position(local_target, 0.8, player_base)
+	await resolveStateBasedAction()
 
 func drawCard(howMany: int = 1, player = true):
 	var _deck = deck if player else deck_opponent
@@ -433,7 +716,7 @@ func drawCard(howMany: int = 1, player = true):
 	
 	# Emit card_drawn signal for triggered abilities
 	card_drawn.emit(cards, player)
-	resolveStateBasedAction()
+	await resolveStateBasedAction()
 
 func resolveCombats():
 	var lock = playerControlLock.addLock()
@@ -505,28 +788,51 @@ func _get_target_zone(target_location: Node3D) -> GameZone.e:
 	
 func resolveCombatInZone(combatZone: CombatZone):
 	print("🔥 === Resolving Combat in Zone ===")
+	
+	# Step 1: Mark all attacking cards as having attacked
+	for slot_index in range(1, 4):
+		var player_card = combatZone.getCardSlot(slot_index, true).getCard()
+		if player_card:
+			player_card.cardData.hasAttackedThisTurn = true
+			print("⚔️ ", player_card.cardData.cardName, " is attacking")
+	
+	# Step 2: Trigger attack declared once for the combat location (before fights)
+	attack_declared.emit(combatZone)
+	await resolve_queue()
+	
+	# Step 3: Resolve each slot's combat
 	for slot_index in range(1, 4):
 		var player_card = combatZone.getCardSlot(slot_index, true).getCard()
 		var opponent_card = combatZone.getCardSlot(slot_index, false).getCard()
+		
 		if not player_card and not opponent_card:
-			return
+			continue
+		
 		var player_damage = player_card.getPower() if player_card else 0
 		var opponent_damage = opponent_card.getPower() if opponent_card else 0
-		var player_strike
-		var opponent_strike
+		
+		# Combat strike animations and damage
 		if player_card and opponent_card:
-			player_strike = player_card.getAnimator().animate_combat_strike(opponent_card)
-			opponent_strike = opponent_card.getAnimator().animate_combat_strike(player_card)
-			await player_strike.finished
-			await opponent_strike.finished
+			# Both cards strike each other
+			player_card.getAnimator().animate_combat_strike(opponent_card)
+			opponent_card.getAnimator().animate_combat_strike(player_card)
+			
+			# Emit strike events for triggered abilities
+			await emit_game_event(TriggeredAbility.GameEventType.STRIKE, player_card.cardData)
+			await emit_game_event(TriggeredAbility.GameEventType.STRIKE, opponent_card.cardData)
 			player_card.receiveDamage(opponent_damage)
 			opponent_card.receiveDamage(player_damage)
-		if player_card and not opponent_card:
+		elif player_card and not opponent_card:
+			# Player attacks location directly
+			await emit_game_event(TriggeredAbility.GameEventType.STRIKE, player_card.cardData)
 			_apply_damage_to_location(player_damage, true, combatZone)
 		elif opponent_card and not player_card:
+			# Opponent attacks location directly
+			await emit_game_event(TriggeredAbility.GameEventType.STRIKE, opponent_card.cardData)
 			_apply_damage_to_location(opponent_damage, false, combatZone)
-			
-	resolveStateBasedAction()
+	
+	await resolveStateBasedAction()
+	resolve_queue()
 
 func _apply_damage_to_location(damage: int, is_player_damage: bool, combatZone: CombatZone):
 	if damage <= 0:
@@ -563,13 +869,22 @@ func _handle_location_captured(combatZone: CombatZone, captured_by_player: bool)
 
 func resolveStateBasedAction():
 	var cards_in_play = getAllCardsInPlay()
+	print("🔍 [SBA] Checking ", cards_in_play.size(), " cards in play for state-based actions")
 	
 	for c:Card in cards_in_play:
+		# Skip cards that are no longer valid (already freed or moved)
+		if not c or not is_instance_valid(c) or not c.cardData:
+			print("  ⚠️ [SBA] Skipping invalid card")
+			continue
+			
 		var damage = c.getDamage()
 		var power = c.getPower()
 		
 		if damage > 0 && damage >= power:
-			putInOwnerGraveyard(c)
+			print("  💀 [SBA] ", c.cardData.cardName, " is dead (damage: ", damage, " >= power: ", power, "), moving to graveyard")
+			var dest_zone = graveyard if c.cardData.playerOwned else graveyard_opponent
+			await execute_move_card(c, dest_zone)
+			print("  ✅ [SBA] Finished moving ", c.cardData.cardName if is_instance_valid(c) and c.cardData else "[freed card]", " to graveyard")
 	if game_data.player_life.getValue() <= 0:
 		get_tree().change_scene_to_file("res://MainMenu/scenes/MainMenu.tscn")
 	if game_data.player_points.getValue() >= 6:
@@ -599,54 +914,10 @@ func opponentMainOne():
 		print("⚠️ OpponentAI not initialized")
 
 func getAllCardsInPlay() -> Array[Card]:
-	return GameUtility.getAllCardsInPlay(self) 
-
-func putInOwnerGraveyard(cards):
-	var cards_array: Array[Card] = []
-	
-	# Handle both single cards and arrays
-	if cards is Card:
-		cards_array = [cards]
-	elif cards is Array:
-		cards_array = cards
-	else:
-		print("❌ putInOwnerGraveyard: Invalid input type, expected Card or Array[Card]")
-		return
-	
-	if cards_array.is_empty():
-		return
-	
-	# Start all animations simultaneously and collect their tweens
-	var tweens = []
-	for card in cards_array:
-		if card and is_instance_valid(card):
-			GameUtility.reparentCardWithoutMovingRepresentation(card, self)
-			card.getAnimator().move_to_position(graveyard.global_position)
-	
-	# Wait for all animations to complete in parallel
-	if tweens.size() > 0:
-		# Wait for all tweens to finish
-		for tween in tweens:
-			if tween and tween.is_valid():
-				await tween.finished
-	
-	# Add cards to graveyard and clean up after all animations complete
-	for card in cards_array:
-		if card and is_instance_valid(card):
-			# Unregister abilities from game signals
-			for ability in card.cardData.triggered_abilities:
-				ability.unregister_from_game(self)
-			
-			for ability in card.cardData.static_abilities:
-				ability.remove_from_game(self)
-			
-			for ability in card.cardData.replacement_abilities:
-				ability.remove_from_game(self)
-			
-			# Unsubscribe card data from game signals before destroying
-			card.cardData.unsubscribe_from_game_signals(self)
-			graveyard.add_card(card.cardData)
-			card.queue_free()
+	var cards = GameUtility.getAllCardsInPlay(self)
+	var card_names = cards.map(func(c): return c.cardData.cardName if c and is_instance_valid(c) and c.cardData else "[invalid]")
+	print("📋 [getAllCardsInPlay] Found ", cards.size(), " cards: ", card_names)
+	return cards 
 
 static var objectCount = 0
 static func getObjectCountAndIncrement():
@@ -677,31 +948,44 @@ func playCardFromDeck(card_data: CardData):
 	print("✅ Card played from deck successfully: ", card_data.cardName)
 
 func executeCardEnters(card: Card, source_zone: GameZone.e, target_zone: GameZone.e):
-	# Move the card to player base (no tapping required for battlefield entry)
+	"""Execute card entering the battlefield - uses Card object directly for user-played cards"""
+	if not card:
+		push_error("executeCardEnters called with null card")
+		return
+	
+	# For user-played cards, the Card object already exists but may not be in a proper zone
+	# We handle the battlefield entry directly here instead of using execute_move_card
+	var dest_zone = player_base
+	
+	# Set flip and size
 	card.setFlip(true)
 	card.getAnimator().make_small()
-	var tween = moveCardToPlayerBase(card, false)  # false = don't require tap for entering battlefield
 	
-	if not tween:
-		print("❌ Failed to move card to player base")
+	# Reparent to battlefield
+	GameUtility.reparentCardWithoutMovingRepresentation(card, dest_zone)
+	
+	# Animate to battlefield
+	var target_position = player_base.getNextEmptyLocation()
+	if target_position == Vector3.INF:
+		push_error("No space on battlefield")
 		return
-	else:
+	
+	var local_target = target_position + Vector3(0, 0.2, 0)
+	var tween = card.getAnimator().move_to_position(local_target, 0.8, dest_zone)
+	if tween:
 		await tween.finished
 	
-	# Emit card_entered_play signal to trigger any "when a card enters play" abilities
-	# Abilities are already registered when game starts, so they're listening to signals
+	# Trigger card entered play
 	emit_game_event(TriggeredAbility.GameEventType.CARD_ENTERED_PLAY, card.cardData)
 	
-	# Apply static abilities (only active while on battlefield)
+	# Apply static and replacement abilities
 	for ability in card.cardData.static_abilities:
 		ability.apply_to_game(self)
-	
-	# Register replacement effects (only active while on battlefield)
 	for ability in card.cardData.replacement_abilities:
 		ability.apply_to_game(self)
 	
 	# Resolve state-based actions after card enters
-	resolveStateBasedAction()
+	await resolveStateBasedAction()
 
 func getCardZone(card: Card) -> GameZone.e:
 	return GameUtility.getCardZone(self, card)
@@ -1235,36 +1519,9 @@ func trigger_phase(phase_name: String):
 			await emit_game_event(TriggeredAbility.GameEventType.BEGINNING_OF_TURN, null)
 		"EndOfTurn":
 			await emit_game_event(TriggeredAbility.GameEventType.END_OF_TURN, null)
-			await end_of_turn_return_cards_to_base()
+			# Note: Cards no longer automatically return from combat at end of turn
 		"TurnStarted":
 			await emit_game_event(TriggeredAbility.GameEventType.TURN_STARTED, null)
-
-func end_of_turn_return_cards_to_base():
-	"""Return all player-controlled cards from combat locations to playerBase"""
-	var cards_to_return: Array[Card] = []
-	
-	# Collect all player cards in combat zones
-	for combat_zone in combatZones:
-		for ally_spot in combat_zone.allySpots:
-			var card = ally_spot.getCard()
-			if card and card.cardData.playerControlled:
-				cards_to_return.append(card)
-	
-	# Return cards to player base - they will untap at start of next turn
-	for card in cards_to_return:
-		# First remove from combat spot by reparenting to game temporarily
-		GameUtility.reparentWithoutMoving(card, self)
-		
-		# Then move to player base using a simple position animation (don't use moveCardToPlayerBase as it requires tapping)
-		var target_position = player_base.getNextEmptyLocation()
-		if target_position != Vector3.INF:
-			var local_target = target_position + Vector3(0, 0.2, 0)
-			card.getAnimator().move_to_position(local_target, 0.8, player_base)
-	
-	# Wait a moment for animations to start
-	await get_tree().create_timer(0.1).timeout
-	
-	print("🔄 End of turn: Returned ", cards_to_return.size(), " cards to player base")
 
 func resolve_queue():
 	"""Resolve all resolvables in the queue one by one"""
@@ -1286,17 +1543,8 @@ func resolve_queue():
 		
 		print("  ⚡ Resolving: ", queued_resolvable.source_card_data.cardName, " - ", queued_resolvable.ability.get_description())
 		
-		# Execute the resolvable ability
-		await AbilityManagerAL.executeAbilityEffect(
-			queued_resolvable.source_card_data,
-			queued_resolvable.ability,
-			self
-		)
-		
-		# Resolve state-based actions after each resolvable
-		resolveStateBasedAction()
-	
-	is_resolving_triggers = false
+		# Execute the resolvable ability with event context
+		await AbilityManagerAL.executeAbilityEffect(queued_resolvable.source_card_data, queued_resolvable.ability, self)
 	print("✅ [RESOLVABLE QUEUE] Resolution complete")
 
 func emit_game_event(event_type: TriggeredAbility.GameEventType, card_data: CardData = null):
@@ -1317,6 +1565,10 @@ func emit_game_event(event_type: TriggeredAbility.GameEventType, card_data: Card
 			end_of_turn.emit(card_data)
 		TriggeredAbility.GameEventType.BEGINNING_OF_TURN:
 			beginning_of_turn.emit(card_data)
+		TriggeredAbility.GameEventType.STRIKE:
+			strike.emit(card_data)
 	
 	# After emitting the event, resolve any resolvables that were added to the queue
 	await resolve_queue()
+
+# Note: card_changed_zones is emitted directly in movement handlers, not through emit_game_event

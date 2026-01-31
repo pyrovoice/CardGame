@@ -5,6 +5,8 @@ class_name ReplacementAbility
 ## Example: "If one or more Goblin token would be created, create that many plus one instead"
 ## Registers a ReplacementEffect that intercepts and modifies effects as they resolve
 
+var replacement_effect: ReplacementEffect = null  # The replacement effect implementation
+
 func _init(p_owner: CardData, p_effect: EffectType.Type, p_replacement_effect: ReplacementEffect):
 	super(p_owner)
 	effect_type = p_effect

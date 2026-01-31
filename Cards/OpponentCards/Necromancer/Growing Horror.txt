@@ -1,0 +1,5 @@
+Name:Growing Horror
+Types:Creature,Aberration
+CardText:Indestructible
+Whenever a creature I damaged dies, I gain might equal to that creature's might.
+After the first time I gain might this way: I gain "Pay 3: Exile me. Any player may activate this ability."

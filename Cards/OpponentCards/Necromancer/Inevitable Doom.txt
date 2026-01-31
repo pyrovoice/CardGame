@@ -1,0 +1,5 @@
+Name:Inevitable Doom
+Types:Artifact
+CardText:When played, attach to a location.
+Countdown 1: Destroy all creatures the player controls at this location.
+Sacrifice a creature here: Raise the countdown to 2. Any player may activate this ability.

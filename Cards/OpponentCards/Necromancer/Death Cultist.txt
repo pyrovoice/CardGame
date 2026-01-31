@@ -1,0 +1,3 @@
+Name:Death Cultist
+Types:Creature,Cultist
+CardText:I get +1/+1 for each creature in all graveyards.

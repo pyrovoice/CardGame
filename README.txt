@@ -80,6 +80,12 @@ Questions:
 - How much can a player prepare before starting scoring? What are ways to prevent the player from just farming resources before winning in one swoop?
 - How is the opponent's cards decided? First draft: Start turn by drawing up to its danger level, then play revealed stuff and keep other hidden, then player can interact with played or stuff in hand, then combat phase where opponent plays the rest, then resolve and end turn
 
+Opponent AI:
+- Ai has a budget that will determine the strength of hands and how much it can spend additionaly. This raises every turn and with game events, and lowers when winning a location
+- Each location will be filled up to the opponent's budget, and the player has knowledge of spells hapening here and cards played there. Those spells will automatically target according to certain conditions
+- Ai has an additional hand, those cards cost budget to play and will automatically be played when conditions are met ("3+ attacker on location and creature of might 5+? Play a destruction spell on it"). The play can also get knowledge on what's in the hand and interact or destroy it before fighting.
+- Each opponent will have a mechanic for it that the player need to play around, offering interesting options for the player as well as restricting what they should do.
+
 Other stuff:
 - Find a way to have a Sphere mask transition: https://www.reddit.com/r/unrealengine/comments/lrd086/landscape_transition_effect_using_sphere_masks/ or https://www.reddit.com/r/godot/comments/1nidl3l/worldmerging_shader/ or https://github.com/lukky-nl/Stencil-Buffer-Holographic-Display
 - Make each location resolved on player choice, with possibility to play in-between each fight? Offers more startegy to the player, less confusion, gameplay possibility of repeating a battle...

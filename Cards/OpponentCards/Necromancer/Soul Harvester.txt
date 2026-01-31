@@ -1,0 +1,4 @@
+Name:Soul Harvester
+Types:Creature,Aberration
+CardText:Elusive
+Whenever a creature dies at this location, give one gold to the opponent.

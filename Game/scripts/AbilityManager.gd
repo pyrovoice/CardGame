@@ -57,7 +57,13 @@ func executeAbilityEffect(source_card_data: CardData, ability, game_context: Gam
 	if ability is TriggeredAbility or ability is ActivatedAbility or ability is StaticAbility or ability is ReplacementAbility or ability is SpellAbility:
 		effect_type_str = EffectType.type_to_string(ability.effect_type)
 		effect_parameters = ability.effect_parameters
-		target_conditions = ability.trigger_conditions if "trigger_conditions" in ability else {}
+		# TriggeredAbility uses trigger_conditions, ActivatedAbility/SpellAbility use targeting_requirements
+		if ability is TriggeredAbility:
+			target_conditions = ability.trigger_conditions
+		elif ability is ActivatedAbility or ability is SpellAbility:
+			target_conditions = ability.targeting_requirements
+		else:
+			target_conditions = {}
 	elif ability is Dictionary:
 		effect_type_str = ability.get("effect_type", "")
 		effect_parameters = ability.get("effect_parameters", {})

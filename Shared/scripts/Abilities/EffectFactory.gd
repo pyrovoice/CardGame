@@ -27,6 +27,12 @@ static func create_effect(effect_type: EffectType.Type) -> Effect:
 		EffectType.Type.ADD_TYPE:
 			return AddTypeEffect.new()
 		
+		EffectType.Type.MOVE_CARD:
+			return MoveCardEffect.new()
+		
+		EffectType.Type.SWITCH_POSITIONS:
+			return SwitchPositionsEffect.new()
+		
 		_:
 			push_error("Unknown effect type: " + str(effect_type))
 			return null

@@ -55,15 +55,15 @@ static func parse_triggered_ability(trigger_text: String, svar_effects: Dictiona
 		effect_parameters = parse_effect_parameters(svar_effects[effect_name])
 	
 	# Create triggered ability
-	var triggered_ability = TriggeredAbility.new(
-		TriggeredAbility.TriggerType.CHANGES_ZONE,
-		trigger_conditions,
-		effect_name,
-		effect_parameters,
-		description
+	var triggered_ability = TriggeredAbility.new().setup(
+		card_data,
+		EffectType.string_to_type(effect_name),
+		TriggeredAbility.TriggerType.CHANGES_ZONE
 	)
+	triggered_ability.trigger_conditions = trigger_conditions
+	triggered_ability.effect_parameters = effect_parameters
 	
-	return triggered_ability
+	return triggered_ability	return triggered_ability
 
 static func parse_effect_parameters(effect_text: String) -> Dictionary:
 	var parameters: Dictionary = {}

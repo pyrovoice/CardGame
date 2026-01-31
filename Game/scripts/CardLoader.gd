@@ -45,7 +45,14 @@ func parse_card_data(card_text: String) -> CardData:
 			if parts.size() >= 2:
 				var key = parts[0].strip_edges()
 				var value = parts[1].strip_edges()
-				properties[key] = value
+				
+				# Handle keys that can have multiple values (store as array)
+				if key in ["SVar", "T", "R", "AA", "A", "K", "E"]:
+					if not properties.has(key):
+						properties[key] = []
+					properties[key].append(value)
+				else:
+					properties[key] = value
 	
 	# Set card properties
 	if "Name" in properties:
@@ -84,6 +91,9 @@ func parse_card_data(card_text: String) -> CardData:
 		if ability:
 			card_data.add_ability(ability)
 	
+	# Add automatic triggered abilities for special keywords
+	_add_keyword_triggered_abilities(card_data)
+	
 	# Parse additional costs
 	card_data.additionalCosts = parse_additional_costs(properties)
 	
@@ -101,9 +111,13 @@ func parse_spell_effects(properties: Dictionary, card_data: CardData) -> Array[S
 	var spell_effects: Array[SpellAbility] = []
 	
 	# Look for E: lines (Effect lines for spells)
-	for key in properties.keys():
-		if key == "E":
-			var effect_line = properties[key]
+	if properties.has("E"):
+		var effect_lines = properties["E"]
+		# Handle both single string and array of strings
+		if typeof(effect_lines) == TYPE_STRING:
+			effect_lines = [effect_lines]
+		
+		for effect_line in effect_lines:
 			var spell_ability = parse_single_spell_effect(effect_line, card_data)
 			if spell_ability:
 				spell_effects.append(spell_ability)
@@ -157,10 +171,14 @@ func parse_abilities(properties: Dictionary, card_data: CardData) -> Array[CardA
 	var svar_effects: Dictionary = {}
 	
 	# First pass: collect all SVar definitions
-	for key in properties.keys():
-		if key == "SVar":
+	if properties.has("SVar"):
+		var svar_lines = properties["SVar"]
+		# Handle both single string and array of strings
+		if typeof(svar_lines) == TYPE_STRING:
+			svar_lines = [svar_lines]
+		
+		for svar_line in svar_lines:
 			# Parse the SVar line which has format "SVar:CreateOneMoreToken$ ReplaceToken | Type$ AddToken | Amount$ 1"
-			var svar_line = properties[key]
 			# Split on $ to get name and definition
 			var svar_parts = svar_line.split("$", false, 1)
 			if svar_parts.size() >= 2:
@@ -174,17 +192,35 @@ func parse_abilities(properties: Dictionary, card_data: CardData) -> Array[CardA
 	# Second pass: parse triggered abilities and activated abilities
 	for key in properties.keys():
 		if key == "T":
-			var trigger_ability = parse_triggered_ability(properties[key], svar_effects, card_data)
-			if trigger_ability:
-				abilities.append(trigger_ability)
+			var trigger_lines = properties[key]
+			# Handle both single string and array of strings
+			if typeof(trigger_lines) == TYPE_STRING:
+				trigger_lines = [trigger_lines]
+			
+			for trigger_line in trigger_lines:
+				var trigger_ability = parse_triggered_ability(trigger_line, svar_effects, card_data)
+				if trigger_ability:
+					abilities.append(trigger_ability)
 		elif key == "R":
-			var replacement_effect = parse_replacement_effect(properties[key], svar_effects, card_data)
-			if replacement_effect:
-				abilities.append(replacement_effect)
+			var replacement_lines = properties[key]
+			# Handle both single string and array of strings
+			if typeof(replacement_lines) == TYPE_STRING:
+				replacement_lines = [replacement_lines]
+			
+			for replacement_line in replacement_lines:
+				var replacement_effect = parse_replacement_effect(replacement_line, svar_effects, card_data)
+				if replacement_effect:
+					abilities.append(replacement_effect)
 		elif key == "AA" or key == "A":
-			var activated_ability = parse_activated_ability(properties[key], svar_effects, card_data)
-			if activated_ability:
-				abilities.append(activated_ability)
+			var activated_lines = properties[key]
+			# Handle both single string and array of strings
+			if typeof(activated_lines) == TYPE_STRING:
+				activated_lines = [activated_lines]
+			
+			for activated_line in activated_lines:
+				var activated_ability = parse_activated_ability(activated_line, svar_effects, card_data)
+				if activated_ability:
+					abilities.append(activated_ability)
 	
 	return abilities
 
@@ -193,7 +229,7 @@ func parse_triggered_ability(trigger_text: String, svar_effects: Dictionary, car
 	var trigger_type: TriggerType.Type = TriggerType.Type.CARD_ENTERS
 	var trigger_conditions: Dictionary = {}
 	var effect_parameters: Dictionary = {}
-	var legacy_effect_name: String = ""
+	var effect_name: String = ""
 	
 	var trigger_parts = trigger_text.split(" | ")
 	
@@ -218,15 +254,25 @@ func parse_triggered_ability(trigger_text: String, svar_effects: Dictionary, car
 		elif part.begins_with("Condition$"):
 			trigger_conditions[TriggeredAbility.TriggerCondition.CONDITION] = part.substr(11)
 		elif part.begins_with("Execute$"):
-			legacy_effect_name = part.substr(9)
+			effect_name = part.substr(9)
 	
 	# Get effect parameters from SVar
-	if legacy_effect_name in svar_effects:
-		var svar_data = svar_effects[legacy_effect_name]
+	if effect_name in svar_effects:
+		var svar_data = svar_effects[effect_name]
 		effect_parameters = svar_data.get("parameters", {})
 		# Use the effect type from SVar if available
 		if not svar_data.get("effect_type", "").is_empty():
-			legacy_effect_name = svar_data["effect_type"]
+			effect_name = svar_data["effect_type"]
+		
+		# Debug logging for Grave Whisperer
+		if card_data.cardName == "Grave Whisperer":
+			print("🔍 [PARSE] Grave Whisperer - Execute name: ", effect_name)
+			print("🔍 [PARSE] SVar data found: ", svar_data)
+			print("🔍 [PARSE] Effect parameters: ", effect_parameters)
+	else:
+		if card_data.cardName == "Grave Whisperer":
+			print("❌ [PARSE] Grave Whisperer - Execute '", effect_name, "' NOT FOUND in SVars!")
+			print("   Available SVars: ", svar_effects.keys())
 	
 	# Set default trigger zone to Battlefield if not specified
 	if not trigger_conditions.has(TriggeredAbility.TriggerCondition.TRIGGER_ZONES):
@@ -240,8 +286,11 @@ func parse_triggered_ability(trigger_text: String, svar_effects: Dictionary, car
 	var game_event = _convert_trigger_type_to_game_event(trigger_type, trigger_conditions)
 	
 	# Convert effect name to EffectType
-	var effect_type_str = _normalize_effect_name(legacy_effect_name)
-	var effect_type = EffectType.string_to_type(effect_type_str)
+	var effect_type = EffectType.string_to_type(effect_name)
+	
+	# Debug logging for Grave Whisperer
+	if card_data.cardName == "Grave Whisperer":
+		print("🔍 [PARSE] Final effect_name: '", effect_name, "' -> EffectType: ", EffectType.type_to_string(effect_type))
 	
 	# Create the TriggeredAbility instance directly
 	var ability = TriggeredAbility.new(card_data, game_event, effect_type)
@@ -260,6 +309,8 @@ func _convert_trigger_type_to_game_event(trigger_type: TriggerType.Type, conditi
 			return TriggeredAbility.GameEventType.ATTACK_DECLARED
 		TriggerType.Type.CARD_DRAWN:
 			return TriggeredAbility.GameEventType.CARD_DRAWN
+		TriggerType.Type.CHANGED_ZONE:
+			return TriggeredAbility.GameEventType.CARD_CHANGED_ZONES
 		TriggerType.Type.PHASE:
 			# For phase triggers, check the Phase condition
 			var phase = conditions.get(TriggeredAbility.TriggerCondition.PHASE, "")
@@ -271,27 +322,46 @@ func _convert_trigger_type_to_game_event(trigger_type: TriggerType.Type, conditi
 				_:
 					push_warning("Unknown phase trigger: " + phase)
 					return TriggeredAbility.GameEventType.BEGINNING_OF_TURN  # Default
+		TriggerType.Type.STRIKE:
+			return TriggeredAbility.GameEventType.STRIKE
 		_:
 			push_warning("Unknown TriggerType: " + str(trigger_type))
 			return TriggeredAbility.GameEventType.CARD_ENTERED_PLAY  # Default fallback
 
-# Helper to normalize legacy effect names to modern effect types
-func _normalize_effect_name(legacy_name: String) -> String:
-	"""Convert legacy effect names (TrigToken, TrigDraw, PlayMe) to modern effect types (CreateToken, Draw, Cast)"""
-	match legacy_name:
-		"TrigToken":
-			return "CreateToken"
-		"TrigDraw":
-			return "Draw"
-		"TrigGrowup":
-			return "AddType"
-		"Token":
-			return "CreateToken"
-		"PlayMe":
-			return "Cast"
-		_:
-			# Unknown effect - return as-is and let EffectType.string_to_type handle it
-			return legacy_name
+# Add automatic triggered abilities for special keywords
+func _add_keyword_triggered_abilities(card_data: CardData):
+	"""Add triggered abilities for keywords that require special game logic"""
+	# Check if card has Elusive keyword
+	if card_data.text_box.contains("Elusive"):
+		_add_elusive_ability(card_data)
+
+# Add the Elusive triggered ability
+func _add_elusive_ability(card_data: CardData):
+	"""Add automatic triggered ability for Elusive keyword
+	
+	Elusive triggers when:
+	- Another card arrives at the same combat location
+	- Both cards have the same controller
+	- The other card does not have Elusive
+	Effect: Switch positions with the newly arrived card
+	"""
+	# Parse as a standard triggered ability string
+	var trigger_string = "T:ChangedZone | Destination$ Combat | ValidCard$ Card.Other+NoKeyword$Elusive | ValidActivatingPlayer$ You | Execute$ ElusiveSwitch"
+	
+	# Create SVar for the effect
+	var svar_effects = {
+		"ElusiveSwitch": {
+			"effect_type": "SwitchPositions",
+			"parameters": {
+				"SwitchWith": "TriggeredCard",
+				"OnlySameLocation": true
+			}
+		}
+	}
+	
+	var ability = parse_triggered_ability(trigger_string, svar_effects, card_data)
+	if ability:
+		card_data.add_ability(ability)
 
 # Helper to parse SVar definition into effect type and parameters
 func _parse_svar_definition(definition: String) -> Dictionary:
@@ -325,6 +395,19 @@ func _parse_svar_definition(definition: String) -> Dictionary:
 				result["parameters"]["Types"] = part.substr(7)
 			elif part.begins_with("Duration$"):
 				result["parameters"]["Duration"] = part.substr(10)
+			# MoveCard effect parameters
+			elif part.begins_with("Origin$"):
+				result["parameters"]["Origin"] = part.substr(8)
+			elif part.begins_with("Destination$"):
+				result["parameters"]["Destination"] = part.substr(13)
+			elif part.begins_with("Choice$"):
+				result["parameters"]["Choice"] = part.substr(8)
+			elif part.begins_with("ValidCard$"):
+				result["parameters"]["ValidCard"] = part.substr(11)
+			elif part.begins_with("Condition$"):
+				result["parameters"]["Condition"] = part.substr(11)
+			elif part.begins_with("IfNotFound$"):
+				result["parameters"]["IfNotFound"] = part.substr(12)
 	
 	return result
 
@@ -368,8 +451,7 @@ func parse_replacement_effect(replacement_text: String, svar_effects: Dictionary
 			effect_name = svar_data["effect_type"]
 	
 	# Convert effect name to EffectType
-	var effect_type_str = _normalize_effect_name(effect_name)
-	var effect_type = EffectType.string_to_type(effect_type_str)
+	var effect_type = EffectType.string_to_type(effect_name)
 	
 	# Build conditions with event type
 	var conditions = replacement_conditions.duplicate()
@@ -379,9 +461,9 @@ func parse_replacement_effect(replacement_text: String, svar_effects: Dictionary
 	var modifications = effect_parameters.duplicate()
 	
 	# Create the appropriate ReplacementEffect based on effect type
-	var replacement_effect_instance = _create_replacement_effect(card_data, effect_type_str, conditions, modifications)
+	var replacement_effect_instance = _create_replacement_effect(card_data, effect_name, conditions, modifications)
 	if not replacement_effect_instance:
-		push_error("Failed to create replacement effect for ", effect_type_str)
+		push_error("Failed to create replacement effect for ", effect_name)
 		return null
 	
 	# Create ReplacementAbility instance
@@ -459,7 +541,7 @@ func parse_activated_ability(activated_text: String, _svar_effects: Dictionary, 
 	var ability = ActivatedAbility.new(card_data, effect_type)
 	ability.activation_costs = activation_costs
 	ability.effect_parameters = effect_parameters
-	ability.trigger_conditions = target_conditions
+	ability.targeting_requirements = target_conditions
 	
 	return ability
 
@@ -671,6 +753,16 @@ func load_opponent_card_from_file(file_path: String) -> CardData:
 	# Set opponent ownership property
 	if card_data:
 		card_data.playerOwned = false
+		
+		# Debug logging for Grave Whisperer
+		if card_data.cardName == "Grave Whisperer":
+			print("🔍 [LOAD OPPONENT] Grave Whisperer loaded with ", card_data.triggered_abilities.size(), " triggered abilities")
+			for i in range(card_data.triggered_abilities.size()):
+				var ability = card_data.triggered_abilities[i]
+				print("   Ability ", i, ":")
+				print("     - game_event_trigger: ", ability.game_event_trigger)
+				print("     - effect_type: ", EffectType.type_to_string(ability.effect_type))
+				print("     - effect_parameters: ", ability.effect_parameters)
 	
 	# Extract card name from file path to load corresponding art
 	if card_data and card_data.cardName:
@@ -723,18 +815,36 @@ func load_all_cards():
 	if not opponent_dir:
 		push_error("Could not open Cards/OpponentCards directory")
 	else:
-		opponent_dir.list_dir_begin()
-		var opponent_file_name = opponent_dir.get_next()
+		_load_cards_from_directory_recursive("res://Cards/OpponentCards/", opponent_dir, true)
+		print("Loaded ", opponentCards.size(), " opponent cards")
+
+func _load_cards_from_directory_recursive(base_path: String, dir: DirAccess, is_opponent: bool = false):
+	"""Recursively load card files from a directory and its subdirectories"""
+	dir.list_dir_begin()
+	var file_name = dir.get_next()
+	
+	while file_name != "":
+		var full_path = base_path + "/" + file_name
 		
-		while opponent_file_name != "":
-			# Load opponent card files, but skip directories
-			if opponent_file_name.ends_with(".txt") and not opponent_dir.current_is_dir():
-				var opponent_card = load_opponent_card_from_file("res://Cards/OpponentCards/" + opponent_file_name)
+		if dir.current_is_dir():
+			# Skip special directories
+			if file_name != "." and file_name != "..":
+				# Recursively search subdirectories
+				var sub_dir = DirAccess.open(full_path)
+				if sub_dir:
+					_load_cards_from_directory_recursive(full_path, sub_dir, is_opponent)
+		elif file_name.ends_with(".txt"):
+			# Load card file
+			if is_opponent:
+				var opponent_card = load_opponent_card_from_file(full_path)
 				if opponent_card:
 					opponentCards.push_back(opponent_card)
-			opponent_file_name = opponent_dir.get_next()
+			else:
+				load_card_from_file(full_path)
 		
-		print("Loaded ", opponentCards.size(), " opponent cards")
+		file_name = dir.get_next()
+	
+	dir.list_dir_end()
 
 # Get a random opponent card
 func getRandomOpponentCard() -> CardData:
@@ -747,6 +857,14 @@ func getRandomCard() -> CardData:
 
 # Helper functions to duplicate abilities with new owner reference
 func _duplicate_triggered_ability(original: TriggeredAbility, new_owner: CardData) -> TriggeredAbility:
+	# Debug logging for Grave Whisperer
+	if new_owner.cardName == "Grave Whisperer":
+		print("🔍 [DUPLICATE] Grave Whisperer triggered ability:")
+		print("   - game_event_trigger: ", original.game_event_trigger)
+		print("   - effect_type: ", EffectType.type_to_string(original.effect_type))
+		print("   - effect_parameters: ", original.effect_parameters)
+		print("   - trigger_conditions: ", original.trigger_conditions)
+	
 	var copy = TriggeredAbility.new(new_owner, original.game_event_trigger, original.effect_type)
 	copy.effect_parameters = original.effect_parameters.duplicate()
 	copy.trigger_conditions = original.trigger_conditions.duplicate()
@@ -756,7 +874,6 @@ func _duplicate_triggered_ability(original: TriggeredAbility, new_owner: CardDat
 func _duplicate_activated_ability(original: ActivatedAbility, new_owner: CardData) -> ActivatedAbility:
 	var copy = ActivatedAbility.new(new_owner, original.effect_type)
 	copy.effect_parameters = original.effect_parameters.duplicate()
-	copy.trigger_conditions = original.trigger_conditions.duplicate()
 	copy.targeting_requirements = original.targeting_requirements.duplicate()
 	for cost in original.activation_costs:
 		copy.activation_costs.append(cost.duplicate())
@@ -765,22 +882,29 @@ func _duplicate_activated_ability(original: ActivatedAbility, new_owner: CardDat
 func _duplicate_static_ability(original: StaticAbility, new_owner: CardData) -> StaticAbility:
 	var copy = StaticAbility.new(new_owner, original.effect_type)
 	copy.effect_parameters = original.effect_parameters.duplicate()
-	copy.trigger_conditions = original.trigger_conditions.duplicate()
 	copy.targeting_requirements = original.targeting_requirements.duplicate()
 	return copy
 
 func _duplicate_replacement_ability(original: ReplacementAbility, new_owner: CardData) -> ReplacementAbility:
-	# Note: replacement_effect is shared reference for now (may need deeper copy if it holds state)
-	var copy = ReplacementAbility.new(new_owner, original.effect_type, original.replacement_effect)
+	# Duplicate the replacement effect so it references the new owner
+	var new_replacement_effect: ReplacementEffect = null
+	if original.replacement_effect:
+		# Create a new instance of the same type with updated owner
+		var original_effect = original.replacement_effect
+		new_replacement_effect = original_effect.get_script().new(
+			new_owner,  # Use the new owner instead of the original
+			original_effect.conditions.duplicate(),
+			original_effect.modifications.duplicate()
+		)
+	
+	var copy = ReplacementAbility.new(new_owner, original.effect_type, new_replacement_effect)
 	copy.effect_parameters = original.effect_parameters.duplicate()
-	copy.trigger_conditions = original.trigger_conditions.duplicate()
 	copy.targeting_requirements = original.targeting_requirements.duplicate()
 	return copy
 
 func _duplicate_spell_ability(original: SpellAbility, new_owner: CardData) -> SpellAbility:
 	var copy = SpellAbility.new(new_owner, original.effect_type)
 	copy.effect_parameters = original.effect_parameters.duplicate()
-	copy.trigger_conditions = original.trigger_conditions.duplicate()
 	copy.targeting_requirements = original.targeting_requirements.duplicate()
 	return copy
 

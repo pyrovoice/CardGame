@@ -16,6 +16,10 @@ enum Type {
 	ADD_TYPE,  # Add types/subtypes to cards
 	ADD_KEYWORD,  # Grant keyword abilities (used by PumpAll)
 	
+	# Card movement effects
+	MOVE_CARD,  # Move card from one zone to another
+	SWITCH_POSITIONS,  # Switch positions between two cards (Elusive)
+	
 	# Future effects
 	DESTROY,  # Destroy permanents
 	BOUNCE,  # Return to hand
@@ -24,6 +28,7 @@ enum Type {
 	DISCARD,  # Discard cards
 	SEARCH,  # Search library
 	SHUFFLE,  # Shuffle deck
+	NONE
 }
 
 # Convert effect type enum to string representation (for display/debugging)
@@ -43,6 +48,10 @@ static func type_to_string(effect_type: Type) -> String:
 			return "AddType"
 		Type.ADD_KEYWORD:
 			return "AddKeyword"
+		Type.MOVE_CARD:
+			return "MoveCard"
+		Type.SWITCH_POSITIONS:
+			return "SwitchPositions"
 		Type.DESTROY:
 			return "Destroy"
 		Type.BOUNCE:
@@ -62,7 +71,10 @@ static func type_to_string(effect_type: Type) -> String:
 
 # Convert string representation to effect type enum
 static func string_to_type(effect_string: String) -> Type:
-	match effect_string:
+	# Strip whitespace and normalize to handle variations
+	var normalized = effect_string.strip_edges()
+	
+	match normalized:
 		"DealDamage":
 			return Type.DEAL_DAMAGE
 		"Pump":
@@ -77,6 +89,10 @@ static func string_to_type(effect_string: String) -> Type:
 			return Type.ADD_TYPE
 		"AddKeyword", "PumpAll":  # PumpAll is alias for AddKeyword
 			return Type.ADD_KEYWORD
+		"MoveCard":
+			return Type.MOVE_CARD
+		"SwitchPositions":
+			return Type.SWITCH_POSITIONS
 		"Destroy":
 			return Type.DESTROY
 		"Bounce":
@@ -92,14 +108,15 @@ static func string_to_type(effect_string: String) -> Type:
 		"Shuffle":
 			return Type.SHUFFLE
 		_:
-			push_error("Unknown effect type string: " + effect_string + " - Please update card definitions to use modern format")
+			push_error("❌ UNKNOWN EFFECT TYPE: '" + normalized + "' (original: '" + effect_string + "') - Check card definition. Defaulting to DRAW.")
+			push_error("   Available types: " + str(get_all_strings()))
 			return Type.DRAW  # Default fallback
 
 # Get all available effect type strings
 static func get_all_strings() -> Array[String]:
 	return [
 		"DealDamage", "Pump", "Draw", "CreateToken", "Cast", "AddType", 
-		"AddKeyword", "Destroy", "Bounce", "Exile", "Mill", 
+		"AddKeyword", "MoveCard", "SwitchPositions", "Destroy", "Bounce", "Exile", "Mill", 
 		"Discard", "Search", "Shuffle"
 	]
 

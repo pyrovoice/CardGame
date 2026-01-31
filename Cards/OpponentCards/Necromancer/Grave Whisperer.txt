@@ -1,0 +1,10 @@
+Name:Grave Whisperer
+ManaCost:2
+Power:1
+Types:Creature,Cultist
+K:Elusive
+T:Mode$ Strikes | Execute$ TrigSteal
+SVar:TrigSteal$ MoveCard | Origin$ Graveyard.Opponent | Destination$ Graveyard.Controller | Choice$ Random | ValidCard$ Creature | Condition$ IfAlive | IfNotFound$ TrigStealLibrary
+SVar:TrigStealLibrary$ MoveCard | Origin$ Deck.Opponent | Destination$ Graveyard.Controller | Choice$ Random | ValidCard$ Creature | Condition$ IfAlive
+CardText:Elusive
+When striking: If I'm alive, steal a random creature card from the opponent's graveyard or deck.

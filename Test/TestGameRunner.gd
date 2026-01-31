@@ -53,6 +53,8 @@ func cleanup_game():
 	var game_instance = get_node_or_null("Game")
 	if game_instance:
 		print("Cleaning up game instance...")
+		# Clear the CardPaymentManager's game reference before destroying
+		CardPaymentManagerAL.set_game_context(null)
 		game_instance.queue_free()
 		# Wait a frame to ensure complete cleanup
 		await get_tree().process_frame

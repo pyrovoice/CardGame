@@ -316,18 +316,17 @@ func subscribe_to_game_signals(game: Node):
 	for ability in replacement_abilities:
 		ability.apply_to_game(game)
 	
-	# Subscribe to end_of_turn signal for managing temporary effects
+	# Subscribe to end_of_turn for temporary effect cleanup
+	# Note: All cards subscribe since they can gain temporary effects at any time
 	if game.has_signal("end_of_turn"):
 		if not game.is_connected("end_of_turn", _on_end_of_turn):
 			game.end_of_turn.connect(_on_end_of_turn)
-			print("  📡 [CARDDATA] ", cardName, " subscribed to end_of_turn signal")
 
 func unsubscribe_from_game_signals(game: Node):
 	"""Unsubscribe from game signals when card is removed"""
 	if game and is_instance_valid(game):
 		if game.has_signal("end_of_turn") and game.is_connected("end_of_turn", _on_end_of_turn):
 			game.end_of_turn.disconnect(_on_end_of_turn)
-			print("  📡 [CARDDATA] ", cardName, " unsubscribed from end_of_turn signal")
 
 func _on_end_of_turn(event_card_data: CardData = null):
 	"""Handle end of turn cleanup for temporary effects"""

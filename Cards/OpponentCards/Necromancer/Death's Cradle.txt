@@ -1,0 +1,5 @@
+Name:Death's Cradle
+Types:Artifact,Legendary
+CardText:When played, attach to a location.
+On location conquered: If lost, banish all creatures at this location and all graveyards, then create a Massive Amalgam token in hand. If won, banish all creatures in the Necromancer's graveyard and create a Lesser Amalgam token in hand.
+While at a location: The player does not lose life when losing this location.

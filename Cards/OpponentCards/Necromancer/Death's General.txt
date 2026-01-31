@@ -1,0 +1,4 @@
+Name:Death's General
+Types:Creature,Aberration
+CardText:My might is equal to the number of creatures in all graveyards.
+When I would receive damage: If my might is above 0, exile that many creatures from the opponent's graveyard instead.

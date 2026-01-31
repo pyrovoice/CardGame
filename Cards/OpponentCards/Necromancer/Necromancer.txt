@@ -1,0 +1,5 @@
+Name:Necromancer
+Types:Creature,Boss
+CardText:Can only be played when the player has reached 6 or more victory points. Reset the player's victory points to 6.
+When I enter: Return all creatures from all graveyards to the battlefield. They are silenced.
+When I die: The player wins the game.

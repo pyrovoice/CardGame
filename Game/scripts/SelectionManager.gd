@@ -3,6 +3,7 @@ class_name SelectionManager
 
 signal selection_completed(selection: RefCounted)
 signal selection_cancelled()
+signal selection_started()  # Emitted when selection UI is shown and ready
 
 # Comprehensive selection data structure for pre-specifying all card play choices
 class CardPlaySelections:
@@ -73,6 +74,9 @@ func start_selection_and_wait(requirement: Dictionary, possible_cards: Array[Car
 	for card in possible_cards:
 		card.set_selectable(true)
 	_update_ui()
+	
+	# Emit signal that selection has started
+	selection_started.emit()
 	
 	# Wait for either completion or cancellation
 	var result = await selection_completed

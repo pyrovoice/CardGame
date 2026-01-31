@@ -143,6 +143,74 @@ static func _card_matches_requirement(card: Card, requirement: Dictionary) -> bo
 	var filtered_cards = CardPaymentManagerAL.filterCardsByParameters(cards_to_filter, valid_card_filter, CardPaymentManagerAL.current_game)
 	return filtered_cards.size() > 0
 
+static func get_zone_from_string(game: Game, zone: String, from_perspective_of_player_owned: bool = true) -> Node:
+	"""Get the container node for a zone string
+	
+	Supported zones:
+	- Graveyard.Player / Graveyard.Opponent / Graveyard.Controller
+	- Deck.Player / Deck.Opponent / Deck.Controller
+	- Hand.Player / Hand.Opponent / Hand.Controller
+	- PlayerBase (battlefield)
+	- ExtraDeck.Player
+	- CombatZone.X.Y.Player/Opponent (where X is zone index 0-2, Y is slot index)
+	
+	Args:
+		game: The game instance
+		zone: Zone string (e.g., "Graveyard.Opponent", "Deck.Controller")
+		from_perspective_of_player_owned: If true (default), interpret zones from player's perspective.
+			If false (for opponent-controlled cards), "Opponent" refers to player's zones.
+			This should typically be set to the card's playerControlled value.
+	"""
+	# Handle .Controller - convert to .Player or .Opponent based on perspective
+	var resolved_zone = zone
+	if ".Controller" in zone:
+		# Controller always means "my zones" - replace based on who controls the card
+		if from_perspective_of_player_owned:
+			resolved_zone = zone.replace(".Controller", ".Player")
+		else:
+			resolved_zone = zone.replace(".Controller", ".Opponent")
+	# For opponent-controlled cards, swap Player/Opponent perspective
+	elif not from_perspective_of_player_owned:
+		if ".Player" in zone:
+			resolved_zone = zone.replace(".Player", ".Opponent")
+		elif ".Opponent" in zone:
+			resolved_zone = zone.replace(".Opponent", ".Player")
+	
+	match resolved_zone:
+		"Graveyard.Player":
+			return game.graveyard
+		"Graveyard.Opponent":
+			return game.graveyard_opponent
+		"Deck.Player":
+			return game.deck
+		"Deck.Opponent":
+			return game.deck_opponent
+		"Hand.Player":
+			return game.player_hand
+		"Hand.Opponent":
+			return game.opponent_hand
+		"PlayerBase":
+			return game.player_base
+		"ExtraDeck.Player":
+			return game.extra_deck
+		_:
+			# Check for CombatZone patterns
+			if zone.begins_with("CombatZone."):
+				var parts = zone.split(".")
+				if parts.size() >= 2:
+					var zone_index = int(parts[1])
+					if zone_index >= 0 and zone_index < game.combatZones.size():
+						# If there are slot and owner parts, return specific spot
+						if parts.size() >= 4:
+							var slot_index = int(parts[2])
+							var is_player = parts[3] == "Player"
+							return game.combatZones[zone_index].getCardSlot(slot_index, is_player)
+						else:
+							# Return the first empty slot in the combat zone
+							return game.combatZones[zone_index].getFirstEmptyLocation(true)
+			push_error("Unknown zone: " + zone)
+			return null
+
 static func _requiresPlayerSelection(additional_costs: Array[Dictionary]) -> bool:
 	"""Check if any additional costs require player selection (like sacrifice)"""
 	for cost_data in additional_costs:
@@ -293,16 +361,21 @@ static func matchesAllCriteria(card: Card, criteria: Dictionary, game: Game) -> 
 	"""Check if a card matches all the parsed criteria"""
 	var card_data = card.cardData
 	
+	# Check token status (Card-specific)
+	if criteria.token == "Token" and not card.isToken:
+		return false
+	elif criteria.token == "NonToken" and card.isToken:
+		return false
+	
+	# Delegate to CardData matching
+	return matchesCardDataCriteria(card_data, criteria)
+
+static func matchesCardDataCriteria(card_data: CardData, criteria: Dictionary) -> bool:
+	"""Check if a CardData matches all the parsed criteria (used for graveyard/deck filtering)"""
 	# Check controller
 	if criteria.controller == "YouCtrl" and not card_data.playerControlled:
 		return false
 	elif criteria.controller == "OppCtrl" and card_data.playerControlled:
-		return false
-	
-	# Check token status
-	if criteria.token == "Token" and not card.isToken:
-		return false
-	elif criteria.token == "NonToken" and card.isToken:
 		return false
 	
 	# Check card types

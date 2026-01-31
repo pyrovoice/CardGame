@@ -1,0 +1,3 @@
+Name:Graveborn Titan
+Types:Creature,Zombie
+CardText:When I enter and at the beginning of each turn: Exile up to two random creatures from any graveyards to create that many Zombie tokens in front of me.

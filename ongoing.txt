@@ -1,3 +1,4 @@
+Elusive and card move common method, need testing for both. Implementing the first Necromancer card
 Activated ability on Punglynd Hersir and SPellshield
 Cards being cast are still moveable
 Card are not moveable after new turn

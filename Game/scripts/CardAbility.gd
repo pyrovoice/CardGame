@@ -3,14 +3,11 @@ class_name CardAbility extends RefCounted
 var owner_card_data: WeakRef  # Reference to the CardData that owns this ability
 var effect_type: EffectType.Type  # What effect does this ability have
 var effect_parameters: Dictionary  # Parameters for the effect (token name, damage amount, etc.)
-var trigger_conditions: Dictionary  # Conditions that must be met (ValidCards, Self, etc.)
 var targeting_requirements: Dictionary  # For abilities that need targets
-var replacement_effect: ReplacementEffect = null  # For R: effects - the replacement effect implementation
 
 func _init(p_owner: CardData):
 	owner_card_data = weakref(p_owner)
 	effect_parameters = {}
-	trigger_conditions = {}
 	targeting_requirements = {}
 
 ## Builder methods for configuring abilities
@@ -20,10 +17,7 @@ func with_effect_parameters(params: Dictionary) -> CardAbility:
 	effect_parameters = params
 	return self
 
-func with_trigger_condition(condition_key: String, condition_value) -> CardAbility:
-	"""Add a trigger condition (ValidCards, Self, etc.)"""
-	trigger_conditions[condition_key] = condition_value
-	return self
+
 
 func with_targeting(target_params: Dictionary) -> CardAbility:
 	"""Set targeting requirements"""

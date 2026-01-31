@@ -9,11 +9,13 @@ enum GameEventType {
 	CARD_DIED,            # When this or another card dies
 	CARD_ENTERED_PLAY,    # When this or another card enters play
 	CARD_DRAWN,           # When a card is drawn
+	CARD_CHANGED_ZONES,   # When a card changes zones (origin/destination)
 	DAMAGE_DEALT,         # When damage is dealt
 	TURN_STARTED,         # At the start of a turn
 	SPELL_CAST,           # When a spell is cast
 	END_OF_TURN,          # At end of turn
-	BEGINNING_OF_TURN     # At beginning of turn
+	BEGINNING_OF_TURN,    # At beginning of turn
+	STRIKE                # Creature strikes
 }
 
 enum TriggerCondition {
@@ -32,15 +34,18 @@ const EVENT_TO_SIGNAL = {
 	GameEventType.CARD_DIED: "card_died",
 	GameEventType.CARD_ENTERED_PLAY: "card_entered_play",
 	GameEventType.CARD_DRAWN: "card_drawn",
+	GameEventType.CARD_CHANGED_ZONES: "card_changed_zones",
 	GameEventType.DAMAGE_DEALT: "damage_dealt",
 	GameEventType.TURN_STARTED: "turn_started",
 	GameEventType.SPELL_CAST: "spell_cast",
 	GameEventType.END_OF_TURN: "end_of_turn",
-	GameEventType.BEGINNING_OF_TURN: "beginning_of_turn"
+	GameEventType.BEGINNING_OF_TURN: "beginning_of_turn",
+	GameEventType.STRIKE: "strike"
 }
 
 var game_event_trigger: GameEventType
 var game_ref: WeakRef  # Reference to game node
+var trigger_conditions: Dictionary = {}  # Conditions that must be met (ValidCards, Self, etc.)
 
 func _init(p_owner: CardData, p_trigger: GameEventType, p_effect: EffectType.Type, game: Node = null):
 	super(p_owner)
@@ -50,6 +55,13 @@ func _init(p_owner: CardData, p_trigger: GameEventType, p_effect: EffectType.Typ
 	# Connect to game signals immediately if game is provided
 	if game:
 		register_to_game(game)
+
+## Builder methods
+
+func with_trigger_condition(condition_key: String, condition_value) -> TriggeredAbility:
+	"""Add a trigger condition (ValidCards, Self, etc.)"""
+	trigger_conditions[condition_key] = condition_value
+	return self
 
 func register_to_game(game: Node):
 	"""Register this ability to listen to the appropriate game signal"""
@@ -87,8 +99,12 @@ func unregister_from_game(game: Node):
 
 ## Signal callback
 
-func _on_game_event(event_card_data: CardData = null):
-	"""Called when the relevant game event fires"""
+func _on_game_event(event_card_data: CardData = null, _from_zone = null, _to_zone = null):
+	"""Called when the relevant game event fires
+	
+	Note: Some signals emit additional parameters (e.g., card_changed_zones emits from_zone and to_zone).
+	These are captured but not currently used in trigger condition checking.
+	"""
 	var owner = get_owner()
 	if not owner:
 		return  # Owner was destroyed
@@ -101,11 +117,16 @@ func _on_game_event(event_card_data: CardData = null):
 	if not _check_trigger_conditions(owner, event_card_data, game):
 		return
 	
-	# Add to trigger queue
+	# Add to trigger queue with event context
 	var ability_desc = event_to_string(game_event_trigger) + " -> " + EffectType.type_to_string(effect_type)
 	print("⚡ [TRIGGER] ", owner.cardName, " ability triggered: ", ability_desc)
 	
-	game.trigger_queue.add_resolvable(owner, self)
+	# Package the event context
+	var event_context = {}
+	if event_card_data:
+		event_context["TriggeredCardData"] = event_card_data
+	
+	game.trigger_queue.add_resolvable(owner, self, event_context)
 
 func _check_trigger_conditions(owner: CardData, event_card_data: CardData, game: Node) -> bool:
 	"""Check if the trigger conditions for this ability are met"""
@@ -179,6 +200,8 @@ static func event_to_string(event: GameEventType) -> String:
 			return "EndOfTurn"
 		GameEventType.BEGINNING_OF_TURN:
 			return "BeginningOfTurn"
+		GameEventType.STRIKE:
+			return "Strike"
 	return "Unknown"
 
 static func string_to_event(event_str: String) -> GameEventType:

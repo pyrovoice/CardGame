@@ -16,7 +16,11 @@ func setup_default_decks():
 		CardLoaderAL.getCardByName("Bolt")
 	]
 	player_extra_deck_cards = CardLoaderAL.extraDeckCardData.duplicate()
-	opponent_deck_cards = CardLoaderAL.opponentCards.duplicate()
+	
+	# Necromancer default decklist
+	opponent_deck_cards = [
+		CardLoaderAL.getCardByName("Grave Whisperer")
+	]
 
 func clear_decks():
 	"""Clear all deck lists (for tests)"""

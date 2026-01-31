@@ -230,7 +230,7 @@ func start_drag():
 		if current_tween and current_tween.is_valid():
 			current_tween.kill()
 			current_tween = null
-		
+		make_small()
 		current_state = AnimationState.PLAYER_CONTROLLED
 		set_process(true)  # Enable _process for lerping
 		drag_started.emit(card)

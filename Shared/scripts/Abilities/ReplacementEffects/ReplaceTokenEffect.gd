@@ -32,7 +32,7 @@ func applies_to_specific(effect_context: Dictionary, _game_context: Game) -> boo
 	if token_script.is_empty():
 		return false
 	
-	var token_data = CardLoaderAL.load_token_by_name(token_script)
+	var token_data = CardLoaderAL.getCardByName(token_script)
 	if not token_data:
 		return false
 	

@@ -1,0 +1,44 @@
+PLAYSTYLES:
+- Early pressure that requires player response to avoid being overwhelmed
+- Build-around strategy with cards that should be countered or adapted to
+- Each location is its own micro-battle with fast early/mid/late phases (2-3 turns)
+- Locations reset when won/lost (creatures sacrificed for resources)
+- Big creatures used for single-point conquests rather than long-term value
+
+MECHANICS:
+- Graveyard-centric strategy using own graveyard and stealing from player's graveyard
+- Token generation: Skeletons as basic units
+- Creature types: Cultists (enablers), Skeletons (tokens), Amalgams/Aberrations/Zombies (stronger units)
+- Specific threshold effects on cards (e.g., "if 5+ creatures in graveyard, create X power unit")
+- Mill effects (putting cards from deck to graveyard)
+- Resurrection and reanimation effects
+- Stealing player's creatures from graveyard as ability-less zombies (removes counterplay options from player)
+
+CHOICES OFFERED TO THE PLAYER:
+- React to early plays or get overwhelmed
+- Counter key build-around cards or face escalating threats
+- Decide whether to counter boss card setups (high reward) or let them resolve (manageable but strong)
+- Manage which creatures die and when (graveyard matters)
+- Use extra deck tech cards to answer graveyard strategies (always accessible, never dead draws)
+- Choose between removing graveyard cards vs. other disruption
+- Target elusive graveyard-stealing creatures before they accumulate value
+
+SPECIFIC WAY OF RAISING DANGER:
+Formula: BaseValue + Number of turns - (Life lost by player × 3) + Graveyard condition
+Necromancer condition: +1 danger for every 10 creature cards in any graveyard
+Player counterplay: Remove cards from graveyards to reduce danger level
+
+MAIN CARDS:
+- Cultists: Worship death, enable graveyard strategy
+- Graveyard-stealing creature: Elusive, placed at end of combat row, steals random creature from player's graveyard if it survives combat
+- Mill spells: Put top X cards from opponent deck into graveyard, conditional effects based on graveyard size
+- Skeleton generators: Create basic 1/1 or 2/1 token units
+- Threshold cards: Stronger effects if graveyard has 5+, 10+, etc. creatures
+- Resurrection spells: Bring back creatures from graveyard
+- Player creature theft: Convert player's graveyard creatures into ability-less zombies
+
+BOSS CARDS:
+Example: Location Artifact
+- If location is lost: Banish all creatures at that location + all graveyards, create powerful Amalgam to play later (very hard to remove)
+- If player counters/destroys: Use only Necromancer's graveyard to create weaker version
+- High stakes: Reward for letting it build vs. punishment for ignoring it

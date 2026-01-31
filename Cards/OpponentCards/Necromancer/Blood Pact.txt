@@ -1,0 +1,5 @@
+Name:Vampire Hunt
+Types:Spell
+CardText:Create a Vampire Killer token on the player's side and a Vampire token on the opponent's side at the same location.
+Vampire Killer: "I deal double damage to Vampires. When an opposing Vampire dies, sacrifice me to draw a card and purify its location by 3."
+Vampire: "Leech 2, Elusive"

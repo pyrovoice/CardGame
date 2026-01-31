@@ -1,0 +1,4 @@
+Name:Corpse Explosion
+Types:Spell
+CardText:Destroy a creature in the Necromancer's graveyard to deal damage equal to its might.
+The opponent gains life equal to the damage dealt.

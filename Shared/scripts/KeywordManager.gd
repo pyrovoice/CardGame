@@ -23,6 +23,7 @@ static func initialize_keywords():
 	keywords["Offensive"] = "This creature deals N additional damages when attacking."
 	keywords["Dustaway"] = "If this card would leave the battlefield, it ceases to exist."
 	keywords["Countdown"] = "This card enters with 3 Countdown counter on it. At the beginning of each turn, remove a Countdown counter. When there is no Countdown counter left, sacrifice this card."
+	keywords["Elusive"] = "This creature is placed at the end of the combat queue when fighting at a location."
 
 static func get_keyword_text(keyword: String) -> String:
 	if keywords.has(keyword):

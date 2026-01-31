@@ -1,0 +1,4 @@
+Name:Cryptborn Scout
+Types:Creature,Cultist
+CardText:When played: Mill 3 cards.
+When I die: The player draws a card.
