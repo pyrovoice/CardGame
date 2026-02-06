@@ -39,8 +39,10 @@ var highlightManager: HighlightManager
 var trigger_queue: ResolvableQueue = ResolvableQueue.new()
 var is_resolving_triggers: bool = false  # Track if we're currently resolving the trigger queue
 
-# Game data and state management
-var game_data: GameData
+# MVC Architecture
+var game_data: GameData  # Model: Single source of truth for game state
+var game_view: GameView  # View: Manages all visual representations
+
 @onready var graveyard_opponent: Graveyard = $graveyardOpponent
 var doStartGame = true
 # Opponent AI system
@@ -82,8 +84,26 @@ func createCardData(card_data_template: CardData) -> CardData:
 	return new_card_data
 
 func _ready() -> void:
-	# Initialize game data
+	# Initialize MVC architecture
+	# Model: Game state and data
 	game_data = GameData.new()
+	
+	# View: Visual representation
+	game_view = GameView.new()
+	add_child(game_view)
+	game_view.setup(
+		player_hand,
+		extra_hand,
+		opponent_hand,
+		player_base,
+		deck,
+		deck_opponent,
+		extra_deck,
+		graveyard,
+		graveyard_opponent,
+		combatZones
+	)
+	
 	# Initialize activeHand to default player_hand
 	activeHand = player_hand
 	# Set PlayerControl reference to activeHand
@@ -125,16 +145,29 @@ func _ready() -> void:
 		setupGame()
 		
 func setupGame():
+	# Set deck zone names for GameData queries
+	deck.zone_name = GameZone.e.DECK_PLAYER
+	deck_opponent.zone_name = GameZone.e.DECK_OPPONENT
+	extra_deck.zone_name = GameZone.e.EXTRA_DECK_PLAYER
+	graveyard.zone_name = GameZone.e.GRAVEYARD_PLAYER
+	graveyard_opponent.zone_name = GameZone.e.GRAVEYARD_OPPONENT
+	
 	populate_decks()
 	await drawCard(5, true)
 	await drawCard(3, false)
+	
+	# Debug: Verify MVC state
+	print("🎮 [MVC DEBUG] GameData state after setup:")
+	game_data.print_game_state()
+	
 	await onTurnStart(true)
 	
 func populate_decks():
-	refilLDeck(deck, createCardDatas(game_data.playerDeckList.deck_cards), true)
-	refilLDeck(deck, createCardDatas(game_data.playerDeckList.deck_cards), true)
-	refilLDeck(extra_deck, createCardDatas(game_data.playerDeckList.extra_deck_cards), true)
-	refilLDeck(deck_opponent, createCardDatas(game_data.opponentDeckList.deck_cards), false)
+	# MVC Pattern: Populate both Model (GameData) and View (containers)
+	refilLDeck(deck, createCardDatas(game_data.playerDeckList.deck_cards), true, GameZone.e.DECK_PLAYER)
+	refilLDeck(deck, createCardDatas(game_data.playerDeckList.deck_cards), true, GameZone.e.DECK_PLAYER)
+	refilLDeck(extra_deck, createCardDatas(game_data.playerDeckList.extra_deck_cards), true, GameZone.e.EXTRA_DECK_PLAYER)
+	refilLDeck(deck_opponent, createCardDatas(game_data.opponentDeckList.deck_cards), false, GameZone.e.DECK_OPPONENT)
 
 func onTurnStart(skipFirstTurn = false):
 	# Start a new turn (increases danger level via SignalInt)
@@ -155,8 +188,8 @@ func onTurnStart(skipFirstTurn = false):
 	game_data.setOpponentGold()
 	await opponent_ai.execute_main_phase()
 
-func execute_move_card(card: Card, destination_zone: Node) -> bool:
-	"""Centralized zone change system - handles all card movements with appropriate animations and triggers
+func execute_move_card(card: Card, destination_zone: GameZone.e, combat_spot: CombatantFightingSpot = null) -> bool:
+	"""Centralized zone change system - handles all card movements with appropriate animations and triggers (MVC pattern)
 	
 	Primary method when you have a Card object. For CardData-based movement (effects), use execute_move_card_from_data().
 	
@@ -165,7 +198,8 @@ func execute_move_card(card: Card, destination_zone: Node) -> bool:
 	
 	Args:
 		card: The Card object to move
-		destination_zone: Target zone Node (Graveyard, Deck, Hand, PlayerBase, CombatantFightingSpot, etc.)
+		destination_zone: Target zone enum (e.g., GameZone.e.GRAVEYARD_PLAYER)
+		combat_spot: Optional specific combat spot node (only for combat moves)
 	
 	Returns:
 		bool: True if move was successful, false otherwise
@@ -174,46 +208,53 @@ func execute_move_card(card: Card, destination_zone: Node) -> bool:
 		push_error("execute_move_card: card is null")
 		return false
 	
-	if not destination_zone:
-		push_error("execute_move_card: destination_zone is null")
-		return false
-	
+	var card_data = card.cardData
 	var origin_zone = card.get_parent()
-	var origin_type = _get_zone_type(origin_zone)
-	var dest_type = _get_zone_type(destination_zone)
+	var origin_zone_enum = _get_zone_enum(origin_zone)
 	
-	print("📦 Moving ", card.cardData.cardName, " from ", origin_type, " to ", dest_type)
+	print("📦 Moving ", card_data.cardName, " from ", GameZone.e.keys()[origin_zone_enum], " to ", GameZone.e.keys()[destination_zone])
 	
-	# Route to specific movement handlers based on transition type
-	match [origin_type, dest_type]:
-		["Deck", "Hand"]:
+	# MVC Pattern: Update Model first, then animate View
+	# Combat zones handled separately via card_to_combat_spot
+	if destination_zone != GameZone.e.COMBAT_PLAYER and destination_zone != GameZone.e.COMBAT_OPPONENT:
+		# Get target position from GameView
+		var dest_container = game_view.get_zone_container(destination_zone)
+		var target_position = dest_container.global_position if dest_container else Vector3.ZERO
+		game_data.move_card(card_data, destination_zone, target_position)
+	else:
+		# Combat: Store spot assignment in GameData
+		if combat_spot:
+			game_data.assign_card_to_combat_spot(card_data, combat_spot)
+	
+	# Route to specific movement handlers for animations and triggers
+	match [origin_zone_enum, destination_zone]:
+		[GameZone.e.DECK_PLAYER, GameZone.e.HAND_PLAYER], [GameZone.e.DECK_OPPONENT, GameZone.e.HAND_OPPONENT]:
 			await _move_deck_to_hand(card, destination_zone)
-		[_, "PlayerBase"]:
+		[_, GameZone.e.BATTLEFIELD_PLAYER], [_, GameZone.e.BATTLEFIELD_OPPONENT]:
 			await _move_to_battlefield(card, destination_zone)
-		["PlayerBase", "Player's Graveyard"], ["PlayerBase", "Opponent's Graveyard"], \
-		["Combat", "Player's Graveyard"], ["Combat", "Opponent's Graveyard"], \
-		["Unknown", "Player's Graveyard"], ["Unknown", "Opponent's Graveyard"]:
+		[_, GameZone.e.GRAVEYARD_PLAYER], [_, GameZone.e.GRAVEYARD_OPPONENT]:
 			await _move_to_graveyard(card, destination_zone)
-		["PlayerBase", "Combat"]:
-			await _move_base_to_combat(card, destination_zone)
-		["Combat", "PlayerBase"]:
+		[GameZone.e.BATTLEFIELD_PLAYER, GameZone.e.COMBAT_PLAYER], [GameZone.e.BATTLEFIELD_OPPONENT, GameZone.e.COMBAT_OPPONENT]:
+			await _move_base_to_combat(card, destination_zone, combat_spot)
+		[GameZone.e.COMBAT_PLAYER, GameZone.e.BATTLEFIELD_PLAYER], [GameZone.e.COMBAT_OPPONENT, GameZone.e.BATTLEFIELD_OPPONENT]:
 			await _move_combat_to_base(card, destination_zone)
 		_:
 			await _move_generic(card, destination_zone)
 	
-	print("✅ Move complete: ", card.cardData.cardName)
+	print("✅ Move complete: ", card_data.cardName)
 	return true
 
-func execute_move_card_from_data(card_data: CardData, origin_zone: Node, destination_zone: Node) -> bool:
-	"""CardData-based movement - finds or creates Card object then moves it
+func execute_move_card_from_data(card_data: CardData, origin_zone: GameZone.e, destination_zone: GameZone.e, combat_spot: CombatantFightingSpot = null) -> bool:
+	"""CardData-based movement - finds or creates Card object then moves it (MVC pattern)
 	
 	Use this when you only have CardData (e.g., from graveyard/deck effects).
 	If you already have a Card object, use execute_move_card() instead.
 	
 	Args:
 		card_data: The CardData to move
-		origin_zone: Source zone Node to find the Card
-		destination_zone: Target zone Node
+		origin_zone: Source zone enum
+		destination_zone: Target zone enum
+		combat_spot: Optional combat spot (for combat moves)
 	
 	Returns:
 		bool: True if move was successful, false otherwise
@@ -222,22 +263,24 @@ func execute_move_card_from_data(card_data: CardData, origin_zone: Node, destina
 		push_error("execute_move_card_from_data: card_data is null")
 		return false
 	
-	if not origin_zone or not destination_zone:
-		push_error("execute_move_card_from_data: Invalid zone(s)")
+	# Get origin container from GameView
+	var origin_container = game_view.get_zone_container(origin_zone)
+	if not origin_container:
+		push_error("execute_move_card_from_data: Could not find origin zone container")
 		return false
 	
 	# Find or create the Card object from the origin zone
-	var card = _get_card_from_zone(card_data, origin_zone)
+	var card = _get_card_from_zone(card_data, origin_container)
 	if not card:
 		push_error("execute_move_card_from_data: Could not find/create card")
 		return false
 	
 	# Use the main Card-based movement method
-	return await execute_move_card(card, destination_zone)
+	return await execute_move_card(card, destination_zone, combat_spot)
 
 
 func _get_zone_type(container: Node) -> String:
-	"""Determine the type of a zone container for routing"""
+	"""Determine the type of a zone container for routing (legacy string-based)"""
 	if container is CardContainer:
 		if container == deck or container == deck_opponent:
 			return "Deck"
@@ -258,16 +301,36 @@ func _get_zone_type(container: Node) -> String:
 	else:
 		return "Unknown"
 
+func _get_zone_enum(container: Node) -> GameZone.e:
+	"""Map a zone container Node to its GameZone.e enum value"""
+	if not container:
+		return GameZone.e.UNKNOWN
+	
+	# Check CardContainer types by zone_name if available
+	if container is CardContainer and container.zone_name != GameZone.e.UNKNOWN:
+		return container.zone_name
+	
+	# Fall back to manual checking
+	if container == player_hand:
+		return GameZone.e.HAND_PLAYER
+	elif container == opponent_hand:
+		return GameZone.e.HAND_OPPONENT
+	elif container == player_base:
+		return GameZone.e.BATTLEFIELD_PLAYER
+	elif container is CombatantFightingSpot:
+		# Combat zones - determine owner from spot
+		return GameZone.e.COMBAT_PLAYER  # TODO: distinguish player/opponent
+	else:
+		return GameZone.e.UNKNOWN
+
 
 func _get_card_from_zone(card_data: CardData, zone_container: Node) -> Card:
 	"""Get or create a Card object from a zone for animation"""
 	var card: Card = null
 	
 	if zone_container is CardContainer:
-		# Create Card for animation (createCardFromData removes from container automatically)
-		if not zone_container.cards.has(card_data):
-			push_error("_get_card_from_zone: CardData not found in container")
-			return null
+		# Create Card for animation (Card view may not exist yet for container zones)
+		# Note: Should check GameData to verify card is actually in this zone
 		card = createCardFromData(card_data, card_data.playerControlled, zone_container)
 		GameUtility.reparentCardWithoutMovingRepresentation(card, self)
 		card.global_position = zone_container.global_position
@@ -302,8 +365,14 @@ func _get_card_from_zone(card_data: CardData, zone_container: Node) -> Card:
 	
 	return card
 
-func _move_deck_to_hand(card: Card, dest: Node):
-	"""Handle deck to hand movement - draw animation + trigger"""
+func _move_deck_to_hand(card: Card, dest_zone: GameZone.e):
+	"""Handle deck to hand movement - draw animation + trigger (MVC pattern)"""
+	# Get visual container from GameView
+	var dest = game_view.get_zone_container(dest_zone)
+	if not dest:
+		push_error("_move_deck_to_hand: Could not find hand container")
+		return
+	
 	# This should use drawCard() for proper multi-card draw animation
 	# But for single programmatic draws from effects:
 	var origin_pos = card.global_position
@@ -328,24 +397,24 @@ func _move_deck_to_hand(card: Card, dest: Node):
 	# Trigger card_drawn event
 	card_drawn.emit([card], card.cardData.playerControlled)
 
-func _move_to_battlefield(card: Card, dest: Node):
-	"""Handle any zone to battlefield - entering play"""
-	card.setFlip(true)
-	card.getAnimator().make_small()
+func _move_to_battlefield(card: Card, dest_zone: GameZone.e):
+	"""Handle any zone to battlefield - entering play (MVC pattern)"""
+	# Note: GameData already updated by execute_move_card
 	
-	# Reparent to battlefield
-	GameUtility.reparentCardWithoutMovingRepresentation(card, dest)
+	# Get visual container from GameView
+	var dest = game_view.get_zone_container(dest_zone)
+	if not dest:
+		push_error("_move_to_battlefield: Could not find battlefield container")
+		return
 	
-	# Animate to battlefield
+	# View: Animate card to battlefield
 	var target_position = player_base.getNextEmptyLocation()
 	if target_position == Vector3.INF:
 		push_error("No space on battlefield")
 		return
 	
-	var local_target = target_position + Vector3(0, 0.2, 0)
-	var tween = card.getAnimator().move_to_position(local_target, 0.8, dest)
-	if tween:
-		await tween.finished
+	# Use GameView animation
+	await game_view.animate_card_to_battlefield(card.cardData, target_position, dest)
 	
 	# Trigger card entered play
 	emit_game_event(TriggeredAbility.GameEventType.CARD_ENTERED_PLAY, card.cardData)
@@ -356,12 +425,18 @@ func _move_to_battlefield(card: Card, dest: Node):
 	for ability in card.cardData.replacement_abilities:
 		ability.apply_to_game(self)
 
-func _move_to_graveyard(card: Card, dest: Node):
-	"""Handle battlefield/anywhere to graveyard - death"""
-	# Animate to graveyard
-	var tween = card.getAnimator().move_to_position(dest.global_position, 0.5)
-	if tween:
-		await tween.finished
+func _move_to_graveyard(card: Card, dest_zone: GameZone.e):
+	"""Handle battlefield/anywhere to graveyard - death (MVC pattern)"""
+	# Note: GameData already updated by execute_move_card
+	
+	# Get visual container from GameView
+	var dest = game_view.get_zone_container(dest_zone)
+	if not dest:
+		push_error("_move_to_graveyard: Could not find graveyard container")
+		return
+	
+	# View: Animate to graveyard
+	await game_view.animate_card_to_graveyard(card.cardData, dest.global_position)
 	
 	# Remove battlefield abilities if leaving battlefield
 	var origin_zone = card.get_parent()
@@ -377,9 +452,8 @@ func _move_to_graveyard(card: Card, dest: Node):
 		# Trigger card died
 		emit_game_event(TriggeredAbility.GameEventType.CARD_DIED, card.cardData)
 	
-	# Unsubscribe from game signals and add to graveyard
+	# Unsubscribe from game signals
 	card.cardData.unsubscribe_from_game_signals(self)
-	dest.add_card(card.cardData)
 	
 	# Remove from parent immediately to prevent being found by getAllCardsInPlay() again
 	# queue_free() is deferred, so the card would stay in parent.get_children() otherwise
@@ -388,57 +462,67 @@ func _move_to_graveyard(card: Card, dest: Node):
 	
 	card.queue_free()
 
-func _move_base_to_combat(card: Card, dest: Node):
-	"""Handle PlayerBase to Combat - attack movement"""
+func _move_base_to_combat(card: Card, dest_zone: GameZone.e, combat_spot: CombatantFightingSpot):
+	"""Handle PlayerBase to Combat - attack movement (MVC pattern)"""
+	# Note: GameData already updated by execute_move_card (card_to_combat_spot assigned)
 	var origin_zone = card.get_parent()
 	
-	# Move to combat spot (setCard handles animation/positioning)
-	dest.setCard(card)
+	if not combat_spot:
+		push_error("_move_base_to_combat: combat_spot is required")
+		return
+	
+	# View: Animate to combat spot
+	game_view.animate_card_to_combat(card.cardData, combat_spot)
 	
 	# Emit generic zone change
-	card_changed_zones.emit(card.cardData, origin_zone, dest)
+	card_changed_zones.emit(card.cardData, origin_zone, combat_spot)
 
-func _move_combat_to_base(card: Card, dest: Node):
-	"""Handle Combat to PlayerBase - retreat movement"""
+func _move_combat_to_base(card: Card, dest_zone: GameZone.e):
+	"""Handle Combat to PlayerBase - retreat movement (MVC pattern)"""
+	# Note: GameData already updated by execute_move_card
 	var origin_zone = card.get_parent()
 	
-	# Animate back to base
+	# Get visual container from GameView
+	var dest = game_view.get_zone_container(dest_zone)
+	if not dest:
+		push_error("_move_combat_to_base: Could not find battlefield container")
+		return
+	
+	# View: Animate back to base
 	var target_position = player_base.getNextEmptyLocation()
 	if target_position == Vector3.INF:
 		return
 	
-	var local_target = target_position + Vector3(0, 0.2, 0)
-	var tween = card.getAnimator().move_to_position(local_target, 0.8, dest)
-	if tween:
-		await tween.finished
+	await game_view.animate_card_to_base(card.cardData, target_position, dest)
 	
 	# Emit generic zone change
 	card_changed_zones.emit(card.cardData, origin_zone, dest)
 
-func _move_generic(card: Card, dest: Node):
-	"""Handle any other zone transitions with generic animation"""
+func _move_generic(card: Card, dest_zone: GameZone.e):
+	"""Handle any other zone transitions with generic animation (MVC pattern)"""
+	# Note: GameData already updated by execute_move_card
 	var origin_zone = card.get_parent()
 	var origin_type = _get_zone_type(origin_zone)
-	var dest_type = _get_zone_type(dest)
 	
-	card.setFlip(true)
+	# Get visual container from GameView
+	var dest = game_view.get_zone_container(dest_zone)
+	if not dest:
+		push_error("_move_generic: Could not find destination container")
+		return
 	
-	# Animate to destination
-	var tween = card.getAnimator().move_to_position(dest.global_position, 0.5)
-	if tween:
-		await tween.finished
+	# View: Animate to destination
+	await game_view.animate_card_move(card.cardData, dest.global_position)
 	
 	# Handle destination based on type
 	if dest is CardContainer:
-		# Add to container and destroy card
-		dest.add_card(card.cardData)
+		# GameData already tracks card in destination zone
 		card.queue_free()
 	elif dest is CardHand:
 		# Reparent to hand and arrange
 		GameUtility.reparentCardWithoutMovingRepresentation(card, dest)
 		dest.arrange_cards_fan([card])
 	elif dest is CombatantFightingSpot:
-		dest.setCard(card)
+		game_view.animate_card_to_combat(card.cardData, dest)
 	else:
 		push_error("_move_generic: Unsupported destination type")
 		return
@@ -467,7 +551,6 @@ func tryMoveCard(card: Card, target_location: Node3D) -> void:
 		target_location = player_base
 	
 	var source_zone = getCardZone(card)
-	var target_zone = _get_target_zone(target_location)
 	
 	match source_zone:
 		GameZone.e.HAND, GameZone.e.EXTRA_DECK:
@@ -475,51 +558,58 @@ func tryMoveCard(card: Card, target_location: Node3D) -> void:
 			tryPlayCard(card, target_location)
 		
 		GameZone.e.PLAYER_BASE:
-			# Moving from PlayerBase to combat - this is an attack
-			if target_location is CombatantFightingSpot:
-				var combat_spot = target_location as CombatantFightingSpot
-				
-				# Find empty slot if target is occupied
-				if combat_spot.getCard():
-					combat_spot = (combat_spot.get_parent() as CombatZone).getFirstEmptyLocation(card.cardData.playerControlled)
-				
-				if combat_spot == null:
-					print("No empty slot found for " + card.name)
-					return
-				
-				# Check if card can move (not tapped)
-				if not can_card_move(card):
-					return
-				
-				# Tap the card for movement and mark as attacked
-				card.cardData.tap()
-				card.cardData.hasAttackedThisTurn = true
-				
-				# Move using centralized system
-				await execute_move_card(card, combat_spot)
-	
+			await _try_move_from_battlefield(card, target_location)
+		
 		GameZone.e.COMBAT_ZONE:
-		# Moving from combat zone
-			if target_location is PlayerBase:
-			# Retreat from combat to base
-				if can_card_move(card):
-					# Tap card for movement
-					card.cardData.tap()
-					
-					# Move using centralized system
-					await execute_move_card(card, player_base)
-			elif target_location is CombatantFightingSpot and \
-			card.get_parent().get_parent() == target_location.get_parent():
-			# Swapping positions within the same combat zone
-				exchange_card_in_spots(card.get_parent(), target_location)
-			else:
-				print("❌ Cannot move card from combat to that location")
+			await _try_move_from_combat(card, target_location)
+
+func _try_move_from_battlefield(card: Card, target_location: Node3D) -> void:
+	"""Handle user-initiated movement from battlefield to combat"""
+	if not target_location is CombatantFightingSpot:
+		return
 	
+	var combat_spot = target_location as CombatantFightingSpot
+	
+	# Find empty slot if target is occupied
+	if combat_spot.getCard():
+		combat_spot = (combat_spot.get_parent() as CombatZone).getFirstEmptyLocation(card.cardData.playerControlled)
+	
+	if combat_spot == null:
+		print("No empty slot found for " + card.name)
+		return
+	
+	# Check if card can move (not tapped)
+	if not can_card_move(card):
+		return
+	
+	# Tap the card for movement and mark as attacked
+	card.cardData.tap()
+	card.cardData.hasAttackedThisTurn = true
+	
+	# Move using centralized system
+	await execute_move_card(card, GameZone.e.COMBAT_PLAYER, combat_spot)
+
+func _try_move_from_combat(card: Card, target_location: Node3D) -> void:
+	"""Handle user-initiated movement from combat zone (retreat or swap)"""
+	if target_location is PlayerBase:
+		# Retreat from combat to base
+		if can_card_move(card):
+			# Tap card for movement
+			card.cardData.tap()
+			
+			# Move using centralized system
+			await execute_move_card(card, GameZone.e.BATTLEFIELD_PLAYER)
+	elif target_location is CombatantFightingSpot and \
+	card.get_parent().get_parent() == target_location.get_parent():
+		# Swapping positions within the same combat zone
+		exchange_card_in_spots(card.get_parent(), target_location)
+	else:
+		print("❌ Cannot move card from combat to that location")
+
 func tryPlayCard(card: Card, target_location: Node3D, pre_selections: SelectionManager.CardPlaySelections = null, pay_cost = true, from_default_zones = true) -> void:
 	if not card:
 		print("❌ [TRYPLAYCARD] Card is null")
 		return
-	
 	print("🎮 [TRYPLAYCARD] Attempting to play: ", card.cardData.cardName)
 	var source_zone = getCardZone(card)
 	print("🎮 [TRYPLAYCARD] Source zone: ", GameZone.e.keys()[source_zone])
@@ -591,7 +681,7 @@ func tryPlayCard(card: Card, target_location: Node3D, pre_selections: SelectionM
 				card.cardData.tap()
 				card.cardData.hasAttackedThisTurn = true
 				
-				await execute_move_card(card, combat_spot)
+				await execute_move_card(card, GameZone.e.COMBAT_PLAYER, combat_spot)
 
 func _canPlayCard(source_zone: GameZone.e) -> bool:
 	# Can play cards from hand or extra deck
@@ -606,8 +696,8 @@ func _executeCardPlay(card: Card, source_zone: GameZone.e, spell_targets: Array)
 	if card.cardData.hasType(CardData.CardType.SPELL):
 		await _executeSpellWithTargets(card, spell_targets)
 		# Move spell to graveyard after effects resolve using centralized movement system
-		var dest_graveyard = graveyard if card.cardData.playerOwned else graveyard_opponent
-		await execute_move_card(card, dest_graveyard)
+		var graveyard_zone = GameZone.e.GRAVEYARD_PLAYER if card.cardData.playerOwned else GameZone.e.GRAVEYARD_OPPONENT
+		await execute_move_card(card, graveyard_zone)
 	else:
 		# Non-spell cards enter the battlefield normally
 		await executeCardEnters(card, source_zone, GameZone.e.PLAYER_BASE)
@@ -676,46 +766,75 @@ func _executeSpellDamageWithTargets(card: Card, parameters: Dictionary, targets:
 	await resolveStateBasedAction()
 
 func drawCard(howMany: int = 1, player = true):
+	# MVC Pattern: Query Model → Create Views → Animate Views
+	
 	var _deck = deck if player else deck_opponent
-	var cards = _deck.draw_card_from_top(howMany)
+	var zone_name = GameZone.e.HAND_PLAYER if player else GameZone.e.HAND_OPPONENT
+	var deck_zone_name = GameZone.e.DECK_PLAYER if player else GameZone.e.DECK_OPPONENT
 	var hand = player_hand if player else opponent_hand
 	
 	# Store deck position for animations
 	var deck_position = _deck.global_position
 	
-	# Add all cards to hand at once - this triggers arrange_cards_fan
-	# which positions existing cards and sets logical positions for new cards
-	hand.arrange_cards_fan(cards)
+	# Query Model: Get top N cards from GameData deck zone
+	var deck_cards = game_data.cards_in_deck_player if player else game_data.cards_in_deck_opponent
+	var cards_to_draw = deck_cards.slice(0, min(howMany, deck_cards.size()))
+	
+	if cards_to_draw.is_empty():
+		print("⚠️ No cards to draw from deck")
+		return
+	
+	# Create Card views for each CardData
+	var card_views: Array[Card] = []
+	for card_data in cards_to_draw:
+		# Move from deck to hand in GameData
+		game_data.move_card(card_data, zone_name, Vector3.ZERO)
+		
+		# Create Card view through Game (legacy createCardFromData)
+		var card_view = createCardFromData(card_data, player, null)
+		card_view.global_position = deck_position
+		
+		# Register with GameView
+		game_view.card_data_to_view[card_data] = card_view
+		card_views.append(card_view)
+		
+		# Add to hand container
+		hand.add_child(card_view)
+	
+	# Update deck visual size
+	_deck.update_size()
+	
+	# Update View: Arrange hand layout
+	hand.arrange_cards_fan(card_views)
 	
 	# Keep all newly added cards' representations at deck position
-	for card in cards:
+	for card in card_views:
 		card.card_representation.global_position = deck_position
 	
-	# Now animate each card with 0.2s delay between them
+	# Animate Views: Draw animation for each card
 	var draw_position = Vector3(0, 2, 1)
-	for i in range(cards.size()):
-		var card = cards[i]
-		var animator = card.getAnimator()
+	for i in range(card_views.size()):
+		var card = card_views[i]
 		
 		# Calculate offset for multiple cards (spread them out during draw)
 		var spacing = 0.56
-		var offset = Vector3(-(spacing * (cards.size() - 1)) / 2 + spacing * i, 0, 0)
+		var offset = Vector3(-(spacing * (card_views.size() - 1)) / 2 + spacing * i, 0, 0)
 		var target_draw_pos = draw_position + offset
 		
-		# Use draw animation with 0.2s delay between cards
-		animator.draw_card(
-			deck_position,				# from_position
-			target_draw_pos,			  # draw_position  
-			card.global_position,			 # final_position (hand position + card local position)
-			i * 0.1,					  # delay of 0.2s between cards
-			player and card.is_facedown   # flip_card
+		# Use GameView animation method
+		game_view.animate_draw_card(
+			card.cardData,
+			deck_position,
+			card.global_position,  # final position in hand
+			i * 0.1,  # delay
+			player and card.is_facedown
 		)
 	
 	# Wait for all animations to complete (longest delay + animation time)
-	await get_tree().create_timer(cards.size() * 0.2 + 0.6).timeout
+	await get_tree().create_timer(card_views.size() * 0.2 + 0.6).timeout
 	
 	# Emit card_drawn signal for triggered abilities
-	card_drawn.emit(cards, player)
+	card_drawn.emit(card_views, player)
 	await resolveStateBasedAction()
 
 func resolveCombats():
@@ -882,8 +1001,8 @@ func resolveStateBasedAction():
 		
 		if damage > 0 && damage >= power:
 			print("  💀 [SBA] ", c.cardData.cardName, " is dead (damage: ", damage, " >= power: ", power, "), moving to graveyard")
-			var dest_zone = graveyard if c.cardData.playerOwned else graveyard_opponent
-			await execute_move_card(c, dest_zone)
+			var graveyard_zone = GameZone.e.GRAVEYARD_PLAYER if c.cardData.playerOwned else GameZone.e.GRAVEYARD_OPPONENT
+			await execute_move_card(c, graveyard_zone)
 			print("  ✅ [SBA] Finished moving ", c.cardData.cardName if is_instance_valid(c) and c.cardData else "[freed card]", " to graveyard")
 	if game_data.player_life.getValue() <= 0:
 		get_tree().change_scene_to_file("res://MainMenu/scenes/MainMenu.tscn")
@@ -895,17 +1014,20 @@ func resolveStateBasedAction():
 	highlightCastableCards()
 
 func updateDecks():
-	if deck.get_card_count() <= game_data.playerDeckList.deck_cards.size():
-		refilLDeck(deck, createCardDatas(game_data.playerDeckList.deck_cards), true)
+	# Query GameData instead of CardContainer for card counts
+	if game_data.cards_in_deck_player.size() <= game_data.playerDeckList.deck_cards.size():
+		refilLDeck(deck, createCardDatas(game_data.playerDeckList.deck_cards), true, GameZone.e.DECK_PLAYER)
 	
-	if deck_opponent.get_card_count() <= game_data.opponentDeckList.deck_cards.size():
-		refilLDeck(deck_opponent, createCardDatas(game_data.opponentDeckList.deck_cards), false)
+	if game_data.cards_in_deck_opponent.size() <= game_data.opponentDeckList.deck_cards.size():
+		refilLDeck(deck_opponent, createCardDatas(game_data.opponentDeckList.deck_cards), false, GameZone.e.DECK_OPPONENT)
 
-func refilLDeck(deckToRefill: CardContainer, cards: Array[CardData], isPlayerOwned: bool):
+func refilLDeck(deckToRefill: CardContainer, cards: Array[CardData], isPlayerOwned: bool, zone_name: GameZone.e):
+	# MVC Pattern: Update Model (GameData only)
 	for c:CardData in cards:
 		c.playerOwned = isPlayerOwned
+		# Add to GameData model (no need to track in container)
+		game_data.add_card_to_zone(c, zone_name, deckToRefill.global_position)
 	cards.shuffle()
-	deckToRefill.add_cards(cards)
 	
 func opponentMainOne():
 	if opponent_ai:
@@ -923,25 +1045,45 @@ static var objectCount = 0
 static func getObjectCountAndIncrement():
 	objectCount +=1
 	return objectCount-1
+
+## MVC Pattern: Create card view through GameView
+func create_card_view_mvc(card_data: CardData, is_player_controlled: bool, zone: GameZone.e) -> Card:
+	"""Create a Card view using MVC pattern - Model → View"""
+	# Model: Add to GameData
+	game_data.add_card_to_zone(card_data, zone, Vector3.ZERO)
 	
+	# View: Create Card node
+	var card = game_view.create_card_view(card_data, is_player_controlled, false)
+	
+	# Get zone container and add card to it
+	var zone_container = game_view.get_zone_container(zone)
+	if zone_container:
+		zone_container.add_child(card)
+	
+	return card
+	
+## Legacy: Old card creation (to be phased out)
 func createCardFromData(cardData: CardData, player_controlled: bool, container: CardContainer = null):
+	# TODO: Migrate callers to use create_card_view_mvc instead
 	return GameUtility.createCardFromData(self, cardData, player_controlled, false, container)
 
 func createToken(cardData: CardData, player_controlled: bool) -> Card:
 	return GameUtility.createCardFromData(self, cardData, player_controlled, true, null)
 
 func playCardFromDeck(card_data: CardData):
-	# Check if card exists in deck
-	var deck_to_use = deck if card_data.playerControlled else deck_opponent
-	if not deck_to_use.cards.has(card_data):
+	# MVC Pattern: Query GameData → Create View → Execute play
+	
+	# Check if card exists in GameData deck zone
+	var deck_zone_name = GameZone.e.DECK_PLAYER if card_data.playerControlled else GameZone.e.DECK_OPPONENT
+	var deck_cards = game_data.cards_in_deck_player if card_data.playerControlled else game_data.cards_in_deck_opponent
+	
+	if not deck_cards.has(card_data):
 		print("❌ Card not found in deck: ", card_data.cardName)
 		return
 	
-	# Draw the specific card from deck (removes from deck and creates Card object)
-	var card = deck_to_use.draw_specific_card(card_data)
-	if not card:
-		print("❌ Failed to draw card from deck: ", card_data.cardName)
-		return
+	# Create Card view from CardData (will be moved to battlefield)
+	var card = createCardFromData(card_data, card_data.playerControlled, null)
+	game_view.card_data_to_view[card_data] = card
 	
 	# Execute card entering from deck to battlefield
 	await executeCardEnters(card, GameZone.e.DECK, GameZone.e.PLAYER_BASE)

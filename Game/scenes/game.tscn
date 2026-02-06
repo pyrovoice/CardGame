@@ -1,7 +1,7 @@
 [gd_scene load_steps=20 format=3 uid="uid://bkqg746td2asx"]
 
-[ext_resource type="Script" uid="uid://dsb1ch8a7q1og" path="res://Game/scripts/game.gd" id="1_7475e"]
 [ext_resource type="PackedScene" uid="uid://dnt4p0i1i5qk1" path="res://Game/scenes/Deck.tscn" id="1_ds5t7"]
+[ext_resource type="Script" uid="uid://bfo2jk26bbnjb" path="res://Game/scripts/GameView.gd" id="1_e287m"]
 [ext_resource type="PackedScene" uid="uid://daynfobgnbdrp" path="res://Game/scenes/combat_zone.tscn" id="2_w3xpy"]
 [ext_resource type="Script" uid="uid://bj67ghukul3cy" path="res://Game/scripts/PlayerControl.gd" id="4_w5dfm"]
 [ext_resource type="PackedScene" uid="uid://dueg4t10qe41s" path="res://Game/scenes/graveyard.tscn" id="6_2jiha"]
@@ -30,7 +30,7 @@ size = Vector2(6, 1)
 size = Vector3(5, 0.1, 1.5)
 
 [node name="Game" type="Node3D"]
-script = ExtResource("1_7475e")
+script = ExtResource("1_e287m")
 
 [node name="combatZone" parent="." instance=ExtResource("2_w3xpy")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -6.8445325, -0.001, 0)

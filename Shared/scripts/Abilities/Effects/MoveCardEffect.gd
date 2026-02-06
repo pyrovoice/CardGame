@@ -72,33 +72,61 @@ func execute(parameters: Dictionary, source_card_data: CardData, game_context: G
 	for selected_card in selected_cards:
 		print("📦 ", source_card_data.cardName, " moves ", selected_card.cardName, " from ", origin_zone_str, " to ", destination_zone_str)
 		
-		# Use game's execute_move_card to handle the zone transfer with actual zone nodes
-		game_context.execute_move_card_from_data(selected_card, origin_zone, destination_zone)
+		# Convert Node zones to GameZone.e enums
+		var origin_enum = game_context._get_zone_enum(origin_zone)
+		var dest_enum = game_context._get_zone_enum(destination_zone)
+		
+		# Use game's execute_move_card to handle the zone transfer with GameZone enums
+		game_context.execute_move_card_from_data(selected_card, origin_enum, dest_enum)
 
 func _get_cards_from_zone_node(zone_node: Node) -> Array[CardData]:
-	"""Get all CardData from a zone node"""
+	"""Get all CardData from a zone node - queries GameData instead of containers"""
 	var cards: Array[CardData] = []
 	
-	# Check if zone has a get_cards() method (Graveyard, Deck containers)
-	if zone_node.has_method("get_cards"):
-		return zone_node.get_cards()
-	
-	# Check if zone has a getCards() method (PlayerBase)
-	if zone_node.has_method("getCards"):
-		var card_objects: Array = zone_node.getCards()
-		for card in card_objects:
-			if card and card.cardData:
-				cards.append(card.cardData)
+	# Get the Game context to access GameData
+	var game_context = zone_node.get_tree().get_first_node_in_group("game") as Game
+	if not game_context or not game_context.game_data:
+		push_warning("Cannot access GameData from zone node")
 		return cards
 	
-	# For hand containers, get child Card nodes
-	if zone_node is Control or zone_node.name.contains("hand"):
-		for child in zone_node.get_children():
-			if child is Card and child.cardData:
-				cards.append(child.cardData)
-		return cards
+	# Map zone node to GameData zone and query
+	var zone_name = game_context._get_zone_type(zone_node)
+	match zone_name:
+		"Deck":
+			# Determine if player or opponent deck
+			if zone_node == game_context.deck:
+				return game_context.game_data.cards_in_deck_player
+			elif zone_node == game_context.deck_opponent:
+				return game_context.game_data.cards_in_deck_opponent
+		"Graveyard":
+			# Determine if player or opponent graveyard
+			if zone_node == game_context.graveyard:
+				return game_context.game_data.cards_in_graveyard_player
+			elif zone_node == game_context.graveyard_opponent:
+				return game_context.game_data.cards_in_graveyard_opponent
+		"CardHand":
+			# Determine if player or opponent hand
+			if zone_node == game_context.player_hand:
+				return game_context.game_data.cards_in_hand_player
+			elif zone_node == game_context.opponent_hand:
+				return game_context.game_data.cards_in_hand_opponent
+		"PlayerBase":
+			# Determine if player or opponent battlefield
+			if zone_node == game_context.player_base:
+				return game_context.game_data.cards_on_battlefield_player
+			elif zone_node == game_context.opponent_base:
+				return game_context.game_data.cards_on_battlefield_opponent
+		"Combat":
+			# Combat zones - get all cards in combat
+			var combat_cards: Array[CardData] = []
+			for spot in zone_node.get_children():
+				if spot is CombatantFightingSpot:
+					var card = spot.getCard()
+					if card and card.cardData:
+						combat_cards.append(card.cardData)
+			return combat_cards
 	
-	push_warning("Unknown zone node type: ", zone_node.get_class(), " (", zone_node.name, ")")
+	push_warning("Unknown or unmapped zone node type: ", zone_name, " (", zone_node.name, ")")
 	return cards
 
 func validate_parameters(parameters: Dictionary) -> bool:

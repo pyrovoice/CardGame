@@ -137,7 +137,7 @@ func payCosts(costs: Array[Dictionary], source_card: Card, pre_selections: Selec
 				if target == "Self":
 					print("🔥 Sacrificing ", source_card.cardData.cardName, " for cost")
 					# Move the card to graveyard
-					var dest_zone = current_game.graveyard if source_card.cardData.playerOwned else current_game.graveyard_opponent
+					var dest_zone = GameZone.e.GRAVEYARD_PLAYER if source_card.cardData.playerOwned else GameZone.e.GRAVEYARD_OPPONENT
 					await current_game.execute_move_card(source_card, dest_zone)
 				else:
 					# Check if we have pre-selected sacrifice targets
@@ -171,7 +171,7 @@ func payCosts(costs: Array[Dictionary], source_card: Card, pre_selections: Selec
 					# Sacrifice all selected cards
 					for card_to_sacrifice in selected_cards:
 						print("🔥 Sacrificing ", card_to_sacrifice.cardData.cardName, " for cost")
-						var dest_zone = current_game.graveyard if card_to_sacrifice.cardData.playerOwned else current_game.graveyard_opponent
+						var dest_zone = GameZone.e.GRAVEYARD_PLAYER if card_to_sacrifice.cardData.playerOwned else GameZone.e.GRAVEYARD_OPPONENT
 						await current_game.execute_move_card(card_to_sacrifice, dest_zone)
 			
 			"PayMana":
@@ -412,7 +412,7 @@ func payAdditionalCosts(additional_costs: Array[Dictionary], selected_cards: Arr
 	
 	# Sacrifice Replace targets first
 	for replace_target in replace_targets:
-		var dest_zone = current_game.graveyard if replace_target.cardData.playerOwned else current_game.graveyard_opponent
+		var dest_zone = GameZone.e.GRAVEYARD_PLAYER if replace_target.cardData.playerOwned else GameZone.e.GRAVEYARD_OPPONENT
 		await current_game.execute_move_card(replace_target, dest_zone)
 	
 	# Process regular additional costs (like SacrificePermanent) with remaining cards
@@ -534,7 +534,7 @@ func sacrificePermanents(cost_data: Dictionary, selected_cards: Array[Card] = []
 		
 		# Move each card to graveyard using execute_move_card
 		for card_to_sacrifice in cards_to_sacrifice:
-			var dest_zone = current_game.graveyard if card_to_sacrifice.cardData.playerOwned else current_game.graveyard_opponent
+			var dest_zone = GameZone.e.GRAVEYARD_PLAYER if card_to_sacrifice.cardData.playerOwned else GameZone.e.GRAVEYARD_OPPONENT
 			await current_game.execute_move_card(card_to_sacrifice, dest_zone)
 	
 	return true

@@ -22,16 +22,20 @@ static func getAllCardsInPlay(game: Game) -> Array[Card]:
 	return cards
 
 static func find_container_for_card_data(game: Game, cardData: CardData) -> CardContainer:
-	"""Find which container currently has this CardData"""
-	if game.deck.cards.has(cardData):
+	"""Find which container currently has this CardData - queries GameData"""
+	if not game.game_data:
+		return null
+	
+	# Query GameData to find which zone contains the card
+	if game.game_data.cards_in_deck_player.has(cardData):
 		return game.deck
-	elif game.deck_opponent.cards.has(cardData):
+	elif game.game_data.cards_in_deck_opponent.has(cardData):
 		return game.deck_opponent
-	elif game.graveyard.cards.has(cardData):
+	elif game.game_data.cards_in_graveyard_player.has(cardData):
 		return game.graveyard
-	elif game.graveyard_opponent.cards.has(cardData):
+	elif game.game_data.cards_in_graveyard_opponent.has(cardData):
 		return game.graveyard_opponent
-	elif game.extra_deck.cards.has(cardData):
+	elif game.game_data.cards_in_extra_deck_player.has(cardData):
 		return game.extra_deck
 	return null
 
@@ -55,12 +59,8 @@ static func createCardFromData(game: Game, cardData: CardData, player_controlled
 	if container == null:
 		container = find_container_for_card_data(game, cardData)
 	
-	# Remove CardData from its container if found
-	if container and container is CardContainer:
-		if container.cards.has(cardData):
-			container.cards.erase(cardData)
-			container.update_size()
-			print("📤 Removed ", cardData.cardName, " from ", container.name)
+	# Note: CardData removal from zones is now handled by GameData, not containers
+	# Containers no longer track cards
 	
 	# Parent to the container (if provided), otherwise parent to game
 	if container:
@@ -121,8 +121,10 @@ static func get_graveyard_for_controller(game: Game, is_player_controlled: bool)
 
 static func get_cards_in_graveyard(game: Game, is_player_controlled: bool) -> Array[CardData]:
 	"""Get all cards in the graveyard for the specified controller"""
-	var graveyard_container = game.graveyard if is_player_controlled else game.graveyard_opponent
-	return graveyard_container.get_cards() if graveyard_container else []
+	if is_player_controlled:
+		return game.game_data.cards_in_graveyard_player
+	else:
+		return game.game_data.cards_in_graveyard_opponent
 
 static func _calculate_game_popup_position(game: Game) -> Vector2:
 	"""Calculate the position for card popup in game view (left side of screen)"""
@@ -237,25 +239,8 @@ static func getControllerCards(game: Game, playerSide = true) -> Array[Card]:
 	
 	return controlled_cards
 
-# Helper methods used by the main utility functions
-static func getCardsInHand(game: Game, player_controlled: bool = true) -> Array[Card]:
-	"""Get cards in hand for the specified controller"""
-	var hand_container = game.player_hand if player_controlled else game.opponent_hand
-	var cards: Array[Card] = []
-	for child in hand_container.get_children():
-		if child is Card:
-			cards.append(child)
-	return cards
 
-static func getCardsInDeck(game: Game, player_controlled: bool = true) -> Array[CardData]:
-	"""Get cards in deck for the specified controller"""
-	var deck_container = game.deck if player_controlled else game.deck_opponent
-	return deck_container.get_cards()
 
-static func getCardsInGraveyard(game: Game, player_controlled: bool = true) -> Array[CardData]:
-	"""Get cards in graveyard for the specified controller"""
-	var graveyard_container = game.graveyard if player_controlled else game.graveyard_opponent
-	return graveyard_container.get_cards() if graveyard_container else []
 
 static func reparentWithoutMoving(object: Node3D, newParent: Node3D):
 	var globalPosBefore = object.global_position
