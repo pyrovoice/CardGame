@@ -91,7 +91,7 @@ func _update_drag_highlights():
 	_clearAllHighlights()
 	
 	# Apply appropriate highlight to dragged card
-	if CardPaymentManagerAL.isCardCastable(currently_dragged_card):
+	if CardPaymentManagerAL.isCardCastable(currently_dragged_card.cardData):
 		currently_dragged_card.set_selectable(true)
 		currently_dragged_card.set_drag_outside_hand(drag_outside_hand)
 		currentlyHighlightedCards.append(currently_dragged_card)
@@ -104,7 +104,7 @@ func _highlightHandCards():
 	var hand_cards = game.player_hand.get_children()
 	for card: Card in hand_cards:
 		if card is Card:
-			var is_castable = CardPaymentManagerAL.isCardCastable(card)
+			var is_castable = CardPaymentManagerAL.isCardCastable(card.cardData)
 			
 			card.set_selectable(is_castable)
 			if is_castable:
@@ -118,7 +118,7 @@ func _highlightExtraDeckDisplayCards():
 	var display_cards = game.extra_hand.get_children()
 	for card: Card in display_cards:
 		if card is Card:
-			var is_castable = CardPaymentManagerAL.isCardCastable(card)
+			var is_castable = CardPaymentManagerAL.isCardCastable(card.cardData)
 			card.set_selectable(is_castable)
 			if is_castable:
 				currentlyHighlightedCards.append(card)

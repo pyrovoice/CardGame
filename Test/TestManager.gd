@@ -1307,16 +1307,16 @@ func test_tap_system() -> bool:
 		var ability = tap_abilities[0]
 		
 		# Check if we can pay costs (should be true)
-		if assert_test_true(CardPaymentManagerAL.canPayCosts(ability.activation_costs, test_card), "Should be able to pay tap costs when untapped"):
+		if assert_test_true(CardPaymentManagerAL.canPayCosts(ability.activation_costs, test_card.cardData), "Should be able to pay tap costs when untapped"):
 			# Activate the ability
-			await AbilityManagerAL.activateAbility(test_card, ability, game)
+			await AbilityManagerAL.activateAbility(test_card.cardData, ability, game)
 			
 			# Check that card is now tapped
 			if not assert_test_true(test_card.cardData.is_tapped(), "Card should be tapped after using tap ability"):
 				return false
 			
 			# Try to use ability again (should fail)
-			if not assert_test_false(CardPaymentManagerAL.canPayCosts(ability.activation_costs, test_card), "Should not be able to pay tap costs when already tapped"):
+			if not assert_test_false(CardPaymentManagerAL.canPayCosts(ability.activation_costs, test_card.cardData), "Should not be able to pay tap costs when already tapped"):
 				return false
 	
 	print("✅ Tap system test passed!")
@@ -1361,7 +1361,7 @@ func test_temporary_keyword_effects() -> bool:
 	
 	# Step 5: Activate the ability (sacrifices Hersir, grants Spellshield to all creatures)
 	print("🎯 Activating Hersir's ability to grant Spellshield...")
-	await AbilityManagerAL.activateAbility(hersir_card, activated_ability, game)
+	await AbilityManagerAL.activateAbility(hersir_card.cardData, activated_ability, game)
 	await get_tree().process_frame
 	
 	# Step 6: Verify target now has Spellshield
@@ -1983,7 +1983,7 @@ func test_warcamp_activated_ability() -> bool:
 	
 	# Step 5: Try to activate the ability - should fail because child is not a valid sacrifice target
 	print("🔍 Attempting to activate ability without valid sacrifice target...")
-	var can_pay = CardPaymentManagerAL.canPayCosts(activated_ability.activation_costs, warcamp_card)
+	var can_pay = CardPaymentManagerAL.canPayCosts(activated_ability.activation_costs, warcamp_card.cardData)
 	if not assert_test_false(can_pay, "Should not be able to activate ability without valid sacrifice target"):
 		return false
 	print("✅ Ability correctly prevented when no valid targets")
@@ -1999,7 +1999,7 @@ func test_warcamp_activated_ability() -> bool:
 	
 	# Step 7: Verify ability can now be activated
 	print("🔍 Checking if ability can be activated now...")
-	can_pay = CardPaymentManagerAL.canPayCosts(activated_ability.activation_costs, warcamp_card)
+	can_pay = CardPaymentManagerAL.canPayCosts(activated_ability.activation_costs, warcamp_card.cardData)
 	if not assert_test_true(can_pay, "Should be able to activate ability with valid sacrifice target"):
 		return false
 	print("✅ Ability can be activated with valid target")
@@ -2015,10 +2015,10 @@ func test_warcamp_activated_ability() -> bool:
 	# Step 9: Create pre-selection for the sacrifice (child token)
 	print("🎮 Activating Warcamp ability with child sacrifice...")
 	var selections = SelectionManager.CardPlaySelections.new()
-	selections.sacrifice_targets.push_back(child_card)
+	selections.sacrifice_targets.push_back(child_card.cardData)
 	
 	# Activate the ability with pre-selections
-	await AbilityManagerAL.activateAbility(warcamp_card, activated_ability, game, selections)
+	await AbilityManagerAL.activateAbility(warcamp_card.cardData, activated_ability, game, selections)
 	await get_tree().process_frame
 	
 	# Step 10: Verify warcamp is now tapped

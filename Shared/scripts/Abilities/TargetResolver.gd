@@ -4,7 +4,7 @@ class_name TargetResolver
 ## Resolves targets for ability effects based on targeting parameters
 ## Handles ValidCards, Target specifications, and filtering
 
-static func resolve_targets(parameters: Dictionary, source_card_data: CardData, game_context: Game) -> Array[Card]:
+static func resolve_targets(parameters: Dictionary, source_card_data: CardData, game_context: Game) -> Array:
 	"""
 	Resolve targets for an ability effect based on parameters.
 	
@@ -12,13 +12,13 @@ static func resolve_targets(parameters: Dictionary, source_card_data: CardData, 
 		- Target: String - Target specification ("Self", "All", etc.)
 		- ValidCards: String - Card filter ("Creature.YouCtrl", etc.)
 		- ValidTargets: String - Alternative to ValidCards
-		- Targets: Array[Card] - Pre-selected targets (if already resolved)
+		- Targets: Array - Pre-selected targets (CardData if already resolved)
 	@param source_card_data: CardData - The card creating the effect
 	@param game_context: Game - The game context
-	@return: Array[Card] - Resolved target cards
+	@return: Array - Resolved target cards (CardData for pre-selected, Card for resolved)
 	"""
 	
-	# Check if targets are already pre-resolved
+	# Check if targets are already pre-resolved (now CardData)
 	var preselected_targets = parameters.get("Targets", [])
 	if not preselected_targets.is_empty():
 		return preselected_targets
@@ -43,38 +43,35 @@ static func resolve_targets(parameters: Dictionary, source_card_data: CardData, 
 			print("⚠️ Unknown target specification: ", target_spec)
 			return []
 
-static func _resolve_self_target(source_card_data: CardData) -> Array[Card]:
-	"""Resolve 'Self' target to the source card"""
-	var source_card = source_card_data.get_card_object()
-	if source_card:
-		return [source_card]
-	else:
-		print("⚠️ Cannot resolve Self target - card no longer exists")
-		return []
+static func _resolve_self_target(source_card_data: CardData) -> Array:
+	"""Resolve 'Self' target to the source card (returns CardData for consistency)"""
+	return [source_card_data]
 
-static func find_valid_cards(condition: String, game_context: Game) -> Array[Card]:
+static func find_valid_cards(condition: String, game_context: Game) -> Array[CardData]:
 	"""
 	Find all cards matching the given condition.
 	
 	@param condition: String - Filter condition (e.g., "Creature.YouCtrl", "Card.Other+Goblin")
 	@param game_context: Game - The game context
-	@return: Array[Card] - Cards matching the condition
+	@return: Array[CardData] - CardData instances matching the condition
 	"""
+	# Query GameData for cards in play
+	var cards_data = game_context.game_data.get_cards_in_play()
+	
 	if condition == "Any":
-		return game_context.getAllCardsInPlay()
+		return cards_data
 	
-	var all_cards = game_context.getAllCardsInPlay()
-	var valid_targets: Array[Card] = []
+	var valid_targets: Array[CardData] = []
 	
-	for card in all_cards:
-		if is_valid_card_for_condition(card, condition):
-			valid_targets.append(card)
+	for card_data in cards_data:
+		if is_valid_card_data_for_condition(card_data, condition):
+			valid_targets.append(card_data)
 	
 	return valid_targets
 
-static func is_valid_card_for_condition(card: Card, condition: String) -> bool:
+static func is_valid_card_data_for_condition(card_data: CardData, condition: String) -> bool:
 	"""
-	Check if a card matches the given condition string.
+	Check if a CardData matches the given condition string.
 	
 	Supported formats:
 	- "Creature" - Must be a creature
@@ -98,13 +95,13 @@ static func is_valid_card_for_condition(card: Card, condition: String) -> bool:
 		for part in dot_parts:
 			part = part.strip_edges()
 			
-			if not _check_condition_part(card, part):
+			if not _check_condition_part_data(card_data, part):
 				return false
 	
 	return true
 
-static func _check_condition_part(card: Card, part: String) -> bool:
-	"""Check if a card matches a single condition part"""
+static func _check_condition_part_data(card_data: CardData, part: String) -> bool:
+	"""Check if a CardData matches a single condition part"""
 	match part:
 		"Card":
 			# Generic card reference, always true
@@ -116,37 +113,33 @@ static func _check_condition_part(card: Card, part: String) -> bool:
 			return true
 		
 		"Creature":
-			return card.cardData.hasType(CardData.CardType.CREATURE)
+			return card_data.hasType(CardData.CardType.CREATURE)
 		
 		"Spell":
-			return card.cardData.hasType(CardData.CardType.SPELL)
+			return card_data.hasType(CardData.CardType.SPELL)
 		
 		"YouCtrl":
-			return card.cardData.playerControlled
+			return card_data.playerControlled
 		
 		"OppCtrl":
-			return not card.cardData.playerControlled
+			return not card_data.playerControlled
 		
 		_:
 			# Check if it's a card type
 			if CardData.isValidCardTypeString(part):
 				var card_type = CardData.stringToCardType(part)
-				return card.cardData.hasType(card_type)
+				return card_data.hasType(card_type)
 			else:
 				# Assume it's a subtype
-				return card.cardData.hasSubtype(part)
+				return card_data.hasSubtype(part)
 	
 	return false
 
-static func filter_out_source(cards: Array[Card], source_card_data: CardData) -> Array[Card]:
-	"""Remove the source card from a list of cards (for 'Other' conditions)"""
-	var source_card = source_card_data.get_card_object()
-	if not source_card:
-		return cards
-	
-	var filtered: Array[Card] = []
-	for card in cards:
-		if card != source_card:
-			filtered.append(card)
+static func filter_out_source(cards_data: Array[CardData], source_card_data: CardData) -> Array[CardData]:
+	"""Remove the source card from a list of CardData (for 'Other' conditions)"""
+	var filtered: Array[CardData] = []
+	for card_data in cards_data:
+		if card_data != source_card_data:
+			filtered.append(card_data)
 	
 	return filtered

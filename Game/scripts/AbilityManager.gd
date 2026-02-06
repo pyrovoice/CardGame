@@ -8,28 +8,41 @@ class_name AbilityManager
 
 ## Ability execution methods
 
-func activateAbility(source_card: Card, activated_ability: ActivatedAbility, game_context: Game, pre_selections: SelectionManager.CardPlaySelections = null):
-	print("🔥 [ACTIVATED] Activating ability on ", source_card.cardData.cardName)
+func activateAbility(source_card_data: CardData, activated_ability: ActivatedAbility, game_context: Game, pre_selections: SelectionManager.CardPlaySelections = null):
+	print("🔥 [ACTIVATED] Activating ability on ", source_card_data.cardName)
 	
 	# First, check if costs can be paid
-	if not CardPaymentManagerAL.canPayCosts(activated_ability.activation_costs, source_card):
-		print("⚠️ Cannot pay activation costs for ", source_card.cardData.cardName)
+	if not CardPaymentManagerAL.canPayCosts(activated_ability.activation_costs, source_card_data):
+		print("⚠️ Cannot pay activation costs for ", source_card_data.cardName)
 		return false
 	
-	# Check if any cost would destroy the source card (like Sacrifice Self)
-	var has_sacrifice_self_cost = false
-	var card_name_for_debug = source_card.cardData.cardName  # Store card name before potential destruction
-	var source_card_data = source_card.cardData  # Store CardData reference before card might be freed
+	var card_name_for_debug = source_card_data.cardName  # Store card name before potential destruction
+
 	
-	for cost in activated_ability.activation_costs:
-		if cost.get("type", "") == "Sacrifice" and cost.get("target", "") == "Self":
-			has_sacrifice_self_cost = true
-			break
-	
-	# Always pay costs first (proper order for sacrificing)
-	if not await CardPaymentManagerAL.payCosts(activated_ability.activation_costs, source_card, pre_selections):
+	# Pay costs - payCosts returns info for game_context to execute
+	var payment_info = CardPaymentManagerAL.payCosts(activated_ability.activation_costs, source_card_data, pre_selections)
+	if not payment_info.success:
 		print("❌ Failed to pay activation costs for ", card_name_for_debug)
 		return false
+	
+	# Execute payment: spend gold
+	if payment_info.gold_to_pay > 0:
+		if not game_context.game_data.spend_gold(payment_info.gold_to_pay, source_card_data.playerControlled):
+			print("❌ Failed to spend gold for activation")
+			return false
+	
+	# Execute payment: sacrifice cards
+	for sacrifice_card_data in payment_info.cards_to_sacrifice:
+		var sacrifice_card_node = sacrifice_card_data.get_card_object()
+		if sacrifice_card_node and is_instance_valid(sacrifice_card_node):
+			var dest_zone = GameZone.e.GRAVEYARD_PLAYER if sacrifice_card_data.playerOwned else GameZone.e.GRAVEYARD_OPPONENT
+			await game_context.execute_move_card(sacrifice_card_node, dest_zone)
+	
+	# Execute payment: tap card if needed
+	if payment_info.card_to_tap:
+		var card_to_tap_node = payment_info.card_to_tap.get_card_object()
+		if card_to_tap_node and is_instance_valid(card_to_tap_node):
+			card_to_tap_node.tap()
 	
 	# Execute the ability effect using CardData (which persists even if Card is freed)
 	await executeAbilityEffect(source_card_data, activated_ability, game_context)
@@ -121,22 +134,22 @@ func onEffectTrigger(effect_context: Dictionary, game_context: Game) -> Dictiona
 	"""Check for replacement effects that modify the given effect"""
 	var modified_context = effect_context.duplicate()
 	
-	# Get all cards that could have replacement effects
-	var all_cards = game_context.getAllCardsInPlay()
+	# Query GameData for cards in play
+	var cards_data = game_context.game_data.get_cards_in_play()
 	
-	for card in all_cards:
-		if not card.cardData or card.cardData.replacement_abilities.is_empty():
+	for card_data in cards_data:
+		if card_data.replacement_abilities.is_empty():
 			continue
 		
-		for ability in card.cardData.replacement_abilities:
+		for ability in card_data.replacement_abilities:
 			# Check if this replacement effect applies to the current effect
-			if shouldReplacementEffectApply(ability, effect_context, card, game_context):
+			if shouldReplacementEffectApply(ability, effect_context, card_data):
 				# Apply the replacement effect
-				modified_context = applyReplacementEffect(ability, modified_context, card)
+				modified_context = applyReplacementEffect(ability, modified_context, card_data)
 	
 	return modified_context
 
-func shouldReplacementEffectApply(replacement_ability: ReplacementAbility, effect_context: Dictionary, replacement_source: Card, game_context: Game) -> bool:
+func shouldReplacementEffectApply(replacement_ability: ReplacementAbility, effect_context: Dictionary, replacement_source_data: CardData) -> bool:
 	"""Check if a replacement effect should apply to the current effect"""
 	var effect_type = effect_context.get("effect_type", "")
 	var ability_event_type = replacement_ability.effect_parameters.get("event_type", "")
@@ -154,7 +167,7 @@ func shouldReplacementEffectApply(replacement_ability: ReplacementAbility, effec
 	var active_zones = conditions.get("ActiveZones", "Any")
 	
 	if active_zones != "Any":
-		var replacement_source_zone = game_context.getCardZone(replacement_source)
+		var replacement_source_zone = replacement_source_data.current_zone
 		if active_zones == "Battlefield":
 			if replacement_source_zone != GameZone.e.PLAYER_BASE and replacement_source_zone != GameZone.e.COMBAT_ZONE:
 				return false
@@ -230,7 +243,7 @@ func isValidTokenCondition(condition: String, effect_context: Dictionary) -> boo
 	
 	return true
 
-func applyReplacementEffect(replacement_ability: ReplacementAbility, effect_context: Dictionary, _replacement_source: Card) -> Dictionary:
+func applyReplacementEffect(replacement_ability: ReplacementAbility, effect_context: Dictionary, _replacement_source_data: CardData) -> Dictionary:
 	"""Apply a replacement effect to modify the effect context"""
 	var modified_context = effect_context.duplicate()
 	var effect_params = replacement_ability.effect_parameters
@@ -280,28 +293,28 @@ static func place_token_at_location(token_card: Card, location: Node3D):
 ## Spell Effect Execution
 ## Handles spell casting and effect resolution
 
-func executeSpellEffects(card: Card, game_context: Game):
+func executeSpellEffects(card_data: CardData, game_context: Game):
 	"""Execute spell effects - handle targeting and effect resolution"""
-	if not card.cardData.hasType(CardData.CardType.SPELL):
-		print("❌ Tried to execute spell effects on non-spell card: ", card.cardData.cardName)
+	if not card_data.hasType(CardData.CardType.SPELL):
+		print("❌ Tried to execute spell effects on non-spell card: ", card_data.cardName)
 		return
 	
-	print("✨ Casting spell: ", card.cardData.cardName)
+	print("✨ Casting spell: ", card_data.cardName)
 	
 	# Get spell effects from the card's abilities
-	var spell_effects = card.cardData.spell_abilities
+	var spell_effects = card_data.spell_abilities
 	
 	if spell_effects.is_empty():
-		print("⚠️ Spell has no effects to execute: ", card.cardData.cardName)
+		print("⚠️ Spell has no effects to execute: ", card_data.cardName)
 		return
 	
 	# Execute each spell effect
 	for effect in spell_effects:
-		await executeSpellEffect(card, effect, game_context)
+		await executeSpellEffect(card_data, effect, game_context)
 	
-	print("✨ Finished casting spell: ", card.cardData.cardName)
+	print("✨ Finished casting spell: ", card_data.cardName)
 
-func executeSpellEffect(card: Card, effect: Dictionary, game_context: Game):
+func executeSpellEffect(card_data: CardData, effect: Dictionary, game_context: Game):
 	"""Execute a single spell effect - converts to enum and calls executeAbilityEffect"""
 	var effect_type_str = effect.get("effect_type", "")
 	
@@ -317,27 +330,27 @@ func executeSpellEffect(card: Card, effect: Dictionary, game_context: Game):
 		"target_conditions": {}
 	}
 	
-	await executeAbilityEffect(card.cardData, ability, game_context)
+	await executeAbilityEffect(card_data, ability, game_context)
 
 ## Validation and Condition Checking
 ## Used by the deprecated trigger system and for card condition validation
 
-func isValidCardCondition(condition: String, triggerSource: Card, abilityOwner: Card) -> bool:
+func isValidCardCondition(condition: String, triggerSource_data: CardData, abilityOwner_data: CardData) -> bool:
 	"""Check if the trigger source meets the ValidCard condition"""
 	if condition == "Any":
 		return true
 	elif condition == "Card.Self":
-		return triggerSource == abilityOwner
+		return triggerSource_data == abilityOwner_data
 	elif condition == "Card.Other":
-		return triggerSource != abilityOwner
+		return triggerSource_data != abilityOwner_data
 	else:
 		# Check if it's a subtype condition (e.g., "Goblin")
-		if triggerSource.cardData and triggerSource.cardData.subtypes:
-			return condition in triggerSource.cardData.subtypes
+		if triggerSource_data and triggerSource_data.subtypes:
+			return condition in triggerSource_data.subtypes
 	
 	return false
 
-func evaluateCondition(condition: String, triggeringCard: Card, action: GameAction) -> bool:
+func evaluateCondition(condition: String, triggeringCard_data: CardData) -> bool:
 	"""Evaluate trigger conditions like Self.Attacked+ThisTurn"""
 	# Parse condition format: Target.Property+Timing
 	# Example: Self.Attacked+ThisTurn
@@ -360,10 +373,10 @@ func evaluateCondition(condition: String, triggeringCard: Card, action: GameActi
 	var timing = property_parts[1]
 	
 	# Resolve the target card
-	var target_card: Card = null
+	var target_card_data: CardData = null
 	match target:
 		"Self":
-			target_card = triggeringCard
+			target_card_data = triggeringCard_data
 		_:
 			push_warning("Unsupported condition target: " + target)
 			return false
@@ -372,12 +385,10 @@ func evaluateCondition(condition: String, triggeringCard: Card, action: GameActi
 	match property:
 		"Attacked":
 			if timing == "ThisTurn":
-				return target_card.cardData.hasAttackedThisTurn
+				return target_card_data.hasAttackedThisTurn
 			else:
 				push_warning("Unsupported timing for Attacked: " + timing)
 				return false
 		_:
 			push_warning("Unsupported condition property: " + property)
 			return false
-	
-	return false

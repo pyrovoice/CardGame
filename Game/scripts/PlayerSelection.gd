@@ -3,14 +3,14 @@ class_name PlayerSelection
 
 # The selection requirement data
 var requirement: Dictionary = {}
-var possible_cards: Array[Card] = []
-var selected_cards: Array[Card] = []
+var possible_cards: Array[CardData] = []
+var selected_cards: Array[CardData] = []
 
 # Selection state
 var is_complete: bool = false
 var selection_type: String = ""  # "sacrifice", "target", "choose", etc.
 
-func _init(req: Dictionary, cards: Array[Card], type: String = ""):
+func _init(req: Dictionary, cards: Array[CardData], type: String = ""):
 	requirement = req
 	possible_cards = cards
 	selection_type = type
@@ -19,15 +19,15 @@ func _init(req: Dictionary, cards: Array[Card], type: String = ""):
 	_check_completion()  # Check initial completion state (handles optional requirements)
 
 # Add a card to the selection if it's valid
-func try_select_card(card: Card) -> bool:
-	if not card in possible_cards:
+func try_select_card(card_data: CardData) -> bool:
+	if not card_data in possible_cards:
 		return false
 	
 	# Toggle selection
-	if card in selected_cards:
-		selected_cards.erase(card)
+	if card_data in selected_cards:
+		selected_cards.erase(card_data)
 	else:
-		selected_cards.append(card)
+		selected_cards.append(card_data)
 	
 	_check_completion()
 	return true

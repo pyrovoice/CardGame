@@ -7,30 +7,30 @@ signal selection_started()  # Emitted when selection UI is shown and ready
 
 # Comprehensive selection data structure for pre-specifying all card play choices
 class CardPlaySelections:
-	var additional_cost_selections: Array[Card] = []  # Cards to sacrifice/pay additional costs (deprecated - use specific arrays)
-	var replace_target: Card = null  # Target for Replace mechanism (if using Replace casting)
-	var sacrifice_targets: Array[Card] = []  # Cards to sacrifice for SacrificePermanent costs
-	var spell_targets: Array[Card] = []  # Targets for spells and abilities
+	var additional_cost_selections: Array[CardData] = []  # Cards to sacrifice/pay additional costs (deprecated - use specific arrays)
+	var replace_target: CardData = null  # Target for Replace mechanism (if using Replace casting)
+	var sacrifice_targets: Array[CardData] = []  # Cards to sacrifice for SacrificePermanent costs
+	var spell_targets: Array[CardData] = []  # Targets for spells and abilities
 	var cancelled: bool = false
 	
 	func _init():
 		pass
 	
-	func set_replace_target(target: Card):
+	func set_replace_target(target: CardData):
 		"""Set the card to replace (automatically enables Replace casting)"""
 		replace_target = target
 	
-	func add_sacrifice_target(card: Card):
+	func add_sacrifice_target(card_data: CardData):
 		"""Add a card to sacrifice for additional costs"""
-		sacrifice_targets.append(card)
+		sacrifice_targets.append(card_data)
 	
-	func add_additional_cost_selection(card: Card):
+	func add_additional_cost_selection(card_data: CardData):
 		"""Add a card for additional cost payment (deprecated - use add_sacrifice_target instead)"""
-		add_sacrifice_target(card)
+		add_sacrifice_target(card_data)
 	
-	func add_spell_target(card: Card):
+	func add_spell_target(card_data: CardData):
 		"""Add a spell target"""
-		spell_targets.append(card)
+		spell_targets.append(card_data)
 	
 	func has_selections() -> bool:
 		"""Check if any selections have been made"""
@@ -42,7 +42,7 @@ class CardPlaySelections:
 var selection_ui: Control
 var current_selection: RefCounted = null  # PlayerSelection
 var game_reference: Node = null
-var casting_card: Card = null  # Track the card being cast
+var casting_card: CardData = null  # Track the card being cast
 
 func _ready():
 	# Load and create the selection UI
@@ -52,7 +52,7 @@ func _ready():
 	selection_ui.hide()
 
 # Start a new card selection process and wait for completion
-func start_selection_and_wait(requirement: Dictionary, possible_cards: Array[Card], selection_type: String, game_ref: Node, casting_card_param: Card = null, preselected_cards: Array[Card] = []) -> Array[Card]:
+func start_selection_and_wait(requirement: Dictionary, possible_cards: Array[CardData], selection_type: String, game_ref: Node, casting_card_param: CardData = null, preselected_cards: Array[CardData] = []) -> Array[CardData]:
 	print("Starting selection and waiting for completion...")
 	
 	# If pre-selections are provided, use them directly
@@ -71,8 +71,10 @@ func start_selection_and_wait(requirement: Dictionary, possible_cards: Array[Car
 	# Show UI and highlight cards
 	_show_selection_ui(true)
 	print("🔍 [SELECTION] UI shown, highlighting ", possible_cards.size(), " possible cards")
-	for card in possible_cards:
-		card.set_selectable(true)
+	for card_data in possible_cards:
+		var card_node = card_data.get_card_object()
+		if card_node:
+			card_node.set_selectable(true)
 	_update_ui()
 	
 	# Emit signal that selection has started
@@ -94,13 +96,18 @@ func create_card_play_selections() -> CardPlaySelections:
 	return CardPlaySelections.new()
 
 # Handle card click during selection
-func handle_card_click(card: Card):
+func handle_card_click(card_node: Card):
 	if not current_selection:
 		return
 	
-	if current_selection.try_select_card(card):
+	# Get the CardData for this Card node
+	var card_data = card_node.card_data
+	if not card_data:
+		return
+	
+	if current_selection.try_select_card(card_data):
 		# Update card visual state
-		card.set_selected(card in current_selection.selected_cards)
+		card_node.set_selected(card_data in current_selection.selected_cards)
 		
 		# Update UI
 		_update_ui()
@@ -138,9 +145,11 @@ func _on_cancel_pressed():
 func _end_selection():
 	if current_selection:
 		# Clear all card highlights and selections
-		for card in current_selection.possible_cards:
-			card.set_selectable(false)
-			card.set_selected(false)
+		for card_data in current_selection.possible_cards:
+			var card_node = card_data.get_card_object()
+			if card_node:
+				card_node.set_selectable(false)
+				card_node.set_selected(false)
 	
 	# Reset casting card position if there was one
 	if casting_card:
@@ -158,5 +167,5 @@ func is_selecting() -> bool:
 	return current_selection != null
 
 # Get the current casting card
-func get_casting_card() -> Card:
+func get_casting_card() -> CardData:
 	return casting_card

@@ -166,12 +166,8 @@ func _check_trigger_conditions(owner: CardData, event_card_data: CardData, game:
 	# Check "Condition" field (e.g., "Self.Attacked+ThisTurn")
 	var condition_str = trigger_conditions.get(TriggerCondition.CONDITION, "")
 	if condition_str != "":
-		var owner_card = owner.get_card_object()
-		if not owner_card:
-			return false
-		
 		# Use AbilityManager to evaluate the condition
-		var condition_met = AbilityManagerAL.evaluateCondition(condition_str, owner_card, null)
+		var condition_met = AbilityManagerAL.evaluateCondition(condition_str, owner)
 		if not condition_met:
 			return false
 	

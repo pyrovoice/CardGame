@@ -14,13 +14,6 @@ static func _getTargetZone(target_location: Node3D) -> GameZone.e:
 		# Default to player base for unknown locations
 		return GameZone.e.PLAYER_BASE
 
-static func getAllCardsInPlay(game: Game) -> Array[Card]:
-	var cards: Array[Card] = game.player_base.getCards()
-	for cz: CombatZone in game.combatZones:
-		cz.allySpots.filter(func(c: CombatantFightingSpot): return c.getCard() != null).map(func(c: CombatantFightingSpot): cards.push_back(c.getCard()))
-		cz.ennemySpots.filter(func(c: CombatantFightingSpot): return c.getCard() != null).map(func(c: CombatantFightingSpot): cards.push_back(c.getCard()))
-	return cards
-
 static func find_container_for_card_data(game: Game, cardData: CardData) -> CardContainer:
 	"""Find which container currently has this CardData - queries GameData"""
 	if not game.game_data:

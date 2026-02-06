@@ -18,14 +18,19 @@ static func apply_replacement_effects(effect_context: Dictionary, game_context: 
 	"""
 	var modified_context = effect_context.duplicate()
 	
-	# Get all cards that could have replacement effects
-	var all_cards = game_context.getAllCardsInPlay()
+	# Query GameData for cards in play
+	var cards_data = game_context.game_data.get_cards_in_play()
 	
-	for card in all_cards:
-		if not card.cardData or card.cardData.replacement_abilities.is_empty():
+	for card_data in cards_data:
+		if card_data.replacement_abilities.is_empty():
 			continue
 		
-		for ability in card.cardData.replacement_abilities:
+		# Get Card node if it exists
+		var card = card_data.get_card_object()
+		if not card or not is_instance_valid(card):
+			continue
+		
+		for ability in card_data.replacement_abilities:
 			# Check if this replacement effect applies
 			if _should_replacement_apply(ability, effect_context, card, game_context):
 				# Apply the replacement effect
