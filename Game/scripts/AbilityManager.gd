@@ -169,10 +169,10 @@ func shouldReplacementEffectApply(replacement_ability: ReplacementAbility, effec
 	if active_zones != "Any":
 		var replacement_source_zone = replacement_source_data.current_zone
 		if active_zones == "Battlefield":
-			if replacement_source_zone != GameZone.e.PLAYER_BASE and replacement_source_zone != GameZone.e.COMBAT_ZONE:
+			if replacement_source_zone not in [GameZone.e.BATTLEFIELD_PLAYER, GameZone.e.BATTLEFIELD_OPPONENT, GameZone.e.COMBAT_PLAYER, GameZone.e.COMBAT_OPPONENT]:
 				return false
 		elif active_zones == "Hand":
-			if replacement_source_zone != GameZone.e.HAND:
+			if replacement_source_zone not in [GameZone.e.HAND_PLAYER, GameZone.e.HAND_OPPONENT]:
 				return false
 		# Add other zones as needed
 	
@@ -201,13 +201,13 @@ func _isZoneConditionMet(zone_condition: String, actual_zone: GameZone.e) -> boo
 	
 	match zone_condition:
 		"Battlefield":
-			return actual_zone == GameZone.e.PLAYER_BASE or actual_zone == GameZone.e.COMBAT_ZONE
+			return actual_zone in [GameZone.e.BATTLEFIELD_PLAYER, GameZone.e.BATTLEFIELD_OPPONENT, GameZone.e.COMBAT_PLAYER, GameZone.e.COMBAT_OPPONENT]
 		"Hand":
-			return actual_zone == GameZone.e.HAND
+			return actual_zone in [GameZone.e.HAND_PLAYER, GameZone.e.HAND_OPPONENT]
 		"Graveyard":
-			return actual_zone == GameZone.e.GRAVEYARD
+			return actual_zone in [GameZone.e.GRAVEYARD_PLAYER, GameZone.e.GRAVEYARD_OPPONENT]
 		"Deck":
-			return actual_zone == GameZone.e.DECK
+			return actual_zone in [GameZone.e.DECK_PLAYER, GameZone.e.DECK_OPPONENT]
 		_:
 			return false
 

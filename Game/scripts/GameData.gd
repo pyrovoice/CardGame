@@ -40,13 +40,8 @@ var cards_in_extra_deck_player: Array[CardData] = []
 # Combat zone tracking - maps zone to arrays of CardData
 var cards_in_combat_zones: Dictionary = {}  # CombatZone -> Array[CardData]
 
-# Card world positions (for view synchronization and animations)
-var card_positions: Dictionary = {}  # CardData -> Vector3
-
-# Card to zone mapping (for quick lookups)
+# Card zone tracking (MVC Model: Single source of truth for card locations)
 var card_to_zone: Dictionary = {}  # CardData -> GameZone.e
-
-# Combat spot assignments (for combat resolution)
 var card_to_combat_spot: Dictionary = {}  # CardData -> CombatantFightingSpot
 
 # Note: Zone tracking now uses GameZone.e enum for type safety
@@ -215,7 +210,7 @@ func get_opponent_owned_cards() -> Array[CardData]:
 	return get_cards_in_play().filter(func(c): return not c.playerOwned)
 
 ## Add a card to a specific zone
-func add_card_to_zone(card_data: CardData, zone: GameZone.e, position: Vector3 = Vector3.ZERO) -> void:
+func add_card_to_zone(card_data: CardData, zone: GameZone.e) -> void:
 	if not card_data:
 		push_error("GameData.add_card_to_zone: card_data is null")
 		return
@@ -253,7 +248,6 @@ func add_card_to_zone(card_data: CardData, zone: GameZone.e, position: Vector3 =
 	
 	# Update tracking
 	card_to_zone[card_data] = zone
-	card_positions[card_data] = position
 
 ## Remove a card from its current zone
 func remove_card_from_zone(card_data: CardData) -> void:
@@ -289,25 +283,16 @@ func remove_card_from_zone(card_data: CardData) -> void:
 			pass
 	
 	card_to_zone.erase(card_data)
-	card_positions.erase(card_data)
 	card_to_combat_spot.erase(card_data)
 
 ## Move a card from one zone to another
-func move_card(card_data: CardData, to_zone: GameZone.e, position: Vector3 = Vector3.ZERO) -> void:
+func move_card(card_data: CardData, to_zone: GameZone.e) -> void:
 	remove_card_from_zone(card_data)
-	add_card_to_zone(card_data, to_zone, position)
+	add_card_to_zone(card_data, to_zone)
 
 ## Get the zone a card is currently in
-func get_card_zone(card_data: CardData) -> String:
-	return card_to_zone.get(card_data, "")
-
-## Get card position
-func get_card_position(card_data: CardData) -> Vector3:
-	return card_positions.get(card_data, Vector3.ZERO)
-
-## Update card position (for view synchronization)
-func set_card_position(card_data: CardData, position: Vector3) -> void:
-	card_positions[card_data] = position
+func get_card_zone(card_data: CardData) -> GameZone.e:
+	return card_to_zone.get(card_data, GameZone.e.UNKNOWN)
 
 ## Assign card to combat spot
 func assign_card_to_combat_spot(card_data: CardData, spot: CombatantFightingSpot) -> void:
@@ -350,15 +335,6 @@ func serialize() -> Dictionary:
 	for zone_name in cards_in_combat_zones:
 		data["zones"][zone_name] = _serialize_card_array(cards_in_combat_zones[zone_name])
 	
-	# Serialize positions (CardData ID -> Vector3)
-	for card_data in card_positions:
-		var card_id = card_data.get_instance_id()
-		data["positions"][str(card_id)] = {
-			"x": card_positions[card_data].x,
-			"y": card_positions[card_data].y,
-			"z": card_positions[card_data].z
-		}
-	
 	return data
 
 func _serialize_card_array(cards: Array[CardData]) -> Array:
@@ -397,7 +373,6 @@ func duplicate_state() -> GameData:
 		copy.cards_in_combat_zones[zone_name] = cards_in_combat_zones[zone_name].duplicate()
 	
 	# Copy dictionaries
-	copy.card_positions = card_positions.duplicate()
 	copy.card_to_zone = card_to_zone.duplicate()
 	copy.card_to_combat_spot = card_to_combat_spot.duplicate()
 	

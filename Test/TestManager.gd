@@ -127,9 +127,9 @@ func _populate_test_buttons():
 
 func _on_individual_test_pressed(test_method: String):
 	"""Run a single test when its button is pressed"""
-	print("=== Running Individual Test: ", test_method, " ===")
+	print("=== Running Individual Test: ", test_method, " (with animations) ===")
 	
-	var result = await _run_single_test(test_method)
+	var result = await _run_single_test(test_method, false)  # Visual mode for single tests
 	
 	# Update session results
 	session_test_results[test_method] = result
@@ -172,7 +172,7 @@ func _update_button_appearance(button: Button, test_method: String):
 
 func runFailedTests():
 	"""Run only the tests that failed in the current session"""
-	print("=== Running Failed Tests ===")
+	print("=== Running Failed Tests (headless mode) ===")
 	
 	var failed_tests = []
 	for test_name in session_test_results.keys():
@@ -191,7 +191,7 @@ func runFailedTests():
 	for test_method in failed_tests:
 		print("\n--- Re-running: ", test_method, " ---")
 		
-		var result = await _run_single_test(test_method)
+		var result = await _run_single_test(test_method, true)  # Headless mode for batch
 		test_results.append(result)
 		session_test_results[test_method] = result
 		
@@ -212,7 +212,7 @@ func runFailedTests():
 
 func runTestsUntilFailure():
 	"""Run all tests in order and stop at the first failure"""
-	print("=== Running Tests Until First Failure ===")
+	print("=== Running Tests Until First Failure (headless mode) ===")
 	test_results.clear()
 	
 	var test_methods = _discover_test_methods()
@@ -222,7 +222,7 @@ func runTestsUntilFailure():
 	for test_method in test_methods:
 		print("\n--- Running: ", test_method, " ---")
 		
-		var result = await _run_single_test(test_method)
+		var result = await _run_single_test(test_method, true)  # Headless mode for batch
 		test_results.append(result)
 		
 		# Update session results
@@ -248,7 +248,7 @@ func runTestsUntilFailure():
 
 func runTests():
 	"""Automatically discovers and runs all test methods"""
-	print("=== Starting Test Suite ===")
+	print("=== Starting Test Suite (headless mode) ===")
 	test_results.clear()
 	
 	var test_methods = _discover_test_methods()
@@ -258,7 +258,7 @@ func runTests():
 	for test_method in test_methods:
 		print("\n--- Running: ", test_method, " ---")
 		
-		var result = await _run_single_test(test_method)
+		var result = await _run_single_test(test_method, true)  # Headless mode for batch
 		test_results.append(result)
 		
 		# Update session results
@@ -291,8 +291,12 @@ func _discover_test_methods() -> Array[String]:
 	
 	return test_methods
 
-func _run_single_test(test_method: String) -> Dictionary:
-	"""Run a single test and capture its result"""
+func _run_single_test(test_method: String, headless: bool = false) -> Dictionary:
+	"""Run a single test and capture its result
+	
+	Args:
+		headless: If true, runs without animations/view updates (faster). If false, shows animations.
+	"""
 	var result = {
 		"name": test_method,
 		"passed": false,
@@ -308,9 +312,8 @@ func _run_single_test(test_method: String) -> Dictionary:
 	if test_runner:
 		await test_runner.cleanup_game()
 		game = await test_runner.ensure_game_loaded()
-	
-	# Run beforeEach setup
-	await beforeEach()
+		# Set headless mode for this test
+		game.game_view.headless = headless
 	
 	# Execute the test method
 	if has_method(test_method):
@@ -337,56 +340,6 @@ func _on_test_error():
 	"""Handle test errors"""
 	# Custom error handler if needed
 	pass
-	
-func resetState():
-	"""Reset game state to have empty everything"""
-	if not game:
-		return
-		
-	# Clear all zones
-	for child in game.player_hand.get_children():
-		child.queue_free()
-	for child in game.opponent_hand.get_children():
-		child.queue_free()
-	for child in game.player_base.get_children():
-		if child is Card:
-			child.queue_free()
-	
-	# Clear all combat zones
-	for combat_zone in game.combatZones:
-		if combat_zone is CombatZone:
-			# Clear ally spots
-			for ally_spot in combat_zone.allySpots:
-				var card = ally_spot.getCard()
-				if card:
-					card.queue_free()
-			
-			# Clear enemy spots
-			for enemy_spot in combat_zone.ennemySpots:
-				var card = enemy_spot.getCard()
-				if card:
-					card.queue_free()
-	
-	# Reset game data including combat resolution states
-	game.game_data.player_gold.setValue(3)
-	game.game_data.opponent_gold.setValue(3)
-	game.game_data.player_life.setValue(10)
-	game.game_data.danger_level.setValue(1)
-	
-	# Reset combat resolution states for all zones
-	for combat_zone in game.combatZones:
-		if combat_zone is CombatZone:
-			game.game_data.set_combat_resolved(combat_zone, false)
-			# Reset combat data (capture values) for each zone
-			game.game_data.reset_combat_zone_data(combat_zone)
-			# Reset button display
-			combat_zone.update_resolve_fight_display(false)
-	
-	# Wait a frame for cleanup
-	await get_tree().process_frame
-
-func beforeEach():
-	await resetState()
 
 # === TEST HELPER METHODS ===
 
@@ -430,18 +383,100 @@ func createTestCard(card_name: String, cost: int = 0, power: int = 0, types: Arr
 
 func addCardToHand(card: Card):
 	"""Helper to add card to player hand"""
-	GameUtility.reparentWithoutMoving(card, game.player_hand)
+	game.game_data.move_card(card.cardData, GameZone.e.HAND_PLAYER)
+	GameUtility.reparentWithoutMoving(card, game.game_view.player_hand)
 	
 func addCardToExtraDeck(card: CardData):
-	game.extra_deck.cards.push_back(card)
+	game.game_data.cards_in_extra_deck_player.push_back(card)
 
 func addCardToDeck(card_data: CardData, player_deck: bool = true):
 	"""Helper to add card to deck"""
-	var deck = game.deck if player_deck else game.deck_opponent
+	var deck = game.game_view.deck if player_deck else game.game_view.deck_opponent
 	# Set proper ownership flag for the card data
 	card_data.playerOwned = player_deck
-	deck.cards.push_back(card_data)
+	if player_deck:
+		game.game_data.cards_in_deck_player.push_back(card_data)
+	else:
+		game.game_data.cards_in_deck_opponent.push_back(card_data)
 	deck.update_size()
+
+func add_card_to_zone(card_data: CardData, zone: GameZone.e):
+	"""Add a card directly to a zone for test setup
+	
+	Use this to set up test state. Does not emit game events or trigger abilities.
+	For gameplay movement with events/triggers, use game.execute_move_card().
+	
+	Args:
+		card_data: The CardData to add
+		zone: Target zone enum
+	"""
+	if not card_data:
+		push_error("add_card_to_zone: card_data is null")
+		return
+	
+	# Directly update GameData for test setup
+	game.game_data.move_card(card_data, zone)
+	
+	if game.game_view.headless:
+		print("🔧 [TEST SETUP] Added ", card_data.cardName, " to ", GameZone.e.keys()[zone])
+
+func play_card_from_data(card_data: CardData, from_zone: GameZone.e = GameZone.e.HAND_PLAYER, pay_cost: bool = true) -> bool:
+	"""Play a card using CardData - test utility for programmatic card play
+	
+	Use this in tests to play cards without user interaction.
+	Works in both headless and normal mode.
+	
+	Args:
+		card_data: The CardData to play
+		from_zone: Source zone (default: player hand)
+		pay_cost: Whether to pay costs (default: true)
+	
+	Returns:
+		bool: True if play was successful
+	"""
+	if not card_data:
+		push_error("play_card_from_data: card_data is null")
+		return false
+	
+	print("🎮 [TEST] Playing card: ", card_data.cardName)
+	
+	# Check if can pay
+	if pay_cost and not CardPaymentManagerAL.canPayCard(card_data):
+		print("❌ Cannot pay for card")
+		return false
+	
+	# Pay costs if required
+	if pay_cost:
+		var payment_info = CardPaymentManagerAL.tryPayCard(card_data, [])
+		if not payment_info.success:
+			print("❌ Payment failed")
+			return false
+		
+		# Execute payment
+		if not game.game_data.spend_gold(payment_info.gold_cost, card_data.playerControlled):
+			print("❌ Failed to spend gold")
+			return false
+		
+		# Sacrifice any cards needed
+		for sacrifice_card_data in payment_info.cards_to_sacrifice:
+			var graveyard_zone = GameZone.e.GRAVEYARD_PLAYER if sacrifice_card_data.playerOwned else GameZone.e.GRAVEYARD_OPPONENT
+			await game.execute_move_card(null, graveyard_zone, null, sacrifice_card_data, sacrifice_card_data.current_zone)
+	
+	# Handle spells vs permanents
+	if card_data.hasType(CardData.CardType.SPELL):
+		# Spells: Execute effects then go to graveyard
+		await AbilityManagerAL.executeSpellEffects(card_data, game)
+		var graveyard_zone = GameZone.e.GRAVEYARD_PLAYER if card_data.playerOwned else GameZone.e.GRAVEYARD_OPPONENT
+		await game.execute_move_card(null, graveyard_zone, null, card_data, from_zone)
+	else:
+		# Permanents: Enter battlefield
+		var target_zone = GameZone.e.BATTLEFIELD_PLAYER if card_data.playerControlled else GameZone.e.BATTLEFIELD_OPPONENT
+		await game.execute_move_card(null, target_zone, null, card_data, from_zone)
+	
+	await game.resolveStateBasedAction()
+	
+	print("✅ [TEST] Card play complete")
+	return true
 	
 func setPlayerGold(amount: int):
 	"""Helper to set player gold"""
@@ -481,19 +516,23 @@ func waitForSelectionStart(max_frames: int = 10) -> bool:
 	return false
 
 func getCardsInPlay() -> Array[Card]:
-	"""Helper to get all cards in play"""
-	return game.player_base.getCards()
+	"""Helper to get all cards in play (returns Card objects from view)"""
+	return game.game_view.player_base.getCards()
+
+func getCardsInPlayData() -> Array[CardData]:
+	"""Helper to get all card data in play"""
+	return game.game_data.cards_on_battlefield_player
 
 func assertCardCount(expected: int, zone: String = "play") -> bool:
 	"""Assert the number of cards in a specific zone"""
 	var actual: int
 	match zone:
 		"play":
-			actual = getCardsInPlay().size()
+			actual = game.game_data.cards_on_battlefield_player.size()
 		"hand":
-			actual = game.player_hand.get_child_count()
+			actual = game.game_data.cards_in_hand_player.size()
 		"graveyard":
-			actual = game.get_cards_in_player_graveyard().size()
+			actual = game.game_data.cards_in_graveyard_player.size()
 		_:
 			return assert_test(false, "Unknown zone: " + zone)
 	
@@ -504,18 +543,17 @@ func assertCardExists(card_name: String, zone: String = "play") -> bool:
 	var found = false
 	match zone:
 		"play":
-			for card in getCardsInPlay():
-				if card.cardData.cardName.to_lower() == card_name.to_lower():
+			for card_data in game.game_data.cards_on_battlefield_player:
+				if card_data.cardName.to_lower() == card_name.to_lower():
 					found = true
 					break
 		"hand":
-			for card in game.player_hand.get_children():
-				if card is Card and card.cardData.cardName.to_lower() == card_name.to_lower():
+			for card_data in game.game_data.cards_in_hand_player:
+				if card_data.cardName.to_lower() == card_name.to_lower():
 					found = true
 					break
 		"graveyard":
-			var graveyard_cards = game.get_cards_in_player_graveyard()
-			for card_data in graveyard_cards:
+			for card_data in game.game_data.cards_in_graveyard_player:
 				if card_data.cardName.to_lower() == card_name.to_lower():
 					found = true
 					break
@@ -553,7 +591,7 @@ func test_card_play_basic():
 	if not assertCardCount(1, "hand"):
 		return false
 	
-	await game.tryPlayCard(card, game.player_base)
+	await game.tryPlayCard(card, game.game_view.player_base)
 	
 	if not assertCardCount(2, "play"):
 		return false
@@ -574,7 +612,7 @@ func test_insufficient_gold():
 	if not assert_test_equal(gold_before, 0, "Gold should be 0 before play attempt"):
 		return false
 	
-	await game.tryPlayCard(card, game.player_base)
+	await game.tryPlayCard(card, game.game_view.player_base)
 	
 	# Card should still be in hand (payment should have failed)
 	if not assertCardCount(0, "play"):
@@ -594,7 +632,7 @@ func test_animation_completion():
 	setPlayerGold(3)
 	
 	var start_time = Time.get_ticks_msec()
-	await game.tryPlayCard(card, game.player_base)
+	await game.tryPlayCard(card, game.game_view.player_base)
 	var end_time = Time.get_ticks_msec()
 	
 	# Should take some time for animation
@@ -609,8 +647,8 @@ func test_goblin_pair():
 	var c = createCardFromName("goblin pair")
 	addCardToHand(c)
 	game.game_data.player_gold.setValue(99)
-	await game.tryPlayCard(c, game.player_base)
-	var cardsInPlay = game.player_base.getCards()
+	await game.tryPlayCard(c, game.game_view.player_base)
+	var cardsInPlay = game.game_view.player_base.getCards()
 	if not assert_test_equal(cardsInPlay.size(), 2, "Goblin Pair should spawn 2 cards"):
 		return false
 
@@ -651,7 +689,7 @@ func test_goblin_boss_extra_deck_casting():
 	addCardToHand(goblin_pair_1)
 	
 	# Play first Goblin Pair and wait for animation to complete
-	await game.tryPlayCard(goblin_pair_1, game.player_base)
+	await game.tryPlayCard(goblin_pair_1, game.game_view.player_base)
 	if not assertCardCount(2, "play"):  # Should have 2 goblins now
 		return false
 	
@@ -660,7 +698,7 @@ func test_goblin_boss_extra_deck_casting():
 	await get_tree().process_frame  # Wait for extra hand to be populated
 	
 	# Step 3: Assert that Goblin Boss appears in extra hand display
-	var extra_hand_cards = game.extra_hand.get_children().filter(func(child): return child is Card)
+	var extra_hand_cards = game.game_view.extra_hand.get_children().filter(func(child): return child is Card)
 	var goblin_boss_found = false
 	var goblin_boss_card: Card = null
 	
@@ -689,7 +727,7 @@ func test_goblin_boss_extra_deck_casting():
 	selections.add_sacrifice_target(goblins_in_play[0])
 	selections.add_sacrifice_target(goblins_in_play[1])
 	
-	await game.tryPlayCard(goblin_boss_card, game.player_base, selections)
+	await game.tryPlayCard(goblin_boss_card, game.game_view.player_base, selections)
 	
 	# Step 5: Assert final state
 	var final_cards = getCardsInPlay()
@@ -707,7 +745,7 @@ func test_combat_zone_button_click():
 	setPlayerGold(99)
 	
 	# Get the first combat zone and place the card there
-	var combat_zone = game.combatZones[0] as CombatZone
+	var combat_zone = game.game_view.combat_zones[0] as CombatZone
 	var first_ally_spot = combat_zone.getFirstEmptyLocation(true)
 	if not assert_test_not_null(first_ally_spot, "Should have an empty ally spot available"):
 		return false
@@ -745,8 +783,8 @@ func test_combat_location_independence():
 	addCardToHand(goblin2)
 	
 	# Get two different combat zones
-	var combat_zone_1 = game.combatZones[0] as CombatZone
-	var combat_zone_2 = game.combatZones[1] as CombatZone
+	var combat_zone_1 = game.game_view.combat_zones[0] as CombatZone
+	var combat_zone_2 = game.game_view.combat_zones[1] as CombatZone
 	if not assert_test(combat_zone_1 != combat_zone_2, "Should have different combat zones"):
 		return false
 	
@@ -816,7 +854,7 @@ func test_bolt_spell_with_valid_target():
 	setPlayerGold(99)
 	
 	# Play the target creature first
-	await game.tryPlayCard(target_creature, game.player_base)
+	await game.tryPlayCard(target_creature, game.game_view.player_base)
 	if not assertCardExists("goblin", "play"):
 		return false
 	if not assertCardCount(1, "play"):
@@ -827,7 +865,7 @@ func test_bolt_spell_with_valid_target():
 	selections.add_spell_target(target_creature)
 	
 	# Cast Bolt targeting the creature
-	await game.tryPlayCard(bolt_card, game.player_base, selections)
+	await game.tryPlayCard(bolt_card, game.game_view.player_base, selections)
 	
 	# Verify final state: both bolt and target should be in graveyard
 	if not assertCardExists("Bolt", "graveyard"):
@@ -850,7 +888,7 @@ func test_bolt_spell_cancelled_with_target():
 	setPlayerGold(99)
 	
 	# Play the target creature first
-	await game.tryPlayCard(target_creature, game.player_base)
+	await game.tryPlayCard(target_creature, game.game_view.player_base)
 	if not assertCardExists("Goblin", "play"):
 		return false
 	if not assertCardCount(1, "play"):
@@ -862,7 +900,7 @@ func test_bolt_spell_cancelled_with_target():
 	selections.cancelled = true
 	
 	# Store the card before attempting to play it
-	var initial_hand_cards = game.player_hand.get_children().filter(func(c): return c is Card)
+	var initial_hand_cards = game.game_view.player_hand.get_children().filter(func(c): return c is Card)
 	var bolt_in_hand = null
 	for card in initial_hand_cards:
 		if card.cardData.cardName == "Bolt":
@@ -873,14 +911,14 @@ func test_bolt_spell_cancelled_with_target():
 		return false
 	
 	# Attempt to cast Bolt but cancel
-	await game.tryPlayCard(bolt_in_hand, game.player_base, selections)
+	await game.tryPlayCard(bolt_in_hand, game.game_view.player_base, selections)
 	
 	# Wait a frame for any reparenting to complete
 	await get_tree().process_frame
 	
 	# Check what cards are actually in hand
-	for i in range(game.player_hand.get_child_count()):
-		var card = game.player_hand.get_child(i)
+	for i in range(game.game_view.player_hand.get_child_count()):
+		var card = game.game_view.player_hand.get_child(i)
 		if card is Card:
 			print("  - ", card.cardData.cardName)
 	
@@ -912,7 +950,7 @@ func test_bolt_spell_empty_board():
 		return false
 	
 	# Attempt to cast Bolt with no targets available
-	await game.tryPlayCard(bolt_card, game.player_base)
+	await game.tryPlayCard(bolt_card, game.game_view.player_base)
 	
 	# Verify final state: bolt should be back in hand since no valid targets
 	if not assertCardExists("Bolt", "hand"):
@@ -931,7 +969,7 @@ func test_deck_card_player_control():
 	addCardToDeck(test_card_data, true)  # Add to player deck
 	
 	# Get initial hand count
-	var initial_hand_count = game.player_hand.get_child_count()
+	var initial_hand_count = game.game_view.player_hand.get_child_count()
 	
 	# Draw one card from player deck
 	await game.drawCard(1, true)
@@ -941,7 +979,7 @@ func test_deck_card_player_control():
 		return false
 	
 	# Get the newly drawn card (last child in hand)
-	var drawn_card = game.player_hand.get_children()[-1] as Card
+	var drawn_card = game.game_view.player_hand.get_children()[-1] as Card
 	if not assert_test_not_null(drawn_card, "Should have drawn a card"):
 		return false
 	
@@ -962,18 +1000,18 @@ func test_deck_card_opponent_control():
 	addCardToDeck(test_card_data, false)  # Add to opponent deck
 	
 	# Get initial opponent hand count
-	var initial_hand_count = game.opponent_hand.get_child_count()
+	var initial_hand_count = game.game_view.opponent_hand.get_child_count()
 	
 	# Draw one card from opponent deck
 	await game.drawCard(1, false)
 	
 	# Verify opponent hand increased by one
-	var actual_hand_count = game.opponent_hand.get_child_count()
+	var actual_hand_count = game.game_view.opponent_hand.get_child_count()
 	if not assert_test_equal(actual_hand_count, initial_hand_count + 1, "Opponent hand should increase by one"):
 		return false
 	
 	# Get the newly drawn card (last child in opponent hand)
-	var drawn_card = game.opponent_hand.get_children()[-1] as Card
+	var drawn_card = game.game_view.opponent_hand.get_children()[-1] as Card
 	if not assert_test_not_null(drawn_card, "Should have drawn a card to opponent hand"):
 		return false
 	
@@ -1001,7 +1039,7 @@ func test_player_card_payment():
 	await game.drawCard(1, true)
 	
 	# Get the drawn card
-	var drawn_card = game.player_hand.get_children()[-1] as Card
+	var drawn_card = game.game_view.player_hand.get_children()[-1] as Card
 	if not assert_test_not_null(drawn_card, "Should have drawn a card"):
 		return false
 	
@@ -1010,7 +1048,7 @@ func test_player_card_payment():
 		return false
 	
 	# Play the card
-	await game.tryPlayCard(drawn_card, game.player_base)
+	await game.tryPlayCard(drawn_card, game.game_view.player_base)
 	
 	# Verify gold was deducted from player gold
 	var final_gold = game.game_data.player_gold.getValue()
@@ -1023,8 +1061,8 @@ func test_player_card_payment():
 func test_deck_draw_order():
 	"""Test that cards are drawn from the top of the deck (index 0) in correct order"""
 	# Clear deck first to ensure clean test
-	game.deck.cards.clear()
-	game.deck.update_size()
+	game.game_data.cards_in_deck_player.clear()
+	game.game_view.deck.update_size()
 	
 	# Add three different cards to deck in specific order
 	var card1_data = CardLoaderAL.getCardByName("Goblin")
@@ -1037,23 +1075,23 @@ func test_deck_draw_order():
 	addCardToDeck(card3_data, true)  # Index 2 - should be drawn third
 	
 	# Verify deck has 3 cards
-	if not assert_test_equal(game.deck.get_card_count(), 3, "Deck should have 3 cards"):
+	if not assert_test_equal(game.game_view.deck.get_card_count(), 3, "Deck should have 3 cards"):
 		return false
 	
 	# Verify the top card (index 0) is Goblin
-	if not assert_test_equal(game.deck.cards[0].cardName, "goblin", "Top card should be Goblin"):
+	if not assert_test_equal(game.game_data.cards_in_deck_player[0].cardName, "goblin", "Top card should be Goblin"):
 		return false
 	
 	# Draw one card
-	var initial_hand_count = game.player_hand.get_child_count()
+	var initial_hand_count = game.game_view.player_hand.get_child_count()
 	await game.drawCard(1, true)
 	
 	# Verify hand increased by one
-	if not assert_test_equal(game.player_hand.get_child_count(), initial_hand_count + 1, "Hand should increase by 1"):
+	if not assert_test_equal(game.game_view.player_hand.get_child_count(), initial_hand_count + 1, "Hand should increase by 1"):
 		return false
 	
 	# Get the drawn card (last child in hand)
-	var drawn_card = game.player_hand.get_children()[-1] as Card
+	var drawn_card = game.game_view.player_hand.get_children()[-1] as Card
 	if not assert_test_not_null(drawn_card, "Should have drawn a card"):
 		return false
 		
@@ -1066,11 +1104,11 @@ func test_deck_draw_order():
 		return false
 	
 	# Verify the new top card (index 0) is now Goblin Pair (was index 1)
-	if not assert_test_equal(game.deck.cards[0].cardName, "Goblin pair", "New top card should be Goblin Pair"):
+	if not assert_test_equal(game.game_data.cards_in_deck_player[0].cardName, "Goblin pair", "New top card should be Goblin Pair"):
 		return false
 	
 	# Verify the remaining bottom card (index 1) is Bolt (was index 2)
-	if not assert_test_equal(game.deck.cards[1].cardName, "Bolt", "Bottom card should be Bolt"):
+	if not assert_test_equal(game.game_data.cards_in_deck_player[1].cardName, "Bolt", "Bottom card should be Bolt"):
 		return false
 	
 	return true
@@ -1112,7 +1150,7 @@ func test_replace_mechanism() -> bool:
 	var target_creature = createCardFromName("Punglynd Child", true)
 	if not assert_test_not_null(target_creature, "Should be able to create Punglynd Child card"):
 		return false
-	GameUtility.reparentWithoutMoving(target_creature, game.player_base)
+	GameUtility.reparentWithoutMoving(target_creature, game.game_view.player_base)
 	# Wait a frame for the card to be properly added
 	await get_tree().process_frame
 	
@@ -1153,7 +1191,9 @@ func test_replace_with_additional_reduction() -> bool:
 	# Create a Grown-up target for extra reduction
 	var grownup_target = createCardFromName("Punglynd Child", true)
 	grownup_target.cardData.addSubtype("Grown-up")
-	await game.executeCardEnters(grownup_target, GameZone.e.HAND, GameZone.e.PLAYER_BASE)
+	var dest_zone = GameZone.e.BATTLEFIELD_PLAYER if grownup_target.cardData.playerControlled else GameZone.e.BATTLEFIELD_OPPONENT
+	await game.execute_move_card(grownup_target, dest_zone)
+	await game.resolveStateBasedAction()
 	await get_tree().process_frame
 	
 	# Test cost calculation with Grown-up (should get additional reduction)
@@ -1250,7 +1290,9 @@ func test_tap_system() -> bool:
 		return false
 	
 	# Add it to player base using proper game flow
-	await game.executeCardEnters(test_card, GameZone.e.HAND, GameZone.e.PLAYER_BASE)
+	var dest_zone = GameZone.e.BATTLEFIELD_PLAYER if test_card.cardData.playerControlled else GameZone.e.BATTLEFIELD_OPPONENT
+	await game.execute_move_card(test_card, dest_zone)
+	await game.resolveStateBasedAction()
 	
 	# Test 1: Card should start untapped
 	if not assert_test_false(test_card.cardData.is_tapped(), "Card should start untapped"):
@@ -1273,19 +1315,19 @@ func test_tap_system() -> bool:
 		return false
 	
 	# Test 4: Test movement tapping (assuming we can move to combat)
-	if game.combatZones.size() > 0:
-		var combat_zone = game.combatZones[0] as CombatZone
+	if game.game_view.combat_zones.size() > 0:
+		var combat_zone = game.game_view.combat_zones[0] as CombatZone
 		var empty_spot = combat_zone.getFirstEmptyLocation(true)
 		
 		if empty_spot:
 			# Try to move card to combat (should tap it)
-			await game.tryMoveCard(test_card, empty_spot)
+			await game.tryMoveCard(test_card.cardData, empty_spot)
 			if assert_test_true(test_card.get_parent() == empty_spot, "Movement to combat should succeed"):
 				if not assert_test_true(test_card.cardData.is_tapped(), "Card should be tapped after moving to combat"):
 					return false
 				
 				# Try to move again (should fail because card is tapped)
-				await game.tryMoveCard(test_card, empty_spot)
+				await game.tryMoveCard(test_card.cardData, empty_spot)
 				if not assert_test_true(test_card.get_parent() == empty_spot, "Card should remain in same spot (tapped cards can't move)"):
 					return false
 	
@@ -1336,8 +1378,12 @@ func test_temporary_keyword_effects() -> bool:
 		return false
 	
 	# Step 2: Place both cards in play using proper game flow
-	await game.executeCardEnters(hersir_card, GameZone.e.HAND, GameZone.e.PLAYER_BASE)
-	await game.executeCardEnters(target_card, GameZone.e.HAND, GameZone.e.PLAYER_BASE)
+	var dest_zone = GameZone.e.BATTLEFIELD_PLAYER if hersir_card.cardData.playerControlled else GameZone.e.BATTLEFIELD_OPPONENT
+	await game.execute_move_card(hersir_card, dest_zone)
+	await game.resolveStateBasedAction()
+	var dest_zone2 = GameZone.e.BATTLEFIELD_PLAYER if target_card.cardData.playerControlled else GameZone.e.BATTLEFIELD_OPPONENT
+	await game.execute_move_card(target_card, dest_zone2)
+	await game.resolveStateBasedAction()
 	
 	await get_tree().process_frame
 	
@@ -1418,7 +1464,9 @@ func test_growth_spell_pump() -> bool:
 		return false
 	
 	# Step 2: Place target in play and spell in hand
-	await game.executeCardEnters(target_creature, GameZone.e.HAND, GameZone.e.PLAYER_BASE)
+	var dest_zone = GameZone.e.BATTLEFIELD_PLAYER if target_creature.cardData.playerControlled else GameZone.e.BATTLEFIELD_OPPONENT
+	await game.execute_move_card(target_creature, dest_zone)
+	await game.resolveStateBasedAction()
 	
 	addCardToHand(growth_card)
 	setPlayerGold(10)
@@ -1435,7 +1483,7 @@ func test_growth_spell_pump() -> bool:
 	var selections = SelectionManager.CardPlaySelections.new()
 	selections.add_spell_target(target_creature)
 	
-	await game.tryPlayCard(growth_card, game.player_base, selections)
+	await game.tryPlayCard(growth_card, game.game_view.player_base, selections)
 	await get_tree().process_frame
 	
 	# Step 5: Verify power was increased by 3
@@ -1492,7 +1540,9 @@ func test_punglynd_child_growup():
 		return false
 	
 	# Step 2: Place card in player base using proper game flow
-	await game.executeCardEnters(child_card, GameZone.e.HAND, GameZone.e.PLAYER_BASE)
+	var dest_zone = GameZone.e.BATTLEFIELD_PLAYER if child_card.cardData.playerControlled else GameZone.e.BATTLEFIELD_OPPONENT
+	await game.execute_move_card(child_card, dest_zone)
+	await game.resolveStateBasedAction()
 	await get_tree().process_frame
 	
 	# Step 3: Verify initial state - should not have Grown-up subtype yet
@@ -1505,13 +1555,13 @@ func test_punglynd_child_growup():
 		return false
 	
 	# Step 4: Make the child attack by moving it to a combat zone and resolving combat
-	var combat_zone = game.combatZones[0] as CombatZone
+	var combat_zone = game.game_view.combat_zones[0] as CombatZone
 	var attack_spot = combat_zone.getFirstEmptyLocation(true)
 	if not assert_test_not_null(attack_spot, "Should have an empty combat spot"):
 		return false
 	
 	# Move to combat zone
-	await game.tryMoveCard(child_card, attack_spot)
+	await game.tryMoveCard(child_card.cardData, attack_spot)
 	
 	# Resolve combat to mark the card as having attacked
 	await clickCombatButton(combat_zone)
@@ -1558,7 +1608,9 @@ func test_replace_with_insufficient_gold() -> bool:
 	child_card.cardData.addSubtype("Grown-up")
 	
 	# Place the child in player base using proper game flow
-	await game.executeCardEnters(child_card, GameZone.e.HAND, GameZone.e.PLAYER_BASE)
+	var dest_zone = GameZone.e.BATTLEFIELD_PLAYER if child_card.cardData.playerControlled else GameZone.e.BATTLEFIELD_OPPONENT
+	await game.execute_move_card(child_card, dest_zone)
+	await game.resolveStateBasedAction()
 	await get_tree().process_frame
 	
 	if not assert_test_true(child_card.cardData.subtypes.has("Grown-up"), "Child should have Grown-up subtype"):
@@ -1569,7 +1621,7 @@ func test_replace_with_insufficient_gold() -> bool:
 	if not assert_test_not_null(childbearer_card, "Should be able to create Punglynd Childbearer"):
 		return false
 	
-	GameUtility.reparentWithoutMoving(childbearer_card, game.player_hand)
+	GameUtility.reparentWithoutMoving(childbearer_card, game.game_view.player_hand)
 	await get_tree().process_frame
 	
 	# Step 4: Verify the card has Replace option available
@@ -1586,8 +1638,8 @@ func test_replace_with_insufficient_gold() -> bool:
 		return false
 	
 	# Step 7: Store initial counts
-	var initial_hand_count = game.player_hand.get_children().size()
-	var initial_base_count = game.player_base.getCards().size()
+	var initial_hand_count = game.game_view.player_hand.get_children().size()
+	var initial_base_count = game.game_view.player_base.getCards().size()
 	
 	# Step 8: Use pre-selection system to specify Replace target
 	print("🎮 Starting card play with Replace mechanism using pre-selection...")
@@ -1596,11 +1648,11 @@ func test_replace_with_insufficient_gold() -> bool:
 	selections.set_replace_target(child_card)
 	
 	# Step 9: Try to play the card using Replace with pre-selections
-	await game.tryPlayCard(childbearer_card, game.player_base, selections)
+	await game.tryPlayCard(childbearer_card, game.game_view.player_base, selections)
 	print("✅ Card play with Replace completed")
 	await get_tree().process_frame
-	var final_hand_count = game.player_hand.get_children().size()
-	var final_base_count = game.player_base.getCards().size()
+	var final_hand_count = game.game_view.player_hand.get_children().size()
+	var final_base_count = game.game_view.player_base.getCards().size()
 	
 	if not assert_test_equal(final_hand_count, initial_hand_count - 1, "Hand count should decrease by 1"):
 		return false
@@ -1609,7 +1661,7 @@ func test_replace_with_insufficient_gold() -> bool:
 		return false
 	
 	# Step 10: Verify the Childbearer is now in play
-	var cards_in_base = game.player_base.getCards()
+	var cards_in_base = game.game_view.player_base.getCards()
 	var childbearer_in_play = false
 	for card in cards_in_base:
 		if card.cardData.cardName == "Punglynd Childbearer":
@@ -1642,7 +1694,9 @@ func test_replace_ui_optional_selection() -> bool:
 	
 	# Step 1: Setup - create a child in play and add grown-up type
 	var child_card = createCardFromName("Punglynd Child")
-	await game.executeCardEnters(child_card, GameZone.e.HAND, GameZone.e.PLAYER_BASE)
+	var dest_zone = GameZone.e.BATTLEFIELD_PLAYER if child_card.cardData.playerControlled else GameZone.e.BATTLEFIELD_OPPONENT
+	await game.execute_move_card(child_card, dest_zone)
+	await game.resolveStateBasedAction()
 	if not assert_test_not_null(child_card, "Child card should be created"):
 		return false
 	
@@ -1660,8 +1714,8 @@ func test_replace_ui_optional_selection() -> bool:
 	setPlayerGold(3) # Enough for normal casting, not enough without Replace
 	
 	# Step 3: Store initial state
-	var initial_hand_count = game.player_hand.get_children().size()
-	var initial_base_count = game.player_base.getCards().size()
+	var initial_hand_count = game.game_view.player_hand.get_children().size()
+	var initial_base_count = game.game_view.player_base.getCards().size()
 	
 	# Step 4: Start casting process without pre-selections (should trigger UI)
 	print("🎮 Starting card casting process - expecting UI to appear...")
@@ -1680,7 +1734,7 @@ func test_replace_ui_optional_selection() -> bool:
 	# Start the card play - it will pause when selection UI appears
 	# We need to track it via signals since we can't await the coroutine directly
 	var play_task = func():
-		await game.tryPlayCard(childbearer_card, game.player_base)
+		await game.tryPlayCard(childbearer_card, game.game_view.player_base)
 	
 	play_task.call()
 	
@@ -1739,7 +1793,7 @@ func test_replace_ui_optional_selection() -> bool:
 	game.card_entered_play.disconnect(card_handler)
 	
 	# Check if Childbearer is actually in play now
-	var cards_in_play = game.player_base.getCards()
+	var cards_in_play = game.game_view.player_base.getCards()
 	var childbearer_found = false
 	for card in cards_in_play:
 		if card.cardData.cardName == "Punglynd Childbearer":
@@ -1755,8 +1809,8 @@ func test_replace_ui_optional_selection() -> bool:
 	await get_tree().process_frame
 	
 	# Step 8: Verify final state - both cards should be in play (normal casting)
-	var final_hand_count = game.player_hand.get_children().size()
-	var final_base_count = game.player_base.getCards().size()
+	var final_hand_count = game.game_view.player_hand.get_children().size()
+	var final_base_count = game.game_view.player_base.getCards().size()
 	
 	if not assert_test_equal(final_hand_count, initial_hand_count - 1, "Hand should have one less card"):
 		return false
@@ -1797,8 +1851,8 @@ func test_eyepatch_cast_from_deck():
 	
 	# Duplicate the card data and add it to player's deck
 	var eyepatch_copy = game.createCardData(eyepatch_data)
-	game.deck.add_card(eyepatch_copy)
-	print("📚 Added Eyepatch to deck. Deck size: ", game.deck.cards.size())
+	game.game_view.deck.add_card(eyepatch_copy)
+	print("📚 Added Eyepatch to deck. Deck size: ", game.game_data.cards_in_deck_player.size())
 	
 	# Step 2: Give player gold and create a goblin token to play
 	setPlayerGold(10)
@@ -1810,24 +1864,24 @@ func test_eyepatch_cast_from_deck():
 	print("🃏 Added Goblin token to hand")
 	
 	# Step 3: Count cards in play before
-	var initial_base_count = game.player_base.get_children().filter(func(c): return c is Card).size()
+	var initial_base_count = game.game_view.player_base.get_children().filter(func(c): return c is Card).size()
 	print("📊 Initial battlefield count: ", initial_base_count)
 	
 	# Step 4: Play the goblin token - this should trigger Eyepatch from deck
 	print("🎲 Playing Goblin token...")
-	await game.tryPlayCard(goblin_token, game.player_base)
+	await game.tryPlayCard(goblin_token, game.game_view.player_base)
 	
 	# Wait for trigger resolution
 	await get_tree().create_timer(0.5).timeout
 	
 	# Step 5: Verify Eyepatch is no longer in deck
-	var eyepatch_in_deck = game.deck.cards.any(func(card): return card.cardName == "Eyepatch the Pirate")
+	var eyepatch_in_deck = game.game_data.cards_in_deck_player.any(func(card): return card.cardName == "Eyepatch the Pirate")
 	if not assert_test_false(eyepatch_in_deck, "Eyepatch should have been removed from deck"):
 		return false
 	print("✅ Eyepatch removed from deck")
 	
 	# Step 6: Verify Eyepatch is now on battlefield
-	var cards_in_play = game.player_base.get_children().filter(func(c): return c is Card)
+	var cards_in_play = game.game_view.player_base.get_children().filter(func(c): return c is Card)
 	var eyepatch_in_play = cards_in_play.any(func(card): return card.cardData.cardName == "Eyepatch the Pirate")
 	if not assert_test_true(eyepatch_in_play, "Eyepatch should be on battlefield"):
 		return false
@@ -1869,7 +1923,7 @@ func test_goblin_emblem_replacement_effect():
 	
 	addCardToHand(emblem_card)
 	print("🃏 Playing Goblin Emblem...")
-	await game.tryPlayCard(emblem_card, game.player_base)
+	await game.tryPlayCard(emblem_card, game.game_view.player_base)
 	
 	# Verify Goblin Emblem is in play
 	if not assertCardExists("Goblin Emblem", "play"):
@@ -1877,7 +1931,7 @@ func test_goblin_emblem_replacement_effect():
 	print("✅ Goblin Emblem in play")
 	
 	# Count cards before playing Goblin Pair
-	var cards_before = game.player_base.getCards().size()
+	var cards_before = game.game_view.player_base.getCards().size()
 	print("📊 Cards in play before Goblin Pair: ", cards_before)
 	
 	# Step 3: Create and play Goblin Pair
@@ -1887,14 +1941,14 @@ func test_goblin_emblem_replacement_effect():
 	
 	addCardToHand(goblin_pair)
 	print("🃏 Playing Goblin Pair (should trigger token creation with replacement effect)...")
-	await game.tryPlayCard(goblin_pair, game.player_base)
+	await game.tryPlayCard(goblin_pair, game.game_view.player_base)
 	
 	# Wait for triggers to resolve
 	await get_tree().process_frame
 	await get_tree().create_timer(0.3).timeout
 	
 	# Step 4: Count all cards in play
-	var all_cards = game.player_base.getCards()
+	var all_cards = game.game_view.player_base.getCards()
 	var total_cards = all_cards.size()
 	
 	print("📊 Cards in play after Goblin Pair: ", total_cards)
@@ -1940,7 +1994,9 @@ func test_warcamp_activated_ability() -> bool:
 	if not assert_test_not_null(warcamp_card, "Should create Punglynd Warcamp"):
 		return false
 	
-	await game.executeCardEnters(warcamp_card, GameZone.e.HAND, GameZone.e.PLAYER_BASE)
+	var dest_zone = GameZone.e.BATTLEFIELD_PLAYER if warcamp_card.cardData.playerControlled else GameZone.e.BATTLEFIELD_OPPONENT
+	await game.execute_move_card(warcamp_card, dest_zone)
+	await game.resolveStateBasedAction()
 	await get_tree().process_frame
 	
 	# Step 2: Create Punglynd Child token in play (without Grown-up subtype initially)
@@ -1948,7 +2004,9 @@ func test_warcamp_activated_ability() -> bool:
 	if not assert_test_not_null(child_card, "Should be able to create Punglynd Child card"):
 		return false
 	
-	await game.executeCardEnters(child_card, GameZone.e.HAND, GameZone.e.PLAYER_BASE)
+	dest_zone = GameZone.e.BATTLEFIELD_PLAYER if child_card.cardData.playerControlled else GameZone.e.BATTLEFIELD_OPPONENT
+	await game.execute_move_card(child_card, dest_zone)
+	await game.resolveStateBasedAction()
 	await get_tree().process_frame
 	
 	# Verify child does not have Grown-up subtype initially
@@ -1956,8 +2014,8 @@ func test_warcamp_activated_ability() -> bool:
 		return false
 	
 	# Step 3: Add Goblin Pair to deck
-	game.deck.cards.clear()
-	game.deck.update_size()
+	game.game_data.cards_in_deck_player.clear()
+	game.game_view.deck.update_size()
 	
 	var goblin_pair_data = CardLoaderAL.getCardByName("Goblin Pair")
 	if not assert_test_not_null(goblin_pair_data, "Should be able to load Goblin Pair"):
@@ -1965,7 +2023,7 @@ func test_warcamp_activated_ability() -> bool:
 	
 	addCardToDeck(goblin_pair_data, true)
 	
-	if not assert_test_equal(game.deck.get_card_count(), 1, "Deck should have 1 card"):
+	if not assert_test_equal(game.game_view.deck.get_card_count(), 1, "Deck should have 1 card"):
 		return false
 	
 	# Step 4: Find Warcamp's activated ability
@@ -2005,8 +2063,8 @@ func test_warcamp_activated_ability() -> bool:
 	print("✅ Ability can be activated with valid target")
 	
 	# Step 8: Store initial state
-	var initial_hand_count = game.player_hand.get_child_count()
-	var initial_base_count = game.player_base.getCards().size()
+	var initial_hand_count = game.game_view.player_hand.get_child_count()
+	var initial_base_count = game.game_view.player_base.getCards().size()
 	
 	# Verify warcamp is untapped
 	if not assert_test_false(warcamp_card.cardData.is_tapped(), "Warcamp should be untapped"):
@@ -2027,7 +2085,7 @@ func test_warcamp_activated_ability() -> bool:
 	print("✅ Warcamp is tapped")
 	
 	# Step 11: Verify child was sacrificed (removed from play)
-	var cards_in_base = game.player_base.getCards()
+	var cards_in_base = game.game_view.player_base.getCards()
 	var child_still_in_play = false
 	for card in cards_in_base:
 		if card == child_card:
@@ -2039,18 +2097,18 @@ func test_warcamp_activated_ability() -> bool:
 	print("✅ Child token was sacrificed")
 	
 	# Step 12: Verify base count decreased by 1 (child removed)
-	var final_base_count = game.player_base.getCards().size()
+	var final_base_count = game.game_view.player_base.getCards().size()
 	if not assert_test_equal(final_base_count, initial_base_count - 1, "Base should have one less card"):
 		return false
 	
 	# Step 13: Verify card was drawn (hand increased by 1)
-	var final_hand_count = game.player_hand.get_child_count()
+	var final_hand_count = game.game_view.player_hand.get_child_count()
 	if not assert_test_equal(final_hand_count, initial_hand_count + 1, "Hand should increase by 1"):
 		return false
 	print("✅ Card was drawn")
 	
 	# Step 14: Verify the drawn card is Goblin Pair
-	var drawn_card = game.player_hand.get_children()[-1] as Card
+	var drawn_card = game.game_view.player_hand.get_children()[-1] as Card
 	if not assert_test_not_null(drawn_card, "Should have drawn a card"):
 		return false
 	
@@ -2071,9 +2129,9 @@ func test_move_effect() -> bool:
 	graveyard_card_data.addType(CardData.CardType.CREATURE)  # Must be a Creature to match filter
 	graveyard_card_data.playerControlled = true
 	graveyard_card_data.playerOwned = true
-	game.graveyard.add_card(graveyard_card_data)
+	game.game_view.graveyard.add_card(graveyard_card_data)
 	
-	if not assert_test_equal(game.graveyard.get_cards().size(), 1, "Player graveyard should have 1 card"):
+	if not assert_test_equal(game.game_view.graveyard.get_cards().size(), 1, "Player graveyard should have 1 card"):
 		return false
 	print("✅ Graveyard card created")
 	
@@ -2086,19 +2144,19 @@ func test_move_effect() -> bool:
 	
 	# Step 3: Add to hand first, then play it to trigger enter effects
 	addCardToHand(grave_whisperer)
-	await game.tryPlayCard(grave_whisperer, game.player_base)
+	await game.tryPlayCard(grave_whisperer, game.game_view.player_base)
 	
 	# Wait for scene tree to update
 	await get_tree().process_frame
 	await get_tree().process_frame
 	
-	if not assert_test_equal(game.player_base.getCards().size(), 1, "Should have 1 card in play"):
+	if not assert_test_equal(game.game_view.player_base.getCards().size(), 1, "Should have 1 card in play"):
 		return false
 	print("✅ Grave Whisperer in play")
 	
 	# Step 4: Verify initial graveyard state
-	var initial_player_graveyard = game.graveyard.get_cards().size()
-	var initial_opponent_graveyard = game.graveyard_opponent.get_cards().size()
+	var initial_player_graveyard = game.game_view.graveyard.get_cards().size()
+	var initial_opponent_graveyard = game.game_view.graveyard_opponent.get_cards().size()
 	
 	if not assert_test_equal(initial_player_graveyard, 1, "Player graveyard should start with 1 card"):
 		return false
@@ -2107,9 +2165,9 @@ func test_move_effect() -> bool:
 	
 	# Step 5: Move Grave Whisperer to combat zone slot to trigger Strike
 	print("🎮 Moving Grave Whisperer to combat...")
-	var combat_zone = game.combatZones[0]  # Use first combat zone
+	var combat_zone = game.game_view.combat_zones[0]  # Use first combat zone
 	var combat_slot = combat_zone.getCardSlot(1, true)  # Get player slot 1
-	await game.tryMoveCard(grave_whisperer, combat_slot)
+	await game.tryMoveCard(grave_whisperer.cardData, combat_slot)
 	
 	# Wait for movement to complete
 	await get_tree().process_frame
@@ -2124,8 +2182,8 @@ func test_move_effect() -> bool:
 	await get_tree().process_frame
 	
 	# Step 7: Verify card moved from player to opponent graveyard
-	var final_player_graveyard = game.graveyard.get_cards().size()
-	var final_opponent_graveyard = game.graveyard_opponent.get_cards().size()
+	var final_player_graveyard = game.game_view.graveyard.get_cards().size()
+	var final_opponent_graveyard = game.game_view.graveyard_opponent.get_cards().size()
 	
 	if not assert_test_equal(final_player_graveyard, 0, "Player graveyard should be empty"):
 		return false
@@ -2136,7 +2194,7 @@ func test_move_effect() -> bool:
 	print("✅ Card moved to opponent graveyard")
 	
 	# Step 7: Verify the moved card is correct
-	var moved_card = game.graveyard_opponent.get_cards()[0]
+	var moved_card = game.game_view.graveyard_opponent.get_cards()[0]
 	if not assert_test_equal(moved_card.cardName, "GraveyardTarget", "Moved card should be GraveyardTarget"):
 		return false
 	print("✅ Correct card was moved")

@@ -1,20 +1,20 @@
 [gd_scene load_steps=20 format=3 uid="uid://bkqg746td2asx"]
 
-[ext_resource type="PackedScene" uid="uid://dnt4p0i1i5qk1" path="res://Game/scenes/Deck.tscn" id="1_ds5t7"]
-[ext_resource type="Script" uid="uid://bfo2jk26bbnjb" path="res://Game/scripts/GameView.gd" id="1_e287m"]
-[ext_resource type="PackedScene" uid="uid://daynfobgnbdrp" path="res://Game/scenes/combat_zone.tscn" id="2_w3xpy"]
-[ext_resource type="Script" uid="uid://bj67ghukul3cy" path="res://Game/scripts/PlayerControl.gd" id="4_w5dfm"]
-[ext_resource type="PackedScene" uid="uid://dueg4t10qe41s" path="res://Game/scenes/graveyard.tscn" id="6_2jiha"]
-[ext_resource type="Script" uid="uid://cwo3od4ulniaq" path="res://Game/scenes/PlayerBase.gd" id="6_w5dfm"]
-[ext_resource type="PackedScene" uid="uid://cqj7vnp5xo8dy" path="res://Shared/scenes/CardPopupManager.tscn" id="7_popup"]
-[ext_resource type="Texture2D" uid="uid://dkmniw1rj2l6i" path="res://Assets/Images/gold_coin_detailed.png" id="8_cc2av"]
-[ext_resource type="PackedScene" uid="uid://dq0b45a6txn6s" path="res://Game/scenes/extra_deck.tscn" id="10_5jp4b"]
-[ext_resource type="PackedScene" uid="uid://cmkvxbcovv25x" path="res://Game/scenes/SelectionUI.tscn" id="10_nijrt"]
-[ext_resource type="PackedScene" uid="uid://c5pxc4w4crh11" path="res://Game/scenes/AdminConsole.tscn" id="11_4d8k0"]
-[ext_resource type="PackedScene" uid="uid://yr6d1yj2coaa" path="res://Game/scenes/CastChoice.tscn" id="12_e287m"]
-[ext_resource type="Script" uid="uid://djvgmgqknsvcs" path="res://Game/scripts/GameUI.gd" id="12_gameui"]
-[ext_resource type="Script" uid="uid://dhq14u8nrm6wt" path="res://Game/scripts/SelectionManager.gd" id="12_w5dfm"]
-[ext_resource type="PackedScene" uid="uid://b23h2nqcsg3ha" path="res://Game/scenes/card_hand.tscn" id="15_0qpk8"]
+[ext_resource type="Script" uid="uid://bfo2jk26bbnjb" path="res://Game/scripts/GameView.gd" id="1_s4hdo"]
+[ext_resource type="PackedScene" uid="uid://daynfobgnbdrp" path="res://Game/scenes/combat_zone.tscn" id="2_lpwbj"]
+[ext_resource type="PackedScene" uid="uid://dnt4p0i1i5qk1" path="res://Game/scenes/Deck.tscn" id="3_76l0o"]
+[ext_resource type="Script" uid="uid://bj67ghukul3cy" path="res://Game/scripts/PlayerControl.gd" id="4_vthm1"]
+[ext_resource type="PackedScene" uid="uid://dueg4t10qe41s" path="res://Game/scenes/graveyard.tscn" id="5_inj8b"]
+[ext_resource type="Script" uid="uid://cwo3od4ulniaq" path="res://Game/scenes/PlayerBase.gd" id="6_k71w3"]
+[ext_resource type="Script" uid="uid://djvgmgqknsvcs" path="res://Game/scripts/GameUI.gd" id="7_383ci"]
+[ext_resource type="Texture2D" uid="uid://dkmniw1rj2l6i" path="res://Assets/Images/gold_coin_detailed.png" id="8_fe7g3"]
+[ext_resource type="PackedScene" uid="uid://cqj7vnp5xo8dy" path="res://Shared/scenes/CardPopupManager.tscn" id="9_a3f0b"]
+[ext_resource type="PackedScene" uid="uid://cmkvxbcovv25x" path="res://Game/scenes/SelectionUI.tscn" id="10_yvnn5"]
+[ext_resource type="PackedScene" uid="uid://c5pxc4w4crh11" path="res://Game/scenes/AdminConsole.tscn" id="11_3prlv"]
+[ext_resource type="PackedScene" uid="uid://yr6d1yj2coaa" path="res://Game/scenes/CastChoice.tscn" id="12_11jk7"]
+[ext_resource type="PackedScene" uid="uid://dq0b45a6txn6s" path="res://Game/scenes/extra_deck.tscn" id="13_sp61m"]
+[ext_resource type="Script" uid="uid://dhq14u8nrm6wt" path="res://Game/scripts/SelectionManager.gd" id="14_kkm63"]
+[ext_resource type="PackedScene" uid="uid://b23h2nqcsg3ha" path="res://Game/scenes/card_hand.tscn" id="15_4ovxi"]
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_vc2ns"]
 size = Vector3(20, 20, 0.01)
@@ -29,22 +29,22 @@ size = Vector2(6, 1)
 [sub_resource type="BoxShape3D" id="BoxShape3D_yieuc"]
 size = Vector3(5, 0.1, 1.5)
 
-[node name="Game" type="Node3D"]
-script = ExtResource("1_e287m")
+[node name="GameView" type="Node3D"]
+script = ExtResource("1_s4hdo")
 
-[node name="combatZone" parent="." instance=ExtResource("2_w3xpy")]
+[node name="combatZone" parent="." instance=ExtResource("2_lpwbj")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -6.8445325, -0.001, 0)
 
-[node name="combatZone2" parent="." instance=ExtResource("2_w3xpy")]
+[node name="combatZone2" parent="." instance=ExtResource("2_lpwbj")]
 transform = Transform3D(1.95, 0, 0, 0, 1.95, 0, 0, 0, 1.95, -0.112, -0.001, -0.1543597)
 
-[node name="combatZone3" parent="." instance=ExtResource("2_w3xpy")]
+[node name="combatZone3" parent="." instance=ExtResource("2_lpwbj")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 6.4710474, -0.001, 0)
 
-[node name="Deck" parent="." instance=ExtResource("1_ds5t7")]
+[node name="Deck" parent="." instance=ExtResource("3_76l0o")]
 transform = Transform3D(0.99999994, 0, -0.00036651915, 0, 1, 0, 0.00036651915, 0, 0.99999994, -4.155265, -0.001, 2.3502297)
 
-[node name="DeckOpponent" parent="." instance=ExtResource("1_ds5t7")]
+[node name="DeckOpponent" parent="." instance=ExtResource("3_76l0o")]
 transform = Transform3D(-1, 0, -8.742278e-08, 0, 1, 0, 8.742278e-08, 0, -1, 3.20598, -0.001, -1.50072)
 
 [node name="Camera3D" type="Camera3D" parent="."]
@@ -66,15 +66,15 @@ light_cull_mask = 4294967263
 omni_range = 50.0
 
 [node name="playerControl" type="Node3D" parent="."]
-script = ExtResource("4_w5dfm")
+script = ExtResource("4_vthm1")
 metadata/_custom_type_script = "uid://bj67ghukul3cy"
 
-[node name="graveyard" parent="." instance=ExtResource("6_2jiha")]
+[node name="graveyard" parent="." instance=ExtResource("5_inj8b")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -4.2045817, -0.001, 3.2190084)
 
 [node name="playerBase" type="StaticBody3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.59764, -0.001, 1.97616)
-script = ExtResource("6_w5dfm")
+script = ExtResource("6_k71w3")
 
 [node name="MeshInstance3D" type="MeshInstance3D" parent="playerBase"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.69399214, 0, 0.4584682)
@@ -88,7 +88,7 @@ layout_mode = 3
 anchors_preset = 0
 offset_right = 40.0
 offset_bottom = 40.0
-script = ExtResource("12_gameui")
+script = ExtResource("7_383ci")
 
 [node name="TextureRect" type="TextureRect" parent="UI"]
 layout_mode = 0
@@ -96,7 +96,7 @@ offset_left = 1081.0
 offset_top = 588.0
 offset_right = 1121.0
 offset_bottom = 628.0
-texture = ExtResource("8_cc2av")
+texture = ExtResource("8_fe7g3")
 expand_mode = 1
 
 [node name="PlayerGold" type="Label" parent="UI/TextureRect"]
@@ -117,7 +117,7 @@ offset_left = 1081.0
 offset_top = 11.0
 offset_right = 1121.0
 offset_bottom = 51.0
-texture = ExtResource("8_cc2av")
+texture = ExtResource("8_fe7g3")
 expand_mode = 1
 
 [node name="OpponentGold" type="Label" parent="UI/TextureRect2"]
@@ -180,10 +180,10 @@ offset_right = 460.0
 offset_bottom = 28.0
 text = "Turn: 1"
 
-[node name="CardPopupManager" parent="UI" instance=ExtResource("7_popup")]
+[node name="CardPopupManager" parent="UI" instance=ExtResource("9_a3f0b")]
 layout_mode = 1
 
-[node name="SelectionUI" parent="UI" instance=ExtResource("10_nijrt")]
+[node name="SelectionUI" parent="UI" instance=ExtResource("10_yvnn5")]
 visible = false
 layout_mode = 1
 anchors_preset = -1
@@ -207,31 +207,31 @@ offset_bottom = -339.44006
 text = "Admin
 "
 
-[node name="AdminScene" parent="UI" node_paths=PackedStringArray("game") instance=ExtResource("11_4d8k0")]
+[node name="AdminScene" parent="UI" node_paths=PackedStringArray("game") instance=ExtResource("11_3prlv")]
 visible = false
 layout_mode = 1
 game = NodePath("../..")
 
-[node name="AlternativeCastChoice" parent="UI" instance=ExtResource("12_e287m")]
+[node name="AlternativeCastChoice" parent="UI" instance=ExtResource("12_11jk7")]
 visible = false
 layout_mode = 1
 
-[node name="extraDeck" parent="." instance=ExtResource("10_5jp4b")]
+[node name="extraDeck" parent="." instance=ExtResource("13_sp61m")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4.036, 0, 2.8624501)
 
 [node name="SelectionManager" type="Node" parent="."]
-script = ExtResource("12_w5dfm")
+script = ExtResource("14_kkm63")
 metadata/_custom_type_script = "uid://dhq14u8nrm6wt"
 
-[node name="graveyardOpponent" parent="." instance=ExtResource("6_2jiha")]
+[node name="graveyardOpponent" parent="." instance=ExtResource("5_inj8b")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4.165329, -0.001, -1.4649769)
 
-[node name="PlayerHand" parent="." instance=ExtResource("15_0qpk8")]
+[node name="PlayerHand" parent="." instance=ExtResource("15_4ovxi")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.07212627, 1.720877, 2.1647723)
 
-[node name="ExtraHand" parent="." instance=ExtResource("15_0qpk8")]
+[node name="ExtraHand" parent="." instance=ExtResource("15_4ovxi")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.072, 1.721, 2.165)
 visible = false
 
-[node name="OpponentHand" parent="." instance=ExtResource("15_0qpk8")]
+[node name="OpponentHand" parent="." instance=ExtResource("15_4ovxi")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.97, -0.7)

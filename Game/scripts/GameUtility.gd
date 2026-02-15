@@ -4,15 +4,8 @@ class_name GameUtility
 ## Utility class containing helper methods for Game operations
 ## This class is designed to be used with a Game instance passed as parameter
 
-static func _getTargetZone(target_location: Node3D) -> GameZone.e:
-	"""Determine the game zone for the target location"""
-	if target_location is CombatantFightingSpot:
-		return GameZone.e.COMBAT_ZONE
-	elif target_location is PlayerBase:
-		return GameZone.e.PLAYER_BASE
-	else:
-		# Default to player base for unknown locations
-		return GameZone.e.PLAYER_BASE
+## REMOVED: _getTargetZone - Cannot determine player/opponent distinction from Node alone
+## Use game_data.get_card_zone(card_data) for accurate zone information instead
 
 static func find_container_for_card_data(game: Game, cardData: CardData) -> CardContainer:
 	"""Find which container currently has this CardData - queries GameData"""
@@ -21,15 +14,15 @@ static func find_container_for_card_data(game: Game, cardData: CardData) -> Card
 	
 	# Query GameData to find which zone contains the card
 	if game.game_data.cards_in_deck_player.has(cardData):
-		return game.deck
+		return game.game_view.deck
 	elif game.game_data.cards_in_deck_opponent.has(cardData):
-		return game.deck_opponent
+		return game.game_view.deck_opponent
 	elif game.game_data.cards_in_graveyard_player.has(cardData):
-		return game.graveyard
+		return game.game_view.graveyard
 	elif game.game_data.cards_in_graveyard_opponent.has(cardData):
-		return game.graveyard_opponent
+		return game.game_view.graveyard_opponent
 	elif game.game_data.cards_in_extra_deck_player.has(cardData):
-		return game.extra_deck
+		return game.game_view.extra_deck
 	return null
 
 static func createCardFromData(game: Game, cardData: CardData, player_controlled: bool, isToken: bool, container: CardContainer = null):
@@ -71,46 +64,16 @@ static func createCardFromData(game: Game, cardData: CardData, player_controlled
 	
 	return card_instance
 
-static func getCardZone(game: Game, card: Card) -> GameZone.e:
-	"""Determine what zone a card is currently in based on its parent and controller"""
-	if not card:
-		return GameZone.e.UNKNOWN
-		
-	# Fallback to parent-based detection
-	var parent = card.get_parent()
-	if not parent:
-		return GameZone.e.DECK # Default fallback
-	
-	# Check against actual game zone variables instead of hardcoded strings
-	if parent == game.player_hand or parent == game.opponent_hand :
-		return GameZone.e.HAND
-	elif parent == game.player_base:
-		return GameZone.e.PLAYER_BASE
-	elif parent == game.graveyard or parent == game.graveyard_opponent:
-		return GameZone.e.GRAVEYARD
-	elif parent == game.deck or parent == game.deck_opponent:
-		return GameZone.e.DECK
-	elif parent == game.extra_hand:
-		return GameZone.e.EXTRA_DECK
-	else:
-		# Check if parent is a combat zone spot
-		for combat_zone in game.combatZones:
-			if parent in combat_zone.allySpots or parent in combat_zone.ennemySpots:
-				return GameZone.e.COMBAT_ZONE
-		
-		# Check if parent is a CombatantFightingSpot (fallback)
-		if parent is CombatantFightingSpot:
-			return GameZone.e.COMBAT_ZONE
-		
-	# Default fallback
-	return GameZone.e.UNKNOWN
+## REMOVED: getCardZone - Use game.game_data.get_card_zone(card_data) instead
+## The old function returned generic zones and relied on Card views, which doesn't work in headless mode.
+## GameData.get_card_zone() returns specific zones (HAND_PLAYER, BATTLEFIELD_PLAYER, etc.) and works in all modes.
 
 static func get_graveyard_for_controller(game: Game, is_player_controlled: bool) -> Graveyard:
 	"""Get the appropriate graveyard for a card based on its controller"""
 	if is_player_controlled:
-		return game.graveyard
+		return game.game_view.graveyard
 	else:
-		return game.graveyard_opponent
+		return game.game_view.graveyard_opponent
 
 static func get_cards_in_graveyard(game: Game, is_player_controlled: bool) -> Array[CardData]:
 	"""Get all cards in the graveyard for the specified controller"""
@@ -173,36 +136,36 @@ static func get_zone_from_string(game: Game, zone: String, from_perspective_of_p
 	
 	match resolved_zone:
 		"Graveyard.Player":
-			return game.graveyard
+			return game.game_view.graveyard
 		"Graveyard.Opponent":
-			return game.graveyard_opponent
+			return game.game_view.graveyard_opponent
 		"Deck.Player":
-			return game.deck
+			return game.game_view.deck
 		"Deck.Opponent":
-			return game.deck_opponent
+			return game.game_view.deck_opponent
 		"Hand.Player":
-			return game.player_hand
+			return game.game_view.player_hand
 		"Hand.Opponent":
-			return game.opponent_hand
+			return game.game_view.opponent_hand
 		"PlayerBase":
-			return game.player_base
+			return game.game_view.player_base
 		"ExtraDeck.Player":
-			return game.extra_deck
+			return game.game_view.extra_deck
 		_:
 			# Check for CombatZone patterns
 			if zone.begins_with("CombatZone."):
 				var parts = zone.split(".")
 				if parts.size() >= 2:
 					var zone_index = int(parts[1])
-					if zone_index >= 0 and zone_index < game.combatZones.size():
+					if zone_index >= 0 and zone_index < game.game_view.combat_zones.size():
 						# If there are slot and owner parts, return specific spot
 						if parts.size() >= 4:
 							var slot_index = int(parts[2])
 							var is_player = parts[3] == "Player"
-							return game.combatZones[zone_index].getCardSlot(slot_index, is_player)
+							return game.game_view.combat_zones[zone_index].getCardSlot(slot_index, is_player)
 						else:
 							# Return the first empty slot in the combat zone
-							return game.combatZones[zone_index].getFirstEmptyLocation(true)
+							return game.game_view.combat_zones[zone_index].getFirstEmptyLocation(true)
 			push_error("Unknown zone: " + zone)
 			return null
 
@@ -220,20 +183,17 @@ static func getControllerCards(game: Game, playerSide = true) -> Array[Card]:
 	var controlled_cards: Array[Card] = []
 	
 	# Add cards from player base
-	var base_cards = game.player_base.getCards()
+	var base_cards = game.game_view.player_base.getCards()
 	controlled_cards.append_array(base_cards)
 	
 	# Add cards from combat zones (ally side only)
-	for combat_zone in game.combatZones:
+	for combat_zone in game.game_view.combat_zones:
 		for spot in combat_zone.allySpots if playerSide else combat_zone.ennemySpots:
 			var card = spot.getCard()
 			if card != null:
 				controlled_cards.append(card)
 	
 	return controlled_cards
-
-
-
 
 static func reparentWithoutMoving(object: Node3D, newParent: Node3D):
 	var globalPosBefore = object.global_position

@@ -130,19 +130,13 @@ func _on_game_event(event_card_data: CardData = null, _from_zone = null, _to_zon
 
 func _check_trigger_conditions(owner: CardData, event_card_data: CardData, game: Node) -> bool:
 	"""Check if the trigger conditions for this ability are met"""
-	# Check "TriggerZones" - ability only active when owner is in specified zones
 	var trigger_zones = trigger_conditions.get(TriggerCondition.TRIGGER_ZONES, [])
 	if trigger_zones is Array and trigger_zones.size() > 0:
-		var owner_card = owner.get_card_object()
-		if owner_card:
-			var owner_zone = game.getCardZone(owner_card)
+		var owner_zone = game.game_data.get_card_zone(owner)
+		
+		if owner_zone not in trigger_zones:
+			return false 
 			
-			# Check if owner's zone is in the list of valid trigger zones
-			if owner_zone not in trigger_zones:
-				return false  # Card is not in a valid trigger zone
-	
-	# Check "ValidCard" condition (from card files: ValidCard$ Card.Self)
-	# This filters what cards can trigger this ability
 	var valid_card_filter = trigger_conditions.get(TriggerCondition.VALID_CARD, "")
 	if valid_card_filter != "":
 		# Special case: "Card.Self" means only this card can trigger this ability
@@ -151,17 +145,13 @@ func _check_trigger_conditions(owner: CardData, event_card_data: CardData, game:
 			if not matches:
 				return false
 		else:
-			# Get the Card object from CardData to use with filtering system
-			var event_card = event_card_data.get_card_object() if event_card_data else null
-			if not event_card:
+			# Check if event card matches the filter (works with CardData directly)
+			if not event_card_data:
 				return false  # No card to validate against
 			
-			# Use GameHelper to check if the event card matches the filter
-			var cards_to_check: Array[Card] = [event_card]
-			var matching_cards = GameHelper.filterCardsByParameters(cards_to_check, valid_card_filter, game)
-			
-			if matching_cards.size() == 0:
-				return false  # Card doesn't match the filter
+			# Use CardData-based filtering (works in both headless and normal mode)
+			if not _matches_card_filter(event_card_data, valid_card_filter, game):
+				return false
 	
 	# Check "Condition" field (e.g., "Self.Attacked+ThisTurn")
 	var condition_str = trigger_conditions.get(TriggerCondition.CONDITION, "")
@@ -170,6 +160,43 @@ func _check_trigger_conditions(owner: CardData, event_card_data: CardData, game:
 		var condition_met = AbilityManagerAL.evaluateCondition(condition_str, owner)
 		if not condition_met:
 			return false
+	
+	return true
+
+func _matches_card_filter(card_data: CardData, filter: String, game) -> bool:
+	"""Check if CardData matches a filter string (works in headless mode)"""
+	if not card_data:
+		return false
+	
+	# Parse filter tokens (e.g., "Creature.YouCtrl" → ["Creature", "YouCtrl"])
+	var tokens = filter.split(".")
+	
+	for token in tokens:
+		match token:
+			"Card":
+				continue  # Generic, always matches
+			"Creature":
+				if card_data.cardType.to_lower() != "creature":
+					return false
+			"Instant":
+				if card_data.cardType.to_lower() != "instant":
+					return false
+			"Sorcery":
+				if card_data.cardType.to_lower() != "sorcery":
+					return false
+			"YouCtrl", "You Control":
+				if card_data.controller != game.game_data.get_player_id():
+					return false
+			"OppCtrl", "Opponent Control":
+				if card_data.controller == game.game_data.get_player_id():
+					return false
+			_:
+				# Unknown token - could be a subtype or custom check
+				# For now, check if it matches a subtype
+				if card_data.subtypes and token in card_data.subtypes:
+					continue  # Matches subtype
+				# If we don't recognize the token, fail conservatively
+				return false
 	
 	return true
 

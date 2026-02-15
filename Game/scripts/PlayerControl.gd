@@ -9,7 +9,7 @@ var activeHand: CardHand
 @onready var mouse_intercept_plane: StaticBody3D = $"../Camera3D/mouseInterceptPlane"
 @onready var camera: Camera3D = $"../Camera3D"
 
-signal tryMoveCard(card: Card, target: Node3D)
+signal tryMoveCard(card_data: CardData, target: Node3D)
 signal rightClick(card: Card)
 signal leftClick(objectUnderMouse: Node3D)
 # Removed drag signals - now handled directly by CardAnimator
@@ -82,10 +82,10 @@ func _input(event):
 				# Handle auto-casting
 				if drop_target:
 					# Card was dropped on a specific target
-					tryMoveCard.emit(dragged_card, drop_target)
+					tryMoveCard.emit(dragged_card.cardData, drop_target)
 				elif is_outside_hand:
 					# Card was dragged outside hand zone but no specific target - let game default to PlayerBase
-					tryMoveCard.emit(dragged_card, null)
+					tryMoveCard.emit(dragged_card.cardData, null)
 				
 				# HighlightManager will be notified by CardAnimator signals
 				dragged_card = null

@@ -8,7 +8,7 @@ var from_zone: GameZone.e
 var to_zone: GameZone.e
 var additional_data: Dictionary = {}  # For any extra context needed
 
-func _init(type: int, source: Card = null, from: GameZone.e = GameZone.e.HAND, to: GameZone.e = GameZone.e.HAND, data: Dictionary = {}):
+func _init(type: int, source: Card = null, from: GameZone.e = GameZone.e.HAND_PLAYER, to: GameZone.e = GameZone.e.HAND_PLAYER, data: Dictionary = {}):
 	trigger_type = type
 	trigger_source = source
 	from_zone = from
@@ -22,7 +22,7 @@ func is_zone_change() -> bool:
 	return from_zone != to_zone
 
 func is_battlefield_entry() -> bool:
-	return to_zone == GameZone.e.PLAYER_BASE or to_zone == GameZone.e.COMBAT_ZONE
+	return to_zone in [GameZone.e.BATTLEFIELD_PLAYER, GameZone.e.BATTLEFIELD_OPPONENT, GameZone.e.COMBAT_PLAYER, GameZone.e.COMBAT_OPPONENT]
 
 func is_battlefield_exit() -> bool:
-	return from_zone == GameZone.e.PLAYER_BASE or from_zone == GameZone.e.COMBAT_ZONE
+	return from_zone in [GameZone.e.BATTLEFIELD_PLAYER, GameZone.e.BATTLEFIELD_OPPONENT, GameZone.e.COMBAT_PLAYER, GameZone.e.COMBAT_OPPONENT]

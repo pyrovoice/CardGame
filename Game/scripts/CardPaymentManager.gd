@@ -31,7 +31,7 @@ func canPayCosts(costs: Array[Dictionary], source_card_data: CardData) -> bool:
 				if target == "Self":
 					# Can always sacrifice self if the card is in play
 					var source_zone = source_card_data.current_zone
-					if source_zone != GameZone.e.PLAYER_BASE and source_zone != GameZone.e.COMBAT_ZONE:
+					if source_zone not in [GameZone.e.BATTLEFIELD_PLAYER, GameZone.e.COMBAT_PLAYER]:
 						return false
 				else:
 					# Check if there are enough valid cards to sacrifice based on the filter

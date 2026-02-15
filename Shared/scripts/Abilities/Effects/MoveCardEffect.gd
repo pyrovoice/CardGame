@@ -77,7 +77,7 @@ func execute(parameters: Dictionary, source_card_data: CardData, game_context: G
 		var dest_enum = game_context._get_zone_enum(destination_zone)
 		
 		# Use game's execute_move_card to handle the zone transfer with GameZone enums
-		game_context.execute_move_card_from_data(selected_card, origin_enum, dest_enum)
+		game_context.execute_move_card(null, dest_enum, null, selected_card, origin_enum)
 
 func _get_cards_from_zone_node(zone_node: Node) -> Array[CardData]:
 	"""Get all CardData from a zone node - queries GameData instead of containers"""

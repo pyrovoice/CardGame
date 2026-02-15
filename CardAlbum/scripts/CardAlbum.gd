@@ -71,7 +71,7 @@ func create_card_ui(card_data: CardData):
 	var card_instance = card_scene.instantiate() as Card2D
 	
 	card_grid.add_child(card_instance)
-	card_instance.set_card_data(card_data)
+	card_instance.set_card(card_data)
 	card_instance.card_clicked.connect(_on_card_clicked)
 	card_instance.card_right_clicked.connect(_on_card_right_clicked)
 	

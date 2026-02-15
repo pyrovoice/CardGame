@@ -98,10 +98,10 @@ func _update_drag_highlights():
 
 func _highlightHandCards():
 	"""Toggle highlight on cards in hand based on castability"""
-	if not game or not game.player_hand:
+	if not game or not game.game_view.player_hand:
 		return
 		
-	var hand_cards = game.player_hand.get_children()
+	var hand_cards = game.game_view.player_hand.get_children()
 	for card: Card in hand_cards:
 		if card is Card:
 			var is_castable = CardPaymentManagerAL.isCardCastable(card.cardData)
@@ -112,10 +112,10 @@ func _highlightHandCards():
 
 func _highlightExtraDeckDisplayCards():
 	"""Toggle highlight on extra deck display cards based on castability"""
-	if not game or not game.extra_hand:
+	if not game or not game.game_view.extra_hand:
 		return
 		
-	var display_cards = game.extra_hand.get_children()
+	var display_cards = game.game_view.extra_hand.get_children()
 	for card: Card in display_cards:
 		if card is Card:
 			var is_castable = CardPaymentManagerAL.isCardCastable(card.cardData)

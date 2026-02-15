@@ -2,15 +2,7 @@ extends Resource
 class_name GameZone
 
 enum e {
-	# Generic zones (for getCardZone - backwards compatibility with UI/gameplay logic)
-	HAND,
-	PLAYER_BASE,
-	COMBAT_ZONE,
-	GRAVEYARD,
-	DECK,
-	EXTRA_DECK,
-	
-	# Specific zones (for GameData - MVC pattern with player/opponent distinction)
+	# Specific zones (MVC pattern with player/opponent distinction)
 	HAND_PLAYER,
 	HAND_OPPONENT,
 	BATTLEFIELD_PLAYER,
@@ -29,12 +21,6 @@ enum e {
 # Helper to convert GameZone.e to string for display/debug
 static func get_as_string(zone: e) -> String:
 	match zone:
-		e.HAND: return "hand"
-		e.PLAYER_BASE: return "player_base"
-		e.COMBAT_ZONE: return "combat_zone"
-		e.GRAVEYARD: return "graveyard"
-		e.DECK: return "deck"
-		e.EXTRA_DECK: return "extra_deck"
 		e.HAND_PLAYER: return "hand_player"
 		e.HAND_OPPONENT: return "hand_opponent"
 		e.BATTLEFIELD_PLAYER: return "battlefield_player"
@@ -58,17 +44,22 @@ static func parse_trigger_zones(zone_str: String) -> Array:
 		zone_part = zone_part.strip_edges()
 		match zone_part:
 			"Battlefield":
-				# Battlefield includes both base and combat zone (generic version)
-				zones.append(e.PLAYER_BASE)
-				zones.append(e.COMBAT_ZONE)
+				# Battlefield includes both battlefield and combat zones for both players
+				zones.append(e.BATTLEFIELD_PLAYER)
+				zones.append(e.BATTLEFIELD_OPPONENT)
+				zones.append(e.COMBAT_PLAYER)
+				zones.append(e.COMBAT_OPPONENT)
 			"Hand":
-				zones.append(e.HAND)
+				zones.append(e.HAND_PLAYER)
+				zones.append(e.HAND_OPPONENT)
 			"Graveyard":
-				zones.append(e.GRAVEYARD)
+				zones.append(e.GRAVEYARD_PLAYER)
+				zones.append(e.GRAVEYARD_OPPONENT)
 			"Deck":
-				zones.append(e.DECK)
+				zones.append(e.DECK_PLAYER)
+				zones.append(e.DECK_OPPONENT)
 			"ExtraDeck":
-				zones.append(e.EXTRA_DECK)
+				zones.append(e.EXTRA_DECK_PLAYER)
 			_:
 				push_warning("Unknown trigger zone: " + zone_part)
 	
