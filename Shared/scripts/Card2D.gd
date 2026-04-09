@@ -47,13 +47,27 @@ func update_display():
 	text_label.text = format_text_with_keywords(cardData)
 
 func format_text_with_keywords(data: CardData) -> String:
-	var formatted_text = data.text_box
-	# First, replace newlines with BBCode line breaks
-	# Try both common BBCode line break formats
-	formatted_text = formatted_text.replace("\n", "[p]")
-	formatted_text = formatted_text.replace("CARDNAME", data.cardName)
+	var formatted_text = ""
 	
-	# Get all known keywords from KeywordManager
+	# Prepend keywords from the keywords array (keywords appear first)
+	var keywords_list = data.keywords  # Use property accessor to get keywords with temp effects
+	if keywords_list.size() > 0:
+		var keyword_texts: Array[String] = []
+		for keyword in keywords_list:
+			keyword_texts.append(keyword.capitalize())
+		formatted_text = " ".join(keyword_texts) + "."
+	
+	# Add the main card text after keywords
+	var main_text = data.text_box
+	main_text = main_text.replace("\n", "[p]")
+	main_text = main_text.replace("CARDNAME", data.cardName)
+	
+	if not main_text.is_empty():
+		if not formatted_text.is_empty():
+			formatted_text += "[p]"
+		formatted_text += main_text
+	
+	# Highlight all known keywords from KeywordManager
 	for keyword in KeywordManager.keywords.keys():
 		# Simply replace the keyword with bold version
 		# This will find the keyword anywhere it appears as a whole word

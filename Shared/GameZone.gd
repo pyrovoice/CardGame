@@ -103,3 +103,26 @@ static func is_opponent_zone(zone: e) -> bool:
 	return zone in [e.HAND_OPPONENT, e.BATTLEFIELD_OPPONENT, e.COMBAT_OPPONENT_1,
 					e.COMBAT_OPPONENT_2, e.COMBAT_OPPONENT_3, e.GRAVEYARD_OPPONENT,
 					e.DECK_OPPONENT]
+
+# Helper to check if a zone matches a zone string filter (for trigger conditions)
+static func matches_zone_filter(zone: e, filter: String) -> bool:
+	"""Check if a zone matches a text filter like 'Combat', 'Hand', 'Battlefield', etc."""
+	filter = filter.strip_edges()
+	
+	match filter:
+		"Combat":
+			return is_combat_zone(zone)
+		"Battlefield":
+			return is_battlefield_zone(zone) or is_combat_zone(zone)
+		"Hand":
+			return zone in [e.HAND_PLAYER, e.HAND_OPPONENT]
+		"Graveyard":
+			return zone in [e.GRAVEYARD_PLAYER, e.GRAVEYARD_OPPONENT]
+		"Deck":
+			return zone in [e.DECK_PLAYER, e.DECK_OPPONENT]
+		"ExtraDeck":
+			return zone == e.EXTRA_DECK_PLAYER
+		_:
+			push_warning("Unknown zone filter: " + filter)
+			return false
+

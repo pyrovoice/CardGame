@@ -29,7 +29,8 @@ func execute_main_phase():
 			break
 		
 		# Choose a random castable card
-		var card_to_cast = castable_cards[randi() % castable_cards.size()]		
+		var card_to_cast = castable_cards[randi() % castable_cards.size()]
+		
 		# Find a target location for the card
 		var target_location = _find_target_location(card_to_cast)
 		
@@ -39,15 +40,15 @@ func execute_main_phase():
 			opponent_hand_cards.erase(card_to_cast)
 			continue
 		
-		# Cast the card using the existing game logic
-		var combat_spot = target_location as CombatantFightingSpot
+		# Determine destination zone based on target location
 		var dest_zone: GameZone.e
-		if combat_spot:
-			var combat_zone = combat_spot.get_parent() as CombatZone
-			var zone_index = game.game_view.get_combat_zones().find(combat_zone)
-			dest_zone = (GameZone.e.COMBAT_PLAYER_1 + zone_index) as GameZone.e
+		if target_location is CombatZone:
+			# Opponent cards go to opponent combat zones
+			var zone_index = game.game_view.get_combat_zones().find(target_location)
+			dest_zone = (GameZone.e.COMBAT_OPPONENT_1 + zone_index) as GameZone.e
 		else:
 			dest_zone = GameZone.e.BATTLEFIELD_OPPONENT
+		
 		await game.tryPlayCard(card_to_cast.cardData, dest_zone)
 		
 		# Update the hand cards list
@@ -75,26 +76,20 @@ func _find_target_location(card: Card) -> Node3D:
 	if not card or not card.cardData:
 		return null
 	
-	# For creatures, find an empty combat zone on the enemy side
+	# For creatures, find an available combat zone
 	if card.cardData.hasType(CardData.CardType.CREATURE):
-		return _find_random_empty_enemy_location()
+		return _find_random_combat_zone()
 	
 	# For spells, return a generic target (spells don't need specific locations)
 	# The spell targeting will be handled by the existing spell system
 	return game.game_view.player_base  # Spells can be "cast" targeting the player base area
 	
-func _find_random_empty_enemy_location() -> CombatantFightingSpot:
-	"""Find a random empty location on the enemy side of combat zones"""
-	var available_locations: Array[CombatantFightingSpot] = []
+func _find_random_combat_zone() -> CombatZone:
+	"""Find a random combat zone for the opponent to place cards"""
+	var combat_zones = game.game_view.combat_zones
 	
-	# Collect all empty enemy locations
-	for combat_zone in game.game_view.combat_zones:
-		var empty_location = combat_zone.getFirstEmptyLocation(false)  # false = enemy side
-		if empty_location:
-			available_locations.append(empty_location)
-	
-	if available_locations.is_empty():
+	if combat_zones.is_empty():
 		return null
 	
-	# Return a random available location
-	return available_locations[randi() % available_locations.size()]
+	# Return a random combat zone
+	return combat_zones[randi() % combat_zones.size()]

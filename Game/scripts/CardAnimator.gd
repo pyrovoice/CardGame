@@ -441,7 +441,7 @@ func _animate_turn_over(tween: Tween, _data: Dictionary) -> Tween:
 	tween.set_parallel()
 	tween.tween_property(card.card_representation, "rotation_degrees:y", 180, 0.3)
 	tween.tween_callback(func():
-		card.setFlip(not card.is_facedown)
+		card.setFlip(not card.cardData.is_facedown)
 		card.rotation_degrees.y = 0
 	)
 	return tween

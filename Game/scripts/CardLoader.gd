@@ -111,6 +111,9 @@ func parse_card_data(card_text: String) -> CardData:
 	# Parse additional costs
 	card_data.additionalCosts = parse_additional_costs(properties)
 	
+	# Parse casting conditions
+	card_data.castingConditions = parse_casting_conditions(properties)
+	
 	# Parse spell effects (for spell cards)
 	if card_data.hasType(CardData.CardType.SPELL):
 		var spell_abilities = parse_spell_effects(properties, card_data)
@@ -399,20 +402,22 @@ func _add_elusive_ability(card_data: CardData):
 	"""Add automatic triggered ability for Elusive keyword
 	
 	Elusive triggers when:
-	- Another card arrives at the same combat location
-	- Both cards have the same controller
-	- The other card does not have Elusive
-	Effect: Switch positions with the newly arrived card
+	- Combat starts (attack is declared at a combat zone)
+	- The Elusive card is in that combat zone
+	- There are other cards in the same zone
+	Effect: Move to the last position in the combat zone
 	"""
 	# Parse as a standard triggered ability string
-	var trigger_string = "T:ChangedZone | Destination$ Combat | ValidCard$ Card.Other+NoKeyword$Elusive | ValidActivatingPlayer$ You | Execute$ ElusiveSwitch"
+	# Using StartAttack (ATTACK_DECLARED) trigger instead of ChangedZone
+	# ValidCard$ Card.Self makes it trigger only when this card attacks (once per combat)
+	var trigger_string = "Mode$ StartAttack | ValidCard$ Card.Self | TriggerZones$ Combat | Execute$ ElusiveRetreat"
 	
 	# Create SVar for the effect
 	var svar_effects = {
-		"ElusiveSwitch": {
+		"ElusiveRetreat": {
 			"effect_type": "SwitchPositions",
 			"parameters": {
-				"SwitchWith": "TriggeredCard",
+				"SwitchWith": "LastOther",  # Swap with the last card in zone (that isn't self)
 				"OnlySameLocation": true
 			}
 		}
@@ -450,6 +455,10 @@ func _parse_svar_definition(definition: String) -> Dictionary:
 			var part = parts[i].strip_edges()
 			if part.begins_with("TokenScript$"):
 				result["parameters"]["TokenScript"] = part.substr(13)
+			elif part.begins_with("Num$"):
+				result["parameters"]["Num"] = part.substr(5)
+			elif part.begins_with("Pool$"):
+				result["parameters"]["Pool"] = part.substr(6)
 			elif part.begins_with("Type$"):
 				result["parameters"]["Type"] = part.substr(6)
 			elif part.begins_with("Amount$"):
@@ -477,6 +486,8 @@ func _parse_svar_definition(definition: String) -> Dictionary:
 				result["parameters"]["Condition"] = part.substr(11)
 			elif part.begins_with("IfNotFound$"):
 				result["parameters"]["IfNotFound"] = part.substr(12)
+			elif part.begins_with("Modif$"):
+				result["parameters"]["Modif"] = part.substr(7)
 	
 	return result
 
@@ -747,6 +758,8 @@ func parse_effect_parameters(effect_text: String) -> Dictionary:
 			parameters["Types"] = part.substr(7)
 		elif part.begins_with("Duration$"):
 			parameters["Duration"] = part.substr(10)
+		elif part.begins_with("Modif$"):
+			parameters["Modif"] = part.substr(7)
 		# Add more parameter parsing as needed
 	
 	return parameters
@@ -793,6 +806,28 @@ func parse_single_additional_cost(cost_text: String) -> Dictionary:
 	
 	return cost_data
 
+# Parse casting conditions from card properties
+func parse_casting_conditions(properties: Dictionary) -> Array[String]:
+	var casting_conditions: Array[String] = []
+	
+	# Look for CC$ lines (Casting Condition)
+	for key in properties.keys():
+		if key == "CC$" or key == "CC":
+			var condition_line = properties[key]
+			# Handle both single string and array of strings
+			if typeof(condition_line) == TYPE_STRING:
+				# Remove "$ " prefix if present
+				if condition_line.begins_with("$ "):
+					condition_line = condition_line.substr(2)
+				casting_conditions.append(condition_line.strip_edges())
+			else:
+				for condition in condition_line:
+					if condition.begins_with("$ "):
+						condition = condition.substr(2)
+					casting_conditions.append(condition.strip_edges())
+	
+	return casting_conditions
+
 # Load a card from a text file
 func load_card_art(card_name: String) -> Texture2D:
 	"""Load card art texture for the given card name"""
@@ -825,6 +860,9 @@ func load_card_from_file(file_path: String, archetype: Archetype = Archetype.UNK
 	# Add to archetype pool
 	if archetype != Archetype.UNKNOWN:
 		archetype_pools[archetype].append(card_data)
+		print("  ✅ Added ", card_data.cardName, " to archetype pool: ", Archetype.keys()[archetype])
+	else:
+		print("  ⚠️ Card ", card_data.cardName, " has UNKNOWN archetype - not added to pool")
 	
 	if card_data.hasType(CardData.CardType.LEGENDARY):
 		extraDeckCardData.push_back(card_data)
@@ -874,16 +912,6 @@ func load_opponent_card_from_file(file_path: String, archetype: Archetype = Arch
 		# Add to archetype pool
 		if archetype != Archetype.UNKNOWN:
 			archetype_pools[archetype].append(card_data)
-		
-		# Debug logging for Grave Whisperer
-		if card_data.cardName == "Grave Whisperer":
-			print("🔍 [LOAD OPPONENT] Grave Whisperer loaded with ", card_data.triggered_abilities.size(), " triggered abilities")
-			for i in range(card_data.triggered_abilities.size()):
-				var ability = card_data.triggered_abilities[i]
-				print("   Ability ", i, ":")
-				print("     - game_event_trigger: ", ability.game_event_trigger)
-				print("     - effect_type: ", EffectType.type_to_string(ability.effect_type))
-				print("     - effect_parameters: ", ability.effect_parameters)
 	
 	# Extract card name from file path to load corresponding art
 	if card_data and card_data.cardName:
@@ -1018,6 +1046,10 @@ func _extract_archetype_from_path(file_path: String, root_path: String) -> Arche
 	# Remove root path to get relative path
 	var relative_path = file_path.replace(root_path + "/", "")
 	
+	# Strip leading slash if present (handles double slash issues)
+	if relative_path.begins_with("/"):
+		relative_path = relative_path.substr(1)
+	
 	# If there's no subfolder (file directly in root), return UNKNOWN
 	if not "/" in relative_path:
 		return Archetype.UNKNOWN
@@ -1025,14 +1057,22 @@ func _extract_archetype_from_path(file_path: String, root_path: String) -> Arche
 	# Get the first folder name
 	var folder_name = relative_path.split("/")[0].to_upper()
 	
+	print("🔍 [ARCHETYPE] File: ", file_path)
+	print("    Relative: ", relative_path)
+	print("    Folder: ", folder_name)
+	
 	# Map folder name to archetype enum
+	var result: Archetype
 	match folder_name:
 		"PUNGLYND":
-			return Archetype.PUNGLYND
+			result = Archetype.PUNGLYND
 		"NECROMANCER":
-			return Archetype.NECROMANCER
+			result = Archetype.NECROMANCER
 		_:
-			return Archetype.UNKNOWN
+			result = Archetype.UNKNOWN
+	
+	print("    Archetype: ", Archetype.keys()[result])
+	return result
 
 func get_archetype_pool(archetype: Archetype) -> Array[CardData]:
 	"""Get all cards belonging to a specific archetype"""
@@ -1127,6 +1167,9 @@ func duplicateCardScript(original: CardData) -> CardData:
 	for cost in original.additionalCosts:
 		costs.append(cost.duplicate())
 	copy.additionalCosts = costs
+	
+	# Deep copy casting conditions
+	copy.castingConditions = original.castingConditions.duplicate()
 	
 	# Deep copy abilities - each ability needs to reference the new card
 	for ability in original.triggered_abilities:

@@ -610,29 +610,28 @@ func test_tap_system() -> bool:
 	
 	# Test 4: Test movement tapping (assuming we can move to combat)
 	var combat_zone = game.game_view.combat_zones[0] as CombatZone
-	var empty_spot = combat_zone.getFirstEmptyLocation(true)
 	
-	if empty_spot:
-		# Try to move card to combat (should tap it)
-		await game.tryMoveCard(test_card, empty_spot)
+	# Try to move card to combat zone (should tap it)
+	# After GridContainer3D refactor, we pass the CombatZone directly
+	await game.tryMoveCard(test_card, combat_zone)
+	
+	# Check data layer: card should be in combat zone
+	var card_zone = game.game_data.get_card_zone(test_card)
+	if assert_test_true(GameZone.is_combat_zone(card_zone), "Movement to combat should succeed (DATA LAYER)"):
+		if not assert_test_true(test_card.is_tapped(), "Card should be tapped after moving to combat"):
+			return false
 		
-		# Check data layer: card should be in combat zone
-		var card_zone = game.game_data.get_card_zone(test_card)
-		if assert_test_true(GameZone.is_combat_zone(card_zone), "Movement to combat should succeed (DATA LAYER)"):
-			if not assert_test_true(test_card.is_tapped(), "Card should be tapped after moving to combat"):
-				return false
-			
-			var initial_zone = card_zone
-			var initial_index = game.game_data.get_card_combat_index(test_card)
-			
-			# Try to move again (should fail because card is tapped)
-			await game.tryMoveCard(test_card, empty_spot)
-			var final_zone = game.game_data.get_card_zone(test_card)
-			var final_index = game.game_data.get_card_combat_index(test_card)
-			if not assert_test_equal(final_zone, initial_zone, "Card should remain in same zone (tapped cards can't move - DATA LAYER)"):
-				return false
-			if not assert_test_equal(final_index, initial_index, "Card should remain at same index (tapped cards can't move - DATA LAYER)"):
-				return false
+		var initial_zone = card_zone
+		var initial_index = game.game_data.get_card_combat_index(test_card)
+		
+		# Try to move again (should fail because card is tapped)
+		await game.tryMoveCard(test_card, combat_zone)
+		var final_zone = game.game_data.get_card_zone(test_card)
+		var final_index = game.game_data.get_card_combat_index(test_card)
+		if not assert_test_equal(final_zone, initial_zone, "Card should remain in same zone (tapped cards can't move - DATA LAYER)"):
+			return false
+		if not assert_test_equal(final_index, initial_index, "Card should remain at same index (tapped cards can't move - DATA LAYER)"):
+			return false
 	
 	# Test 5: Test activated ability with tap cost
 	# First untap the card
@@ -816,12 +815,9 @@ func test_punglynd_child_growup():
 	
 	# Step 4: Make the child attack by moving it to a combat zone and resolving combat
 	var combat_zone = game.game_view.combat_zones[0] as CombatZone
-	var attack_spot = combat_zone.getFirstEmptyLocation(true)
-	if not assert_test_not_null(attack_spot, "Should have an empty combat spot"):
-		return false
 	
-	# Move to combat zone
-	await game.tryMoveCard(child_card, attack_spot)
+	# Move to combat zone (pass CombatZone directly after GridContainer3D refactor)
+	await game.tryMoveCard(child_card, combat_zone)
 	
 	# Resolve combat to mark the card as having attacked
 	await clickCombatButton(combat_zone)
@@ -1318,4 +1314,171 @@ func test_recycling_three_uses_per_turn():
 	game.card_recycled.disconnect(signal_callback)
 	
 	print("✅ Recycling three-uses-per-turn test passed!")
+	return true
+
+func test_elusive_position_swap() -> bool:
+	"""Test that Elusive keyword causes position swap when another card enters the same combat zone"""
+	print("=== Testing Elusive Position Swap ===")
+	
+	# Step 1: Create test card templates for Elusive testing
+	var elusive_template = CardData.new()
+	elusive_template.cardName = "Elusive Test Card"
+	elusive_template.addType(CardData.CardType.CREATURE)
+	elusive_template.power = 1
+	elusive_template.goldCost = 1
+	elusive_template.text_box = "Elusive"  # Keyword will be parsed by game.createCardData
+	
+	var regular_template_1 = CardData.new()
+	regular_template_1.cardName = "Regular Card 1"
+	regular_template_1.addType(CardData.CardType.CREATURE)
+	regular_template_1.power = 2
+	regular_template_1.goldCost = 1
+	
+	var regular_template_2 = CardData.new()
+	regular_template_2.cardName = "Regular Card 2"
+	regular_template_2.addType(CardData.CardType.CREATURE)
+	regular_template_2.power = 3
+	regular_template_2.goldCost = 1
+	
+	var dummy_template = CardData.new()
+	dummy_template.cardName = "Dummy Card"
+	dummy_template.addType(CardData.CardType.CREATURE)
+	dummy_template.power = 1
+	dummy_template.goldCost = 1
+	
+	# Step 2: Use game.createCardData to properly create cards with all abilities registered
+	var elusive_card = game.createCardData(elusive_template, GameZone.e.BATTLEFIELD_PLAYER, true)
+	var regular_card_1 = game.createCardData(regular_template_1, GameZone.e.BATTLEFIELD_PLAYER, true)
+	var regular_card_2 = game.createCardData(regular_template_2, GameZone.e.BATTLEFIELD_PLAYER, true)
+	var dummy_card = game.createCardData(dummy_template, GameZone.e.BATTLEFIELD_PLAYER, true)
+	
+	# Add Elusive ability using CardLoader (ensures test uses same logic as production code)
+	# Note: _add_elusive_ability adds the ability but doesn't register it to game signals
+	CardLoaderAL._add_elusive_ability(elusive_card)
+	
+	# Register the newly added ability to game signals (since createCardData already called subscribe_to_game_signals)
+	if elusive_card.triggered_abilities.size() > 0:
+		var new_ability = elusive_card.triggered_abilities[-1]
+		new_ability.register_to_game(game)
+	
+	print("  ✅ Cards created at battlefield using game.createCardData")
+	
+	# Step 3: Move elusive and regular cards to combat zone 0
+	var combat_zone_0 = game.game_view.combat_zones[0] as CombatZone
+	await game.tryMoveCard(elusive_card, combat_zone_0)
+	await test_runner.get_tree().process_frame
+	await game.tryMoveCard(regular_card_1, combat_zone_0)
+	await test_runner.get_tree().process_frame
+	await game.tryMoveCard(regular_card_2, combat_zone_0)
+	await test_runner.get_tree().process_frame
+	
+	# Step 3b: Move dummy card to combat zone 1 (different zone)
+	var combat_zone_1 = game.game_view.combat_zones[1] as CombatZone
+	await game.tryMoveCard(dummy_card, combat_zone_1)
+	await test_runner.get_tree().process_frame
+	
+	# Step 4: Verify all cards in correct combat zones
+	var elusive_zone = game.game_data.get_card_zone(elusive_card)
+	if not assert_test_true(GameZone.is_combat_zone(elusive_zone), "Elusive card should be in combat zone"):
+		return false
+	
+	# Step 5: Verify initial positions (Elusive should be first at index 0 in zone 0)
+	var elusive_initial_index = game.game_data.get_card_combat_index(elusive_card)
+	var regular_1_index = game.game_data.get_card_combat_index(regular_card_1)
+	var regular_2_index = game.game_data.get_card_combat_index(regular_card_2)
+	
+	print("  📊 Initial positions in zone 0 - Elusive: %d, Regular 1: %d, Regular 2: %d" % [elusive_initial_index, regular_1_index, regular_2_index])
+	
+	if not assert_test_equal(elusive_initial_index, 0, "Elusive card should be at index 0 initially"):
+		return false
+	
+	# Step 6: Resolve combat in zone 1 (different zone) - Elusive should NOT trigger
+	print("  🎮 Resolving combat in zone 1 (Elusive should NOT trigger)...")
+	var dummy_zone_enum = game.game_data.get_card_zone(dummy_card)
+	await game.resolve_combat_for_zone(dummy_zone_enum)
+	
+	# Wait for trigger resolution
+	await test_runner.get_tree().process_frame
+	await test_runner.get_tree().process_frame
+	
+	# Step 7: Verify Elusive did NOT move (still at index 0)
+	var elusive_after_zone_1 = game.game_data.get_card_combat_index(elusive_card)
+	print("  📊 Position after zone 1 combat - Elusive: %d" % elusive_after_zone_1)
+	
+	if not assert_test_equal(elusive_after_zone_1, 0, "Elusive card should still be at index 0 after different zone combat"):
+		return false
+	
+	print("  ✅ Elusive did not trigger for different combat zone")
+	
+	# Step 8: Resolve combat in zone 0 (where Elusive is) - Elusive SHOULD trigger
+	print("  🎮 Resolving combat in zone 0 (Elusive SHOULD trigger)...")
+	var elusive_zone_enum = game.game_data.get_card_zone(elusive_card)
+	await game.resolve_combat_for_zone(elusive_zone_enum)
+	
+	# Wait for trigger resolution
+	await test_runner.get_tree().process_frame
+	await test_runner.get_tree().process_frame
+	
+	# Step 9: Verify Elusive moved to last position (index 2)
+	var elusive_final_index = game.game_data.get_card_combat_index(elusive_card)
+	var regular_1_final_index = game.game_data.get_card_combat_index(regular_card_1)
+	var regular_2_final_index = game.game_data.get_card_combat_index(regular_card_2)
+	
+	print("  📊 Final positions after zone 0 combat - Elusive: %d, Regular 1: %d, Regular 2: %d" % [elusive_final_index, regular_1_final_index, regular_2_final_index])
+	
+	if not assert_test_equal(elusive_final_index, 2, "Elusive card should be at index 2 (last position) after its zone's combat"):
+		return false
+	
+	print("  ✅ Elusive retreated to back position (index 2) in its own combat zone")
+	print("✅ Elusive position swap test passed!")
+	return true
+
+func test_casting_condition() -> bool:
+	"""Test casting conditions (CC:$) - card can only be cast when condition is met"""
+	print("=== Testing Casting Condition System ===")
+	
+	# Step 1: Create a test card with a casting condition (YouCtrl+Grown-up)
+	var test_card = CardData.new()
+	test_card.cardName = "Test Conditional Spell"
+	test_card.goldCost = 1
+	test_card.addType(CardData.CardType.SPELL)
+	test_card.addCastingCondition("YouCtrl+Grown-up")  # Can only cast if controlling a Grown-up
+	test_card = game.createCardData(test_card, GameZone.e.HAND_PLAYER, true)
+	
+	if not assert_test_not_null(test_card, "Test card should be created"):
+		return false
+	
+	# Step 2: Give player gold to ensure cost isn't the issue
+	setPlayerGold(10)
+	
+	# Step 3: Create Punglynd Child in play (initially without Grown-up subtype)
+	var child_card = createCardFromName("Punglynd Child", GameZone.e.BATTLEFIELD_PLAYER)
+	if not assert_test_not_null(child_card, "Punglynd Child should be created"):
+		return false
+	
+	# Step 4: Verify child doesn't have Grown-up subtype yet
+	if not assert_test_false("Grown-up" in child_card.subtypes, "Child should not have Grown-up subtype initially"):
+		return false
+	
+	# Step 5: Verify card CANNOT be cast (condition not met)
+	var is_castable_before = CardPaymentManagerAL.isCardCastable(test_card)
+	if not assert_test_false(is_castable_before, "Card should NOT be castable without Grown-up in play"):
+		return false
+	print("  ✅ Card correctly not castable when condition not met")
+	
+	# Step 6: Add Grown-up subtype to the child
+	child_card.addSubtype("Grown-up")
+	await test_runner.get_tree().process_frame  # Let the change propagate
+	
+	# Step 7: Verify child now has Grown-up subtype
+	if not assert_test_true("Grown-up" in child_card.subtypes, "Child should have Grown-up subtype after adding it"):
+		return false
+	
+	# Step 8: Verify card CAN NOW be cast (condition met)
+	var is_castable_after = CardPaymentManagerAL.isCardCastable(test_card)
+	if not assert_test_true(is_castable_after, "Card SHOULD be castable with Grown-up in play"):
+		return false
+	print("  ✅ Card correctly castable when condition is met")
+	
+	print("✅ Casting condition test passed!")
 	return true

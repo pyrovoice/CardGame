@@ -71,15 +71,30 @@ func create_card_view(card_data: CardData, zone: GameZone.e = GameZone.e.UNKNOWN
 		card.name = card_data.cardName + "_" + str(Game.getObjectCountAndIncrement())
 
 	var game = get_parent() as Game
-	if game:
-		game.connect_card_to_highlight_manager(card)
 
 	if zone != GameZone.e.UNKNOWN:
 		var zone_container = get_zone_container(zone)
 		if zone_container:
 			zone_container.add_child(card)
+			
+			# Arrange hand when adding cards to hand zones (for non-draw effects like CreateCard)
+			if zone == GameZone.e.HAND_PLAYER or zone == GameZone.e.HAND_OPPONENT:
+				# Cards in player hand should be face-up
+				if zone == GameZone.e.HAND_PLAYER and card_data:
+					card_data.is_facedown = false
+					card.updateDisplay()
+				if zone_container is CardHand:
+					zone_container.arrange_cards_fan(([card] as Array[Card]))
 		else:
 			game.add_child(card)
+		
+		# Set card size based on zone: cards in hand are big, everywhere else is small
+		if zone != GameZone.e.HAND_PLAYER and zone != GameZone.e.HAND_OPPONENT:
+			card.getAnimator().make_small()
+	
+	# Connect to highlight manager AFTER card is in tree so @onready variables are initialized
+	if game:
+		game.connect_card_to_highlight_manager(card)
 
 	return card
 
@@ -244,7 +259,7 @@ func animate_deck_to_hand(card_data: CardData, dest_zone: GameZone.e) -> void:
 		draw_position,
 		dest_hand.global_position,
 		0.0,
-		card_data.playerControlled and card.is_facedown
+		card_data.playerControlled and card_data.is_facedown
 	)
 	
 	# Reparent to destination hand
@@ -280,6 +295,17 @@ func animate_card_to_combat(card_data: CardData, combat_spot: GameZone.e, target
 		push_error("GameView.animate_card_to_combat: Invalid combat spot zone " + str(GameZone.e.keys()[combat_spot]))
 		return
 
+	# Get target container based on player team
+	var ally_team: bool = card_data.playerControlled
+	var target_container = combat_zone.ally_side if ally_team else combat_zone.opponent_side
+	
+	# Animate movement to the container, then reparent
+	# Use Vector3.ZERO for local position since GridContainer3D will handle positioning
+	var tween = card.getAnimator().move_to_position(Vector3.ZERO, 0.5, target_container)
+	if tween:
+		await tween.finished
+	
+	# After animation, let CombatZone handle the reparenting
 	combat_zone.set_card(card, targetPosition)
 
 ## Animate card back to base from combat
@@ -502,7 +528,7 @@ func create_and_animate_drawn_cards(cards_to_draw: Array[CardData], is_player: b
 			draw_position,
 			card_view.global_position,
 			i * 0.1,
-			is_player and card_view.is_facedown
+			is_player and card_view.cardData.is_facedown
 		)
 		if tween:
 			last_tween = tween

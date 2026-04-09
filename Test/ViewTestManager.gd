@@ -123,14 +123,14 @@ func test_combat_zone_button_click():
 	
 	# Get the first combat zone and place the card there via proper game mechanics
 	var combat_zone = game.game_view.combat_zones[0] as CombatZone
-	var first_ally_spot = combat_zone.getFirstEmptyLocation(true)
+	var first_ally_spot: GridContainer3D = combat_zone.getFirstEmptyLocation(true)
 	var card_template = CardLoaderAL.getCardByName("goblin pair")
 	var card_data = game.createCardData(card_template, GameZone.e.BATTLEFIELD_PLAYER, true)
 	var zone_index = game.game_view.get_combat_zones().find(combat_zone)
 	var dest_zone = (GameZone.e.COMBAT_PLAYER_1 + zone_index) as GameZone.e
 	await game.execute_move_card(card_data, dest_zone)
 
-	var card_in_spot = first_ally_spot.getCard()
+	var card_in_spot = first_ally_spot.get_child(0)
 	if not assert_test_equal(card_in_spot, card_data.get_card_object(), "Card should be placed in the combat spot (VIEW LAYER)"):
 		return false
 	
@@ -187,7 +187,8 @@ func test_replace_ui_optional_selection() -> bool:
 	if not assert_test_equal(final_hand_count, initial_hand_count - 1, "Hand should have one less card"):
 		return false
 	
-	if not assert_test_equal(final_base_count, initial_base_count + 1, "Base should have one more card (childbearer)"):
+	# Note: Childbearer creates a token when it enters play, so +2 cards (childbearer + token)
+	if not assert_test_equal(final_base_count, initial_base_count + 2, "Base should have two more cards (childbearer + token)"):
 		return false
 	
 	# Verify both child and childbearer are in play

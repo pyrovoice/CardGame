@@ -16,7 +16,6 @@ var is_highlighted: bool = false
 var is_selectable: bool = false
 var is_selected: bool = false
 var is_drag_outside_hand: bool = false
-var is_facedown: bool = true
 
 var cardData: CardData
 var objectID
@@ -76,9 +75,14 @@ func updateDisplay():
 		print("  - ❌ ERROR: No cardData, returning early")
 		return
 	
+	# Update the 2D card display with current data
+	if card_2d:
+		card_2d.update_display()
+	
+	# Show/hide face-up vs face-down state
 	card_cover.hide()
 	card_2d.hide()
-	if is_facedown:
+	if cardData.is_facedown:
 		card_cover.show()
 	else:
 		card_2d.show()
@@ -194,7 +198,8 @@ func update_highlight_mesh_size(card_height: float):
 	highlight_mesh.scale = Vector3(1.0, scale_factor, 1.0)
 
 func setFlip(facingUp: bool):
-	is_facedown = !facingUp
+	cardData.is_facedown = !facingUp
+	cardData.dirty_data.emit()
 	updateDisplay()
 
 func setPositionWithoutMovingRepresentation(newPos: Vector3, isGlobal = false):

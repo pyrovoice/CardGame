@@ -361,19 +361,18 @@ func _move_base_to_combat(card_data: CardData, destination_zone: GameZone.e, tar
 	
 	Args:
 		card_data: The card to move
-		origin_zone_node: The battlefield zone container the card is coming from
 		destination_zone: The combat zone enum the card is moving to
+		targetPosition: The index position in the combat zone array
 	
-	The card has already been added to the zone array by move_card().
-	Positioning is handled by GameData.add_card_to_zone().
+	The card has already been added to the zone array by execute_move_card.
 	"""
 	
-	# Get the spot based on the card's actual index in the combat zone array
-	var insertIndex = game_data.move_card(card_data, destination_zone, targetPosition)
-	if insertIndex != -1:
-		# View: Animate to combat
-		game_view.animate_card_to_combat(card_data, destination_zone, insertIndex)
-		card_changed_zones.emit(card_data, GameZone.e.BATTLEFIELD_PLAYER, destination_zone)
+	# View: Animate to combat (await the animation)
+	await game_view.animate_card_to_combat(card_data, destination_zone, targetPosition)
+	
+	# Emit zone change signal
+	var origin_zone = GameZone.e.BATTLEFIELD_PLAYER if card_data.playerControlled else GameZone.e.BATTLEFIELD_OPPONENT
+	card_changed_zones.emit(card_data, origin_zone, destination_zone)
 
 func _move_combat_to_base(card_data: CardData, dest_zone: GameZone.e, origin_zone_node: Node):
 	"""Handle Combat to PlayerBase - retreat movement"""
@@ -404,10 +403,8 @@ func _move_generic(card_data: CardData, dest_zone: GameZone.e, origin_zone: Game
 		if card:
 			GameUtility.reparentCardWithoutMovingRepresentation(card, dest)
 			dest.arrange_cards_fan([card])
-	elif dest is CombatantFightingSpot:
-		game_view.animate_card_to_combat(card_data, dest)
 	else:
-		push_error("_move_generic: Unsupported destination type")
+		push_error("_move_generic: Unsupported destination type: " + str(dest.get_class()))
 		return
 	
 	var from_battlefield = GameZone.is_in_play(origin_zone)
@@ -468,18 +465,10 @@ func tryMoveCard(card_data: CardData, target_location: Node3D) -> void:
 
 func _try_move_from_battlefield(card_data: CardData, target_location: Node3D) -> void:
 	"""Handle user-initiated movement from battlefield to combat"""
-	if not target_location is CombatantFightingSpot:
+	if not target_location is CombatZone:
 		return
 	
-	var combat_spot = target_location as CombatantFightingSpot
-	
-	# Find empty slot if target is occupied
-	if combat_spot.getCard():
-		combat_spot = (combat_spot.get_parent() as CombatZone).getFirstEmptyLocation(card_data.playerControlled)
-	
-	if combat_spot == null:
-		print("No empty slot found for " + card_data.cardName)
-		return
+	var combat_zone = target_location as CombatZone
 	
 	# Check if card can move (not tapped)
 	if not can_card_move(card_data):
@@ -489,16 +478,19 @@ func _try_move_from_battlefield(card_data: CardData, target_location: Node3D) ->
 	card_data.tap()
 	card_data.hasAttackedThisTurn = true
 	
-	# Determine which combat zone based on the spot
-	var combat_zone = combat_spot.get_parent() as CombatZone
+	# Determine which combat zone based on card's controller
 	var zone_index = game_view.get_combat_zones().find(combat_zone)
-	var dest_zone = (GameZone.e.COMBAT_PLAYER_1 + zone_index) as GameZone.e
+	var dest_zone: GameZone.e
+	if card_data.playerControlled:
+		dest_zone = (GameZone.e.COMBAT_PLAYER_1 + zone_index) as GameZone.e
+	else:
+		dest_zone = (GameZone.e.COMBAT_OPPONENT_1 + zone_index) as GameZone.e
 	
 	# Move using centralized system
 	await execute_move_card(card_data, dest_zone)
 
 func _try_move_from_combat(card_data: CardData, target_location: Node3D) -> void:
-	"""Handle user-initiated movement from combat zone (retreat or swap)"""
+	"""Handle user-initiated movement from combat zone (retreat)"""
 	if target_location is PlayerBase:
 		# Retreat from combat to base
 		if can_card_move(card_data):
@@ -507,12 +499,6 @@ func _try_move_from_combat(card_data: CardData, target_location: Node3D) -> void
 			
 			# Move using centralized system
 			await execute_move_card(card_data, GameZone.e.BATTLEFIELD_PLAYER)
-	elif target_location is CombatantFightingSpot:
-		# Swapping positions within the same combat zone
-		var card = card_data.get_card_object()
-		if card and card.get_parent() is CombatantFightingSpot and \
-		card.get_parent().get_parent() == target_location.get_parent():
-			exchange_card_in_spots(card.get_parent(), target_location)
 	else:
 		print("❌ Cannot move card from combat to that location")
 
@@ -578,7 +564,7 @@ func tryPlayCard(card_data: CardData, destination_zone: GameZone.e = GameZone.e.
 			
 			# Animate casting preparation
 			GameUtility.reparentCardWithoutMovingRepresentation(card, self)
-			await game_view.animate_casting_preparation(card, card.is_facedown)
+			await game_view.animate_casting_preparation(card, card.cardData.is_facedown)
 			if !card_data.playerControlled:
 				await get_tree().create_timer(0.5).timeout
 		elif not game_view.headless and not card:
@@ -750,47 +736,62 @@ func resolve_combat_for_zone(combat_zone_enum: GameZone.e):
 	playerControlLock.removeLock(lock)
 
 func reset_all_card_turn_tracking():
-	for card in _get_all_player_cards():
-		card.cardData.reset_turn_tracking()
+	for card_data in _get_all_player_card_data():
+		card_data.reset_turn_tracking()
 
 func untap_all_player_cards():
-	for card in _get_all_player_cards():
-		if card.cardData.is_tapped():
-			card.cardData.untap()
-			print("🔄 Untapped ", card.cardData.cardName)
+	for card_data in _get_all_player_card_data():
+		if card_data.is_tapped():
+			card_data.untap()
+			print("🔄 Untapped ", card_data.cardName)
 
-func _get_all_player_cards() -> Array[Card]:
-	var all_cards: Array[Card] = []
+func _get_all_player_card_data() -> Array[CardData]:
+	"""Get all CardData for cards the player controls in play (MVC pattern - queries GameData)"""
+	var all_cards: Array[CardData] = []
 	
-	# Cards in hand
-	for child in game_view.player_hand.get_children():
-		if child is Card:
-			all_cards.append(child)
+	# Query GameData for player-controlled cards in play zones
+	# (battlefield + combat zones, excluding hand/deck)
+	var player_zones = [
+		GameZone.e.BATTLEFIELD_PLAYER,
+		GameZone.e.COMBAT_PLAYER_1,
+		GameZone.e.COMBAT_PLAYER_2,
+		GameZone.e.COMBAT_PLAYER_3
+	]
 	
-	# Cards in player base
-	for child in game_view.get_player_base().get_children():
-		if child is Card:
-			all_cards.append(child)
-	
-	# Cards in combat zones
-	for zone in game_view.get_combat_zones():
-		for spot in zone.allySpots:
-			var card = spot.getCard()
-			if card is Card:
-				all_cards.append(card)
+	for zone in player_zones:
+		all_cards.append_array(game_data.get_cards_in_zone(zone))
 	
 	return all_cards
 
 func _get_target_zone(target_location: Node3D) -> GameZone.e:
-	"""Convert a 3D node location to a GameZone enum"""
+	"""Convert a 3D node location to a GameZone enum
+	
+	Note: For CombatZone, this returns a placeholder. The actual zone (player/opponent side)
+	is determined in tryMoveCard based on the card's controller.
+	"""
 	if not target_location:
 		return GameZone.e.UNKNOWN
 	
-	if target_location is CombatantFightingSpot:
-		var combat_zone = target_location.get_parent() as CombatZone
-		var zone_index = game_view.get_combat_zones().find(combat_zone) + 1
-		# TODO: distinguish player/opponent properly
-		return (GameZone.e.COMBAT_PLAYER_1 + (zone_index - 1)) as GameZone.e
+	if target_location is CombatZone:
+		# Return player combat zone as placeholder - actual side determined by card controller
+		var zone_index = game_view.get_combat_zones().find(target_location)
+		if zone_index >= 0:
+			return (GameZone.e.COMBAT_PLAYER_1 + zone_index) as GameZone.e
+		return GameZone.e.UNKNOWN
+	elif target_location is GridContainer3D:
+		# GridContainer3D used in CombatZone after refactor (for tests)
+		var parent = target_location.get_parent()
+		if parent is CombatZone:
+			var combat_zone = parent as CombatZone
+			var zone_index = game_view.get_combat_zones().find(combat_zone)
+			if zone_index >= 0:
+				# Determine if it's ally or opponent side
+				var is_ally_side = (target_location == combat_zone.ally_side)
+				if is_ally_side:
+					return (GameZone.e.COMBAT_PLAYER_1 + zone_index) as GameZone.e
+				else:
+					return (GameZone.e.COMBAT_OPPONENT_1 + zone_index) as GameZone.e
+		return GameZone.e.UNKNOWN
 	elif target_location is PlayerBase:
 		return GameZone.e.BATTLEFIELD_PLAYER  # TODO: distinguish player/opponent
 	elif target_location == game_view.player_hand:
@@ -818,8 +819,9 @@ func resolveCombatInZone(combat_zone: GameZone.e):
 		opponent_zone = combat_zone
 		player_zone = (combat_zone - 3) as GameZone.e
 	
-	var player_cards = game_data.get_cards_in_zone(player_zone)
-	var opponent_cards = game_data.get_cards_in_zone(opponent_zone)
+	# Make copies of the cards arrays to prevent issues when positions change during iteration
+	var player_cards = game_data.get_cards_in_zone(player_zone).duplicate()
+	var opponent_cards = game_data.get_cards_in_zone(opponent_zone).duplicate()
 	print("  🐛 [DEBUG] Player cards: ", player_cards.size(), " | Opponent cards: ", opponent_cards.size())
 	
 	# Get CombatZone View for animations and location damage (use player zone to identify location)
@@ -830,10 +832,11 @@ func resolveCombatInZone(combat_zone: GameZone.e):
 		card_data.hasAttackedThisTurn = true
 		print("⚔️ ", card_data.cardName, " is attacking")
 	
-	# Step 2: Trigger attack declared once for the combat location (before fights)
-	if combatZone:
-		attack_declared.emit(combatZone)
-	await resolve_queue()
+	# Step 2: Emit attack_declared for each attacking card (triggers abilities like Elusive, Warchief, etc.)
+	for card_data in player_cards:
+		await emit_game_event(TriggeredAbility.GameEventType.ATTACK_DECLARED, card_data)
+	for card_data in opponent_cards:
+		await emit_game_event(TriggeredAbility.GameEventType.ATTACK_DECLARED, card_data)
 	
 	# Step 3: Resolve each slot's combat (match by index)
 	var max_slots = max(player_cards.size(), opponent_cards.size())
@@ -1190,9 +1193,10 @@ func _matches_card_filter(filter: String) -> Array[CardData]:
 	- "YouCtrl" / "You Control" - checks if player controls this card
 	- "OppCtrl" / "Opponent Control" - checks if opponent controls this card
 	- "Cost.N" - checks if card cost equals N
-		- "NonToken" - filters tokens
-		- "Token" - filters non-tokens
-	- Any other token - treated as subtype check (e.g., "Goblin", "Punglynd")
+	- "NonToken" - filters out tokens
+	- "Token" - only tokens
+	- "HasReplace" - cards with Replace additional cost
+	- Any other token - treated as subtype check (e.g., "Goblin", "Punglynd", "Grown-up")
 	"""
 	var all_cards: Array = game_data.get_cards_in_play()
 	var result_cards: Array[CardData] = []
@@ -1234,6 +1238,9 @@ func _matches_card_filter(filter: String) -> Array[CardData]:
 					
 					"NonToken":
 						cards = cards.filter(func(c): return not c.isToken)
+					
+					"HasReplace":
+						cards = cards.filter(func(c): return c.hasAdditionalCosts() and c.additionalCosts.any(func(cost): return cost.get("cost_type", "") == "Replace"))
 					
 					"Cost":
 						if token_index + 1 < tokens.size():
@@ -1534,17 +1541,50 @@ func can_card_move(card_data: CardData) -> bool:
 		return false
 	return true
 
-func exchange_card_in_spots(from: CombatantFightingSpot, to: CombatantFightingSpot):
-	if from.get_parent() != to.get_parent():
-		printerr("❌ Cannot exchange cards between different locations")
-		return
-	var fromCard = from.getCard()
-	if fromCard:
-		GameUtility.reparentWithoutMoving(fromCard, self)
-	if to.getCard() != null:
-		from.setCard(to.getCard())
-	if fromCard:
-		to.setCard(fromCard)
+func exchange_card_positions_in_combat(card1_data: CardData, card2_data: CardData) -> bool:
+	"""Exchange positions of two cards in combat zones (GridContainer3D system)
+	
+	Returns true if swap was successful, false otherwise
+	"""
+	# Get zones for both cards
+	var zone1 = game_data.get_card_zone(card1_data)
+	var zone2 = game_data.get_card_zone(card2_data)
+	
+	# Verify both cards are in combat zones
+	if not GameZone.is_combat_zone(zone1) or not GameZone.is_combat_zone(zone2):
+		print("❌ Cannot exchange positions - both cards must be in combat zones")
+		return false
+	
+	# Verify both cards are in the same combat zone
+	if zone1 != zone2:
+		print("❌ Cannot exchange positions - cards must be in the same combat zone")
+		return false
+	
+	# Get indices of both cards in the zone
+	var index1 = game_data.get_card_combat_index(card1_data)
+	var index2 = game_data.get_card_combat_index(card2_data)
+	
+	if index1 == -1 or index2 == -1:
+		print("❌ Cannot exchange positions - cards not found in combat zone")
+		return false
+	
+	# Swap positions in GameData
+	var cards_in_zone = game_data.get_cards_in_zone(zone1)
+	cards_in_zone[index1] = card2_data
+	cards_in_zone[index2] = card1_data
+	
+	# Update visual positions (swap Card view objects in GridContainer3D)
+	var card1_view = card1_data.get_card_object()
+	var card2_view = card2_data.get_card_object()
+	
+	if card1_view and card2_view and is_instance_valid(card1_view) and is_instance_valid(card2_view):
+		var parent = card1_view.get_parent()
+		if parent is GridContainer3D and card2_view.get_parent() == parent:
+			# Use move_child to swap their order in the parent
+			parent.move_child(card1_view, index2)
+			parent.move_child(card2_view, index1)
+	
+	return true
 
 func trigger_phase(phase_name: String):
 	"""Trigger all phase-based abilities for a specific phase"""

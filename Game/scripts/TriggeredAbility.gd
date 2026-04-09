@@ -99,11 +99,11 @@ func unregister_from_game(game: Node):
 
 ## Signal callback
 
-func _on_game_event(event_card_data: CardData = null, _from_zone = null, _to_zone = null):
+func _on_game_event(event_card_data: CardData = null, from_zone = null, to_zone = null):
 	"""Called when the relevant game event fires
 	
 	Note: Some signals emit additional parameters (e.g., card_changed_zones emits from_zone and to_zone).
-	These are captured but not currently used in trigger condition checking.
+	These are used for Origin$ and Destination$ condition checking.
 	"""
 	var owner = get_owner()
 	if not owner:
@@ -114,12 +114,19 @@ func _on_game_event(event_card_data: CardData = null, _from_zone = null, _to_zon
 		return  # Game was destroyed (shouldn't happen)
 	
 	# Check if trigger conditions are met
-	if not _check_trigger_conditions(owner, event_card_data, game):
+	if not _check_trigger_conditions(owner, event_card_data, game, from_zone, to_zone):
 		return
 	
 	# Add to trigger queue with event context
 	var ability_desc = event_to_string(game_event_trigger) + " -> " + EffectType.type_to_string(effect_type)
 	print("⚡ [TRIGGER] ", owner.cardName, " ability triggered: ", ability_desc)
+	
+	# Debug logging for Grave Whisperer Elusive
+	if owner.cardName == "Grave Whisperer" and game_event_trigger == GameEventType.CARD_CHANGED_ZONES:
+		var from_str = GameZone.get_as_string(from_zone) if from_zone != null else "null"
+		var to_str = GameZone.get_as_string(to_zone) if to_zone != null else "null"
+		var event_card_name = event_card_data.cardName if event_card_data else "null"
+		print("    🔍 [ELUSIVE TRIGGERED] Zone change: ", from_str, " → ", to_str, " (event card: ", event_card_name, ")")
 	
 	# Package the event context
 	var event_context = {}
@@ -128,7 +135,7 @@ func _on_game_event(event_card_data: CardData = null, _from_zone = null, _to_zon
 	
 	game.trigger_queue.add_resolvable(owner, self, event_context)
 
-func _check_trigger_conditions(cardData: CardData, event_card_data: CardData, game: Game) -> bool:
+func _check_trigger_conditions(cardData: CardData, event_card_data: CardData, game: Game, from_zone = null, to_zone = null) -> bool:
 	"""Check if the trigger conditions for this ability are met"""
 	var trigger_zones = trigger_conditions.get(TriggerCondition.TRIGGER_ZONES, [])
 	if trigger_zones is Array and trigger_zones.size() > 0:
@@ -136,6 +143,22 @@ func _check_trigger_conditions(cardData: CardData, event_card_data: CardData, ga
 		
 		if cardData_zone not in trigger_zones:
 			return false 
+	
+	# Check Origin condition for zone changes (e.g., "Origin$ Hand")
+	var origin_filter = trigger_conditions.get(TriggerCondition.ORIGIN, "")
+	if origin_filter != "" and from_zone != null:
+		if not GameZone.matches_zone_filter(from_zone, origin_filter):
+			return false
+	
+	# Check Destination condition for zone changes (e.g., "Destination$ Combat")
+	var destination_filter = trigger_conditions.get(TriggerCondition.DESTINATION, "")
+	if destination_filter != "" and to_zone != null:
+		if not GameZone.matches_zone_filter(to_zone, destination_filter):
+			# Debug logging for Elusive destination check
+			var owner = get_owner()
+			if owner and owner.cardName == "Grave Whisperer":
+				print("🔍 [ELUSIVE] Destination filter '", destination_filter, "' did not match zone: ", GameZone.get_as_string(to_zone))
+			return false
 			
 	var valid_card_filter = trigger_conditions.get(TriggerCondition.VALID_CARD, "")
 	if valid_card_filter != "":

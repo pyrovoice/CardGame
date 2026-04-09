@@ -25,6 +25,8 @@ var spell_abilities: Array[SpellAbility] = []
 var _keywords: Array[String] = []  # Simple keywords like "Flying", "Spellshield"
 # Additional costs beyond gold cost (sacrifice, replace, etc.)
 var additionalCosts: Array[Dictionary] = []
+# Casting conditions (must be met to cast the card)
+var castingConditions: Array[String] = []  # Filter strings like "YouCtrl+Grown-up"
 # Card artwork texture
 var cardArt: Texture2D
 # Controller and ownership properties
@@ -37,6 +39,7 @@ var temporary_effects: Array[TemporaryEffect] = []  # Track temporary effects ap
 var isToken = false
 var current_zone: GameZone.e = GameZone.e.UNKNOWN  # Current zone this card is in (set by GameData)
 var damage: int = 0  # Damage dealt to this card this turn
+var is_facedown: bool = true  # Whether the card is face-down
 
 func receiveDamage(v: int):
 	damage += v
@@ -247,6 +250,18 @@ func getAdditionalCosts() -> Array[Dictionary]:
 func addAdditionalCost(cost_data: Dictionary):
 	"""Add an additional cost to this card"""
 	additionalCosts.append(cost_data)
+
+func hasCastingConditions() -> bool:
+	"""Check if this card has any casting conditions"""
+	return not castingConditions.is_empty()
+
+func getCastingConditions() -> Array[String]:
+	"""Get all casting conditions for this card"""
+	return castingConditions.duplicate()
+
+func addCastingCondition(condition: String):
+	"""Add a casting condition to this card"""
+	castingConditions.append(condition)
 
 func getAdditionalCostDescription() -> String:
 	"""Get a human-readable description of additional costs"""

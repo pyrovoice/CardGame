@@ -42,7 +42,20 @@ func execute(parameters: Dictionary, source_card_data: CardData, game_context: G
 		if not new_card_data:
 			continue
 		
+		# Apply modifiers if specified (e.g., "fleeting")
+		var modif = parameters.get("Modif", "")
+		if not modif.is_empty():
+			_apply_modifier_to_card(new_card_data, modif)
+		
 		print("✨ Created card '", new_card_data.cardName, "' from archetype '", pool_string, "' into hand")
+
+func _apply_modifier_to_card(card_data: CardData, modifier: String):
+	"""Apply a modifier (like 'fleeting') to a created card"""
+	# Add the modifier as a keyword
+	# The add_keyword() method will automatically emit dirty_data signal
+	# which triggers Card to update its display
+	card_data.add_keyword(modifier)
+	print("  ✨ Applied modifier '", modifier, "' to ", card_data.cardName)
 
 func _parse_archetype_pool(pool_string: String) -> CardLoader.Archetype:
 	"""Parse pool string like 'Archetype.Punglynd' into CardLoader.Archetype enum"""

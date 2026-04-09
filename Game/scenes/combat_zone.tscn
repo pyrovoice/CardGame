@@ -1,12 +1,12 @@
 [gd_scene load_steps=8 format=3 uid="uid://daynfobgnbdrp"]
 
 [ext_resource type="Script" uid="uid://fqb7xp4n6x0r" path="res://Game/scripts/combat_zone.gd" id="1_wucjk"]
-[ext_resource type="PackedScene" uid="uid://xlhxj0iq2gna" path="res://Game/scenes/combatantFightingSpot.tscn" id="2_ulpi2"]
 [ext_resource type="PackedScene" uid="uid://c1gh53ivxrt74" path="res://Game/scenes/locationFill.tscn" id="3_cu80e"]
+[ext_resource type="PackedScene" uid="uid://cj3soc5hs2x1t" path="res://Game/scenes/grid_container.tscn" id="4_lqy10"]
 [ext_resource type="PackedScene" uid="uid://bjxoru03if1kc" path="res://Game/scenes/ResolveFightButton.tscn" id="4_pjxud"]
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_ulpi2"]
-size = Vector3(2, 0.05, 2)
+size = Vector3(3, 0.05, 2)
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_vc2ns"]
 albedo_color = Color(0.28485, 0.28485, 0.28485, 1)
@@ -34,24 +34,6 @@ transform = Transform3D(1, 0, 0, 0, -4.37114e-08, 1, 0, -1, -4.37114e-08, -1.387
 text = "0
 "
 
-[node name="EnnemySpot1" parent="." instance=ExtResource("2_ulpi2")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.977626, 0, -0.484517)
-
-[node name="EnnemySpot2" parent="." instance=ExtResource("2_ulpi2")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.0249671, 0, -0.488753)
-
-[node name="EnnemySpot3" parent="." instance=ExtResource("2_ulpi2")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.950427, 0, -0.488753)
-
-[node name="AllySpot1" parent="." instance=ExtResource("2_ulpi2")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.977626, 0, 0.479747)
-
-[node name="AllySpot2" parent="." instance=ExtResource("2_ulpi2")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.0249671, 0, 0.47551)
-
-[node name="AllySpot3" parent="." instance=ExtResource("2_ulpi2")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.950427, 0, 0.47551)
-
 [node name="LocationFillPlayer" parent="." instance=ExtResource("3_cu80e")]
 transform = Transform3D(0.99999994, 0, 0, 0, 1, 0, 0, 0, 0.99999994, -0.8296982, 0.0021105409, -0.029461771)
 
@@ -61,3 +43,9 @@ isPlayer = false
 
 [node name="Button" parent="." instance=ExtResource("4_pjxud")]
 transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 0, 0.023061872, 0)
+
+[node name="AllySide" parent="." instance=ExtResource("4_lqy10")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.2002369, 0, 0.5723159)
+
+[node name="OpponentSide" parent="." instance=ExtResource("4_lqy10")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.0592782, 0, -0.5086726)

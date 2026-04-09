@@ -1,7 +1,7 @@
 extends Node3D
 class_name GridContainer3D
 
-@export var grid_size_x := 3
+@export var grid_size_x := 5
 @export var grid_size_z := 2
 @export var spacing := 2.0
 

@@ -90,10 +90,12 @@ func _update_drag_highlights():
 	# Clear all highlights first
 	_clearAllHighlights()
 	
-	# Apply appropriate highlight to dragged card
+	# Always set drag state for visual feedback (outline color)
+	currently_dragged_card.set_drag_outside_hand(drag_outside_hand)
+	
+	# Only add blue "castable" highlight if card can actually be cast
 	if CardPaymentManagerAL.isCardCastable(currently_dragged_card.cardData):
 		currently_dragged_card.set_selectable(true)
-		currently_dragged_card.set_drag_outside_hand(drag_outside_hand)
 		currentlyHighlightedCards.append(currently_dragged_card)
 
 func _highlightHandCards():

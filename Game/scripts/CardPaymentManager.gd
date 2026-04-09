@@ -80,6 +80,10 @@ func canPayCard(card_data: CardData) -> bool:
 	if not card_data or not current_game:
 		return false
 	
+	# Check casting conditions first (must be met to even consider the card castable)
+	if not canMeetCastingConditions(card_data):
+		return false
+	
 	var base_cost = card_data.goldCost
 	var can_afford_base = current_game.game_data.has_gold(base_cost, card_data.playerControlled)
 	
@@ -482,6 +486,26 @@ func hasReplaceOption(card_data: CardData) -> bool:
 			return canUseReplace(cost_data, card_data.playerControlled)
 	
 	return false
+
+func canMeetCastingConditions(card_data: CardData) -> bool:
+	"""Check if all casting conditions for the card are met
+	
+	Casting conditions are filter strings (e.g., "YouCtrl+Grown-up") that must be satisfied
+	for the card to be castable. Unlike costs, these don't consume resources.
+	"""
+	if not card_data or not current_game:
+		return false
+	
+	if not card_data.hasCastingConditions():
+		return true  # No conditions means always satisfied
+	
+	# Check each condition - ALL must be met
+	for condition in card_data.getCastingConditions():
+		var matching_cards = current_game._matches_card_filter(condition)
+		if matching_cards.is_empty():
+			return false  # Condition not met
+	
+	return true  # All conditions met
 
 func calculateReplaceCost(card_data: CardData, replacement_target_data: CardData) -> int:
 	"""Calculate the final cost when using Replace with the given target"""

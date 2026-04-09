@@ -119,14 +119,8 @@ static func get_zone_from_string(game: Game, zone: String, from_perspective_of_p
 				if parts.size() >= 2:
 					var zone_index = int(parts[1])
 					if zone_index >= 0 and zone_index < game.game_view.combat_zones.size():
-						# If there are slot and owner parts, return specific spot
-						if parts.size() >= 4:
-							var slot_index = int(parts[2])
-							var is_player = parts[3] == "Player"
-							return game.game_view.combat_zones[zone_index].getCardSlot(slot_index, is_player)
-						else:
-							# Return the first empty slot in the combat zone
-							return game.game_view.combat_zones[zone_index].getFirstEmptyLocation(true)
+						# Return the CombatZone itself - cards are placed in appropriate GridContainer3D based on controller
+						return game.game_view.combat_zones[zone_index]
 			push_error("Unknown zone: " + zone)
 			return null
 
@@ -140,18 +134,32 @@ static func _requiresPlayerSelection(additional_costs: Array[Dictionary]) -> boo
 	return false
 
 static func getControllerCards(game: Game, playerSide = true) -> Array[Card]:
-	"""Get all cards the player currently controls (in play)"""
+	"""Get all cards the player/opponent currently controls in play (MVC pattern - queries GameData)"""
 	var controlled_cards: Array[Card] = []
 	
-	# Add cards from player base
-	var base_cards = game.game_view.player_base.getCards()
-	controlled_cards.append_array(base_cards)
+	# Query GameData for cards in appropriate zones
+	var zones: Array[GameZone.e] = []
+	if playerSide:
+		zones = [
+			GameZone.e.BATTLEFIELD_PLAYER,
+			GameZone.e.COMBAT_PLAYER_1,
+			GameZone.e.COMBAT_PLAYER_2,
+			GameZone.e.COMBAT_PLAYER_3
+		]
+	else:
+		zones = [
+			GameZone.e.BATTLEFIELD_OPPONENT,
+			GameZone.e.COMBAT_OPPONENT_1,
+			GameZone.e.COMBAT_OPPONENT_2,
+			GameZone.e.COMBAT_OPPONENT_3
+		]
 	
-	# Add cards from combat zones (ally side only)
-	for combat_zone in game.game_view.combat_zones:
-		for spot in combat_zone.allySpots if playerSide else combat_zone.ennemySpots:
-			var card = spot.getCard()
-			if card != null:
+	# Collect CardData from all zones
+	for zone in zones:
+		var cards_in_zone = game.game_data.get_cards_in_zone(zone)
+		for card_data in cards_in_zone:
+			var card = card_data.get_card_object()
+			if card and is_instance_valid(card):
 				controlled_cards.append(card)
 	
 	return controlled_cards

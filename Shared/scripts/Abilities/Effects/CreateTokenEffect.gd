@@ -33,6 +33,11 @@ func execute(parameters: Dictionary, source_card_data: CardData, game_context: G
 		if not token_data:
 			continue
 		token_data.isToken = true
+		
+		# Flip token face up (cards start face down by default)
+		var token_card = token_data.get_card_object()
+		if token_card:
+			token_card.setFlip(true)
 
 func validate_parameters(parameters: Dictionary) -> bool:
 	return parameters.has("TokenScript")

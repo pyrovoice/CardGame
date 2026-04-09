@@ -2,7 +2,7 @@ extends Node3D
 class_name CardHand
 
 func _ready():
-	# Signal when a child is removed from this node - reorganize remaining cards
+	# Signal when a child is added or removed - reorganize cards
 	child_exiting_tree.connect(func(_c): call_deferred("arrange_cards_fan")) 
 
 func arrange_card_fan(card: Card):

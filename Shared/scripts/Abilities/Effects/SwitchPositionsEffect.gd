@@ -10,65 +10,68 @@ func execute(parameters: Dictionary, source_card_data: CardData, game_context: G
 	
 	print("🔄 [SWITCH] ", source_card_data.cardName, " switching positions with: ", switch_with)
 	
-	# Get the source card (Elusive card)
-	var source_card = source_card_data.get_card_object()
-	if not source_card or not is_instance_valid(source_card):
-		print("⚠️ Source card doesn't exist or is invalid")
+	# Verify source card is in a combat zone
+	var source_zone = game_context.game_data.get_card_zone(source_card_data)
+	if not GameZone.is_combat_zone(source_zone):
+		print("⚠️ Source card is not in a combat zone")
 		return
-	
-	var source_parent = source_card.get_parent()
-	if not source_parent is CombatantFightingSpot:
-		print("⚠️ Source card is not in a combat spot")
-		return
-	
-	var source_spot = source_parent as CombatantFightingSpot
 	
 	# Determine the target card to switch with
-	var target_card: Card = null
-	var target_spot: CombatantFightingSpot = null
+	var target_card_data: CardData = null
 	
 	if switch_with == "TriggeredCard":
 		# The triggered card should be passed in parameters (from trigger context)
-		var triggered_card_data = parameters.get("TriggeredCardData", null)
-		if not triggered_card_data:
+		target_card_data = parameters.get("TriggeredCardData", null)
+		if not target_card_data:
 			print("⚠️ No TriggeredCardData in parameters")
 			return
+	elif switch_with == "LastOther":
+		# Find the last card in the same combat zone that isn't the source card
+		var cards_in_zone = game_context.game_data.get_cards_in_zone(source_zone)
 		
-		target_card = triggered_card_data.get_card_object()
-		if not target_card or not is_instance_valid(target_card):
-			print("⚠️ Triggered card doesn't exist or is invalid")
+		if cards_in_zone.size() <= 1:
+			print("⚠️ No other cards in combat zone to switch with")
 			return
 		
-		var target_parent = target_card.get_parent()
-		if not target_parent is CombatantFightingSpot:
-			print("⚠️ Triggered card is not in a combat spot")
-			return
+		# Get the last card that isn't the source
+		for i in range(cards_in_zone.size() - 1, -1, -1):
+			if cards_in_zone[i] != source_card_data:
+				target_card_data = cards_in_zone[i]
+				break
 		
-		target_spot = target_parent as CombatantFightingSpot
+		if not target_card_data:
+			print("⚠️ Could not find another card to switch with")
+			return
 	else:
 		print("⚠️ Unknown SwitchWith value: ", switch_with)
 		return
 	
+	# Verify target card is in a combat zone
+	var target_zone = game_context.game_data.get_card_zone(target_card_data)
+	if not GameZone.is_combat_zone(target_zone):
+		print("⚠️ Triggered card is not in a combat zone")
+		return
+	
 	# Check if both cards are in the same combat location (if required)
 	if only_same_location:
-		var source_location = source_spot.get_parent()
-		var target_location = target_spot.get_parent()
-		
-		if source_location != target_location:
+		if source_zone != target_zone:
 			print("⚠️ Cards are not in the same combat location")
 			return
 	
-	# Perform the switch using game's exchange function
-	print("🔄 Switching ", source_card_data.cardName, " with ", target_card.cardData.cardName)
-	game_context.exchange_card_in_spots(source_spot, target_spot)
+	# Perform the switch using game's new exchange function
+	print("🔄 Switching ", source_card_data.cardName, " with ", target_card_data.cardName)
+	var success = game_context.exchange_card_positions_in_combat(source_card_data, target_card_data)
 	
-	# Show visual feedback
-	AnimationsManagerAL.show_floating_text(
-		game_context, 
-		source_card.global_position, 
-		"Elusive!", 
-		Color.CYAN
-	)
+	if success:
+		# Show visual feedback
+		var source_card = source_card_data.get_card_object()
+		if source_card and is_instance_valid(source_card):
+			AnimationsManagerAL.show_floating_text(
+				game_context, 
+				source_card.global_position, 
+				"Elusive!", 
+				Color.CYAN
+			)
 
 func validate_parameters(parameters: Dictionary) -> bool:
 	return parameters.has("SwitchWith")

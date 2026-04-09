@@ -14,7 +14,7 @@ signal rightClick(card: Card)
 signal leftClick(objectUnderMouse: Node3D)
 # Removed drag signals - now handled directly by CardAnimator
 
-const HAND_ZONE_CUTTOFF = 490
+const HAND_ZONE_CUTTOFF = 600
 
 # Dragging offset constant
 const DRAG_OFFSET_X = 150  # Pixels to offset dragged card to the right

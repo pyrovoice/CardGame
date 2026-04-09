@@ -3,21 +3,20 @@ class_name CombatZone
 
 @onready var opponent_total_strength: Label3D = $OpponentTotalStrength
 @onready var ally_total_strength: Label3D = $AllyTotalStrength
-var ennemySpots: Array[CombatantFightingSpot] = []
-var allySpots: Array[CombatantFightingSpot] = []
 @onready var location_fill_opponent: LocationFill = $LocationFillOpponent
 @onready var location_fill_player: LocationFill = $LocationFillPlayer
 @onready var resolve_fight_button: ResolveFightButton = $Button
+@onready var ally_side: GridContainer3D = $AllySide
+@onready var opponent_side: GridContainer3D = $OpponentSide
 
 func _ready() -> void:
-	for i in range(1, 4):
-		for y in ["AllySpot", "EnnemySpot"]:
-			var arr = allySpots if y == "AllySpot" else ennemySpots
-			var c: CombatantFightingSpot = find_child(y+str(i))
-			c.onCardEnteredOrLeft.connect(_on_child_change)
-			arr.push_back(c)
+	# Connect to child changes for both sides
+	ally_side.child_entered_tree.connect(_on_child_change)
+	ally_side.child_exiting_tree.connect(_on_child_change)
+	opponent_side.child_entered_tree.connect(_on_child_change)
+	opponent_side.child_exiting_tree.connect(_on_child_change)
 	
-func _on_child_change():
+func _on_child_change(_node = null):
 	# Don't update if we're being destroyed or not in the tree
 	if not is_inside_tree() or is_queued_for_deletion():
 		return
@@ -28,33 +27,26 @@ func _on_child_change():
 	if is_instance_valid(opponent_total_strength):
 		opponent_total_strength.text = str(getTotalStrengthForSide(false))
 
-func getFirstEmptyLocation(playerSide: bool) -> CombatantFightingSpot:
-	var sideArray = allySpots if playerSide else ennemySpots
-	var filtered =  sideArray.filter(func(c:CombatantFightingSpot): return c.getCard() == null)
-	if filtered && filtered.size() > 0:
-		return filtered[0]
-	return null
+func getFirstEmptyLocation(playerSide: bool) -> GridContainer3D:
+	"""Returns the GridContainer3D for the specified side to add cards to"""
+	return ally_side if playerSide else opponent_side
 	
 func getTotalStrengthForSide(playerSide: bool):
 	var total = 0
-	var sideArray = allySpots if playerSide else ennemySpots
-	for c: CombatantFightingSpot in sideArray:
-		# Check if the CombatantFightingSpot itself is valid
-		if not is_instance_valid(c):
-			continue
-			
-		var card = c.getCard()
-		# Check both null and valid instance
-		if card != null and is_instance_valid(card) and is_instance_valid(card.cardData):
-			total += card.cardData.power
+	var container = ally_side if playerSide else opponent_side
+	
+	if not is_instance_valid(container):
+		return 0
+	
+	for child in container.get_children():
+		# Check if child is a valid Card instance
+		if child is Card and is_instance_valid(child) and is_instance_valid(child.cardData):
+			total += child.cardData.power
+	
 	return total
 
-func getCardSlot(i: int , allyTeam: bool) -> CombatantFightingSpot:
-	var side = "AllySpot" if allyTeam else "EnnemySpot"
-	var spot = find_child(side + str(i))
-	return spot
-
 func set_card(card: Card, target_position: int = -1) -> void:
+	"""Add a card to the combat zone. Cards are automatically arranged by GridContainer3D"""
 	if not card or not is_instance_valid(card):
 		push_error("CombatZone.set_card: card is null or invalid")
 		return
@@ -63,21 +55,17 @@ func set_card(card: Card, target_position: int = -1) -> void:
 		return
 
 	var ally_team: bool = card.cardData.playerControlled
-	var spot: CombatantFightingSpot = null
-
-	if target_position >= 1 and target_position <= 3:
-		spot = getCardSlot(target_position, ally_team)
-		if spot and spot.getCard() != null:
-			spot = null
-
-	if not spot:
-		spot = getFirstEmptyLocation(ally_team)
-
-	if not spot:
-		push_error("CombatZone.set_card: No empty combat slot available")
+	var target_container = ally_side if ally_team else opponent_side
+	
+	if not is_instance_valid(target_container):
+		push_error("CombatZone.set_card: Target container is invalid")
 		return
-
-	spot.setCard(card)
+	
+	# Reparent the card to the appropriate side container
+	if card.get_parent():
+		card.get_parent().remove_child(card)
+	
+	target_container.add_child(card)
 
 func update_resolve_fight_display(is_resolved: bool):
 	"""Update the appearance of the resolve fight label based on resolution status"""
