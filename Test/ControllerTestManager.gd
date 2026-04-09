@@ -948,18 +948,18 @@ func test_eyepatch_cast_from_deck():
 	return true
 
 func test_goblin_emblem_replacement_effect():
-	"""Test Goblin Emblem replacement effect - creating extra tokens"""
+	"""Test Goblin Emblem replacement effect - creating extra tokens, then removing effect when destroyed"""
 	
 	# Step 1: Give player plenty of gold
 	setPlayerGold(99)
 	
-	# Step 2: Create and play Goblin Emblem
-	createCardFromName("Goblin Emblem", GameZone.e.BATTLEFIELD_PLAYER)
+	# Step 2: Create and play Goblin Emblem (capture reference)
+	var goblin_emblem = createCardFromName("Goblin Emblem", GameZone.e.BATTLEFIELD_PLAYER)
 	
-	# Step 3: Create and play Goblin Pair
-	var goblin_pair = createCardFromName("Goblin pair", GameZone.e.HAND_PLAYER)
+	# Step 3: Create and play first Goblin Pair
+	var goblin_pair_1 = createCardFromName("Goblin pair", GameZone.e.HAND_PLAYER)
 	
-	await game.tryPlayCard(goblin_pair, GameZone.e.BATTLEFIELD_PLAYER)
+	await game.tryPlayCard(goblin_pair_1, GameZone.e.BATTLEFIELD_PLAYER)
 	
 	# Step 4: Count all cards in play
 	var all_cards = game.game_data.get_cards_in_zone(GameZone.e.BATTLEFIELD_PLAYER)
@@ -970,16 +970,47 @@ func test_goblin_emblem_replacement_effect():
 	)
 	var token_count = goblin_tokens.size()
 	
-	print("📊 Goblin tokens created: ", token_count)
+	print("📊 Goblin tokens created (with emblem): ", token_count)
 	
 	# Step 6: Verify 2 Goblin tokens were created (1 base + 1 from replacement effect)
 	if not assert_test_equal(token_count, 2, "Should have created 2 Goblin tokens (1 base + 1 from Goblin Emblem)"):
 		return false
-	print("✅ Correct number of tokens created")
+	print("✅ Correct number of tokens created with emblem active")
 	
 	# Step 7: Verify total cards (Goblin Emblem + Goblin Pair + 2 Goblin tokens = 4)
 	if not assert_test_equal(total_cards, 4, "Should have Goblin Emblem + Goblin Pair + 2 tokens"):
 		return false
+	
+	# Step 8: Destroy the Goblin Emblem (move to graveyard)
+	print("🗑️ Destroying Goblin Emblem...")
+	await game.execute_move_card(goblin_emblem, GameZone.e.GRAVEYARD_PLAYER)
+	await test_runner.get_tree().process_frame
+	
+	# Step 9: Verify Goblin Emblem is in graveyard
+	var emblem_in_graveyard = game.game_data.get_cards_in_zone(GameZone.e.GRAVEYARD_PLAYER).has(goblin_emblem)
+	if not assert_test_true(emblem_in_graveyard, "Goblin Emblem should be in graveyard"):
+		return false
+	print("✅ Goblin Emblem moved to graveyard")
+	
+	# Step 10: Play a second Goblin Pair
+	print("🃏 Playing second Goblin Pair without emblem...")
+	var goblin_pair_2 = createCardFromName("Goblin pair", GameZone.e.HAND_PLAYER)
+	await game.tryPlayCard(goblin_pair_2, GameZone.e.BATTLEFIELD_PLAYER)
+	await test_runner.get_tree().process_frame
+	
+	# Step 11: Count Goblin tokens again (should only have 1 more, not 2)
+	var all_cards_after = game.game_data.get_cards_in_zone(GameZone.e.BATTLEFIELD_PLAYER)
+	var goblin_tokens_after = all_cards_after.filter(func(card_data): 
+		return card_data.cardName.to_lower() == "goblin" and card_data.isToken
+	)
+	var token_count_after = goblin_tokens_after.size()
+	
+	print("📊 Total Goblin tokens after second pair: ", token_count_after)
+	
+	# Step 12: Verify only 3 total Goblin tokens (2 from first pair + 1 from second pair)
+	if not assert_test_equal(token_count_after, 3, "Should have 3 total Goblin tokens (2 from first + 1 from second, no replacement effect)"):
+		return false
+	print("✅ Correct - only 1 additional token created without emblem")
 	
 	print("✅ Goblin Emblem replacement effect test passed!")
 	return true
@@ -1481,4 +1512,72 @@ func test_casting_condition() -> bool:
 	print("  ✅ Card correctly castable when condition is met")
 	
 	print("✅ Casting condition test passed!")
+	return true
+
+func test_fleeting_keyword() -> bool:
+	"""Test fleeting keyword - card is discarded at end of turn if still in hand"""
+	print("=== Testing Fleeting Keyword ===")
+	
+	# Step 1: Create a test card with fleeting keyword
+	var test_card = CardData.new()
+	test_card.cardName = "Test Fleeting Card"
+	test_card.goldCost = 1
+	test_card.addType(CardData.CardType.CREATURE)
+	test_card.add_keyword("fleeting")  # Add the fleeting keyword
+	
+	# Step 2: Add fleeting ability using CardLoader (same as production code)
+	CardLoaderAL._add_fleeting_ability(test_card)
+	
+	# Step 3: Create the card in hand and register it to game signals
+	test_card = game.createCardData(test_card, GameZone.e.HAND_PLAYER, true)
+	
+	if not assert_test_not_null(test_card, "Test card should be created"):
+		return false
+	
+	# Wait for card creation to complete
+	await test_runner.get_tree().process_frame
+	
+	# Step 4: Verify card has fleeting keyword
+	if not assert_test_true(test_card.has_keyword("fleeting"), "Card should have fleeting keyword"):
+		return false
+	
+	# Step 5: Verify card has the fleeting triggered ability
+	var has_fleeting_ability = false
+	for ability in test_card.triggered_abilities:
+		if ability.effect_type == EffectType.Type.MOVE_CARD:
+			has_fleeting_ability = true
+			break
+	
+	if not assert_test_true(has_fleeting_ability, "Card should have fleeting triggered ability"):
+		return false
+	
+	# Step 6: Verify card is in hand
+	var initial_hand_count = game.game_data.get_cards_in_zone(GameZone.e.HAND_PLAYER).size()
+	if not assert_test_true(initial_hand_count >= 1, "Card should be in hand"):
+		return false
+	
+	var card_in_hand = game.game_data.get_cards_in_zone(GameZone.e.HAND_PLAYER).has(test_card)
+	if not assert_test_true(card_in_hand, "Test card should be in hand"):
+		return false
+	print("  ✅ Card is in hand")
+	
+	# Step 7: Verify card is NOT in graveyard yet
+	var initial_graveyard_count = game.game_data.get_cards_in_zone(GameZone.e.GRAVEYARD_PLAYER).size()
+	var card_in_graveyard_before = game.game_data.get_cards_in_zone(GameZone.e.GRAVEYARD_PLAYER).has(test_card)
+	if not assert_test_false(card_in_graveyard_before, "Card should NOT be in graveyard yet"):
+		return false
+	
+	# Step 8: End turn to trigger fleeting discard
+	print("  🔄 Ending turn to trigger fleeting discard...")
+	await game.onTurnStart()
+	await test_runner.get_tree().process_frame
+	await test_runner.get_tree().process_frame  # Extra frame for trigger resolution
+	
+	# Step 9: Verify card IS NOW in graveyard
+	var card_in_graveyard_after = game.game_data.get_cards_in_zone(GameZone.e.GRAVEYARD_PLAYER).has(test_card)
+	if not assert_test_true(card_in_graveyard_after, "Card SHOULD be in graveyard after turn end"):
+		return false
+	print("  ✅ Card moved to graveyard")
+	
+	print("✅ Fleeting keyword test passed!")
 	return true

@@ -162,7 +162,7 @@ func onTurnStart(skipFirstTurn = false):
 		game_data.reset_combat_resolution_flags()
 		# Trigger beginning of turn phase
 		await trigger_phase("BeginningOfTurn")
-	await drawCard(3)
+		await drawCard(3)
 	@warning_ignore("integer_division")
 	await drawCard(game_data.danger_level.getValue()/3, false)
 	game_data.setOpponentGold()

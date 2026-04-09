@@ -47,16 +47,39 @@ anchor_left = 0.5
 anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
-offset_left = -81.0
-offset_top = -110.5
-offset_right = 82.0
-offset_bottom = 15.5
+offset_left = -97.0
+offset_top = -113.5
+offset_right = 96.0
+offset_bottom = 14.5
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
 texture = ExtResource("2_icon")
 expand_mode = 2
-stretch_mode = 5
+stretch_mode = 6
+
+[node name="ColorRect" type="ColorRect" parent="Background"]
+layout_mode = 0
+offset_right = 195.0
+offset_bottom = 21.0
+
+[node name="NameLabel" type="Label" parent="Background/ColorRect"]
+clip_contents = true
+layout_mode = 1
+offset_left = 35.0
+offset_right = 328.0
+offset_bottom = 44.0
+scale = Vector2(0.5, 0.5)
+theme_override_colors/font_color = Color(0, 0, 0, 1)
+theme_override_font_sizes/font_size = 30
+text = "Punglynd childbearer"
+horizontal_alignment = 1
+vertical_alignment = 1
+justification_flags = 0
+clip_text = true
+script = ExtResource("5_cd6va")
+max_font_size = 30
+metadata/_custom_type_script = "uid://ccg1dce1grnid"
 
 [node name="costBackground" type="TextureRect" parent="Background"]
 texture_filter = 4
@@ -97,25 +120,6 @@ text = "5"
 horizontal_alignment = 1
 vertical_alignment = 1
 
-[node name="NameLabel" type="Label" parent="Background"]
-clip_contents = true
-layout_mode = 1
-offset_left = 37.0
-offset_top = 3.0
-offset_right = 330.0
-offset_bottom = 47.0
-scale = Vector2(0.5, 0.5)
-theme_override_colors/font_color = Color(0, 0, 0, 1)
-theme_override_font_sizes/font_size = 30
-text = "Punglynd childbearer"
-horizontal_alignment = 1
-vertical_alignment = 1
-justification_flags = 0
-clip_text = true
-script = ExtResource("5_cd6va")
-max_font_size = 30
-metadata/_custom_type_script = "uid://ccg1dce1grnid"
-
 [node name="TypeLabel" type="Label" parent="Background"]
 layout_mode = 1
 anchors_preset = 6
@@ -146,20 +150,22 @@ anchor_left = 0.5
 anchor_top = 1.0
 anchor_right = 0.5
 anchor_bottom = 1.0
-offset_left = -94.0
+offset_left = -95.0
 offset_top = -96.0
-offset_right = 651.0
+offset_right = 661.0
 offset_bottom = 260.0
 grow_horizontal = 2
 grow_vertical = 0
 scale = Vector2(0.25, 0.25)
 mouse_filter = 2
 theme_override_colors/default_color = Color(0, 0, 0, 1)
+theme_override_colors/font_outline_color = Color(0.26666668, 0.22352941, 0.011764706, 1)
+theme_override_constants/paragraph_separation = 5
 theme_override_fonts/normal_font = ExtResource("3_foy7b")
 theme_override_font_sizes/normal_font_size = 40
 bbcode_enabled = true
-text = "[color=GOLDENROD]Haste[/color][p][/p]Other Goblin creatures you control get +1/+1 and have haste.
-"
+text = "[color=#705E05][outline_size=4]Haste[/outline_size][/color][p][/p]Other Goblin creatures you control get +1/+1 and have haste.
+[p][/p]Other Goblin creatures you control get +1/+1 and have haste."
 autowrap_mode = 2
 
 [node name="TextureRect" type="TextureRect" parent="Background"]

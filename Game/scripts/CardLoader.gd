@@ -396,6 +396,10 @@ func _add_keyword_triggered_abilities(card_data: CardData):
 	# Check if card has Elusive keyword
 	if card_data.text_box.contains("Elusive"):
 		_add_elusive_ability(card_data)
+	
+	# Check if card has fleeting keyword (case-insensitive)
+	if card_data.has_keyword("fleeting"):
+		_add_fleeting_ability(card_data)
 
 # Add the Elusive triggered ability
 func _add_elusive_ability(card_data: CardData):
@@ -419,6 +423,36 @@ func _add_elusive_ability(card_data: CardData):
 			"parameters": {
 				"SwitchWith": "LastOther",  # Swap with the last card in zone (that isn't self)
 				"OnlySameLocation": true
+			}
+		}
+	}
+	
+	var ability = parse_triggered_ability(trigger_string, svar_effects, card_data)
+	if ability:
+		card_data.add_ability(ability)
+
+# Add the fleeting triggered ability
+func _add_fleeting_ability(card_data: CardData):
+	"""Add automatic triggered ability for fleeting keyword
+	
+	Fleeting triggers when:
+	- Turn ends
+	- The fleeting card is in hand
+	Effect: Move to graveyard (discard)
+	"""
+	# Parse as a standard triggered ability string
+	# Mode$ Phase trigger on EndOfTurn
+	# TriggerZones$ Hand - only triggers when in hand
+	var trigger_string = "Mode$ Phase | Phase$ EndOfTurn | TriggerZones$ Hand | Execute$ FleetingDiscard"
+	
+	# Create SVar for the effect
+	var svar_effects = {
+		"FleetingDiscard": {
+			"effect_type": "MoveCard",
+			"parameters": {
+				"Origin": "Hand.Controller",
+				"Destination": "Graveyard.Controller",
+				"Defined": "Self"
 			}
 		}
 	}
@@ -860,9 +894,6 @@ func load_card_from_file(file_path: String, archetype: Archetype = Archetype.UNK
 	# Add to archetype pool
 	if archetype != Archetype.UNKNOWN:
 		archetype_pools[archetype].append(card_data)
-		print("  ✅ Added ", card_data.cardName, " to archetype pool: ", Archetype.keys()[archetype])
-	else:
-		print("  ⚠️ Card ", card_data.cardName, " has UNKNOWN archetype - not added to pool")
 	
 	if card_data.hasType(CardData.CardType.LEGENDARY):
 		extraDeckCardData.push_back(card_data)
@@ -890,8 +921,6 @@ func load_token_from_file(file_path: String, archetype: Archetype = Archetype.UN
 	if archetype != Archetype.UNKNOWN:
 		archetype_pools[archetype].append(card_data)
 	
-	# Tokens are NOT added to cardData or extraDeckCardData
-	# They will be added to tokensData by the caller
 	return card_data
 
 func load_opponent_card_from_file(file_path: String, archetype: Archetype = Archetype.UNKNOWN) -> CardData:
@@ -1057,10 +1086,6 @@ func _extract_archetype_from_path(file_path: String, root_path: String) -> Arche
 	# Get the first folder name
 	var folder_name = relative_path.split("/")[0].to_upper()
 	
-	print("🔍 [ARCHETYPE] File: ", file_path)
-	print("    Relative: ", relative_path)
-	print("    Folder: ", folder_name)
-	
 	# Map folder name to archetype enum
 	var result: Archetype
 	match folder_name:
@@ -1070,8 +1095,6 @@ func _extract_archetype_from_path(file_path: String, root_path: String) -> Arche
 			result = Archetype.NECROMANCER
 		_:
 			result = Archetype.UNKNOWN
-	
-	print("    Archetype: ", Archetype.keys()[result])
 	return result
 
 func get_archetype_pool(archetype: Archetype) -> Array[CardData]:

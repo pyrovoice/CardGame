@@ -518,11 +518,15 @@ func create_and_animate_drawn_cards(cards_to_draw: Array[CardData], is_player: b
 	for card in card_views:
 		card.card_representation.global_position = deck_position
 	
-	# Animate each card, collect tweens
-	var draw_position = Vector3(0, 2, 1)
+	# Animate each card with offset positions for multiple draws
+	var draw_position_base = Vector3(0, 2, 1)
 	var last_tween: Tween = null
 	for i in range(card_views.size()):
 		var card_view = card_views[i]
+		# Offset each card's draw position to show them side by side
+		var offset_x = (i - (card_views.size() - 1) / 2.0) * 0.5  # Center the spread around base position
+		var draw_position = draw_position_base + Vector3(offset_x, 0, 0)
+		
 		var tween = card_view.getAnimator().draw_card(
 			deck_position,
 			draw_position,

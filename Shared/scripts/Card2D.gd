@@ -3,11 +3,11 @@ class_name Card2D
 
 @onready var background: NinePatchRect = $Background
 @onready var card_art: TextureRect = $Background/CardArt
-@onready var name_label: Label = $Background/NameLabel
 @onready var type_label: Label = $Background/TypeLabel
 @onready var text_label: RichTextLabel = $Background/TextLabel
 @onready var cost_label: Label = $Background/costBackground/CostLabel
 @onready var power_label: Label = $Background/TextureRect/PowerLabel
+@onready var name_label: AutoSizeLabel = $Background/ColorRect/NameLabel
 
 var cardData: CardData
 var scroll_tween: Tween  # For animated text scrolling
@@ -71,7 +71,7 @@ func format_text_with_keywords(data: CardData) -> String:
 	for keyword in KeywordManager.keywords.keys():
 		# Simply replace the keyword with bold version
 		# This will find the keyword anywhere it appears as a whole word
-		formatted_text = formatted_text.replace(keyword, "[color=GOLDENROD]" + keyword + "[/color]")
+		formatted_text = formatted_text.replace(keyword, "[outline_size=3][color=#705E05]" + keyword + "[/color][/outline_size]")
 	
 	return formatted_text
 

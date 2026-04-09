@@ -4,27 +4,55 @@ class_name MoveCardEffect
 ## Effect that moves a card from one zone to another (e.g., graveyard stealing, library search)
 
 func execute(parameters: Dictionary, source_card_data: CardData, game_context: Game):
+	print("🔍 [MOVE DEBUG] MoveCardEffect.execute called")
+	print("  Parameters: ", parameters)
+	print("  Source card: ", source_card_data.cardName)
+	
 	var origin_zone_str: String = parameters.get("Origin", "Graveyard.Player")
 	var destination_zone_str: String = parameters.get("Destination", "Graveyard.Opponent")
 	var choice_type: String = parameters.get("Choice", "Random")
 	var valid_card: String = parameters.get("ValidCard", "Creature")
+	var defined: String = parameters.get("Defined", "")
 	var condition: String = parameters.get("Condition", "")
 	var if_not_found: String = parameters.get("IfNotFound", "")
 	var num_cards: int = parameters.get("NumCard", 1)
 	
+	print("  Defined parameter: '", defined, "' (length: ", defined.length(), ")")
+	print("  Origin: ", origin_zone_str)
+	print("  Destination: ", destination_zone_str)
+	
 	# Check condition using controller method
 	if condition and not game_context.check_effect_condition(condition, source_card_data):
+		print("  ❌ Condition check failed, returning early")
 		return
 	
 	# Determine perspective for zone resolution based on who controls the card
 	var from_player_perspective = source_card_data.playerControlled
+	print("  From player perspective: ", from_player_perspective)
 	
 	# Parse zone strings to GameZone.e enums using GameData method
 	var origin_zone_enum: GameZone.e = game_context.game_data.parse_zone_string_to_enum(origin_zone_str, from_player_perspective)
 	var destination_zone_enum: GameZone.e = game_context.game_data.parse_zone_string_to_enum(destination_zone_str, from_player_perspective)
 	
+	print("  Origin zone enum: ", origin_zone_enum, " (", GameZone.e.keys()[origin_zone_enum] if origin_zone_enum < GameZone.e.size() else "INVALID", ")")
+	print("  Destination zone enum: ", destination_zone_enum, " (", GameZone.e.keys()[destination_zone_enum] if destination_zone_enum < GameZone.e.size() else "INVALID", ")")
+	
 	if origin_zone_enum == GameZone.e.UNKNOWN or destination_zone_enum == GameZone.e.UNKNOWN:
 		push_error("Invalid zones: ", origin_zone_str, " -> ", destination_zone_str)
+		print("  ❌ Invalid zones detected, returning early")
+		return
+	
+	# Handle "Defined$ Self" - move the source card itself
+	if defined == "Self":
+		print("📦 [MOVE DEBUG] Moving self: ", source_card_data.cardName)
+		print("  Origin: ", origin_zone_str, " (", origin_zone_enum, ")")
+		print("  Destination: ", destination_zone_str, " (", destination_zone_enum, ")")
+		print("  Current zone before move: ", game_context.game_data.get_card_zone(source_card_data))
+		
+		await game_context.execute_move_card(source_card_data, destination_zone_enum, origin_zone_enum)
+		
+		print("  Current zone after move: ", game_context.game_data.get_card_zone(source_card_data))
+		print("  Card in graveyard? ", game_context.game_data.get_cards_in_zone(GameZone.e.GRAVEYARD_PLAYER).has(source_card_data))
 		return
 	
 	# Get cards from origin zone using GameData

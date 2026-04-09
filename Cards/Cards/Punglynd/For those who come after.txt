@@ -1,4 +1,5 @@
 Name:For those who come after
 Types:Spell
 ManaCost:1
-CardText: Creatures with cost 1 or less you control are indestructible this turn. Creatures with cost 2 or more you control gain "At the end of turn, sacrifice me." this turn.
+CardText: Creatures with cost 1 or less you control are indestructible this turn. 
+Creatures with cost 2 or more you control gain "At the end of turn, sacrifice me." this turn.

@@ -9,7 +9,7 @@ enum DisplayMode {
 
 # Display configuration constants
 const NORMAL_SCALE = Vector2.ONE
-const ENLARGED_SCALE = Vector2(1.5, 1.5)
+const ENLARGED_SCALE = Vector2(1.8, 1.8)
 const KEYWORD_GAP_NORMAL = 20
 const KEYWORD_GAP_ENLARGED = 5
 

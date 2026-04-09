@@ -90,7 +90,6 @@ func _input(event):
 				# HighlightManager will be notified by CardAnimator signals
 				dragged_card = null
 			elif event.position == mouseDownButtonPos:
-				print("Left click ")
 				leftClick.emit(getObjectUnderMouse())
 			mouseDownButtonPos = Vector2.INF
 			

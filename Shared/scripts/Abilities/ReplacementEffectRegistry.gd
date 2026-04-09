@@ -40,8 +40,8 @@ static func apply_replacement_effects(effect_type: String, effect_parameters: Di
 	var modified_params = effect_parameters.duplicate()
 	var applied_count = 0
 	
-	# Clean up invalid effects
-	_cleanup_invalid_effects(game_context)
+	# Note: Cleanup is NOT done here - replacement effects are only removed when
+	# their source card explicitly leaves play (via remove_from_game)
 	
 	# Apply each applicable replacement effect
 	for effect in _replacement_effects:
@@ -60,10 +60,13 @@ static func _cleanup_invalid_effects(game_context: Game):
 	
 	for effect in _replacement_effects:
 		if not effect.source_card_data:
+			print("  🐛 [REGISTRY DEBUG] Effect has no source_card_data")
 			to_remove.append(effect)
 			continue
 		var zone = game_context.game_data.get_card_zone(effect.source_card_data)
+		print("  🐛 [REGISTRY DEBUG] Checking ", effect.source_card_data.cardName, " zone: ", zone, " (", GameZone.e.keys()[zone] if zone < GameZone.e.size() else "INVALID", ")")
 		if zone == GameZone.e.UNKNOWN:
+			print("  🐛 [REGISTRY DEBUG] Removing effect from ", effect.source_card_data.cardName, " - zone is UNKNOWN")
 			to_remove.append(effect)
 	
 	for effect in to_remove:
