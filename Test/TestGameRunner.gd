@@ -258,6 +258,8 @@ func cleanup_game():
 		print("Cleaning up game instance...")
 		# Clear the CardPaymentManager's game reference before destroying
 		CardPaymentManagerAL.set_game_context(null)
+		# Clear static registries that persist across game instances
+		ReplacementEffectRegistry.clear_all()
 		game_instance.queue_free()
 		game_instance = null  # Clear the stored reference
 		# Wait a frame to ensure complete cleanup
