@@ -170,6 +170,12 @@ func parse_single_spell_effect(effect_text: String, card_data: CardData) -> Spel
 	if effect_type_str.is_empty():
 		return null
 	
+	# Validate effect type before converting
+	if not _is_valid_effect_type(effect_type_str):
+		push_error("❌ [CARD LOAD ERROR] Invalid effect type '" + effect_type_str + "' in spell ability for card: " + card_data.cardName)
+		push_error("   Valid types: DealDamage, Pump, Draw, CreateToken, CreateCard, Cast, AddType, AddKeyword, MoveCard, SwitchPositions, etc.")
+		return null
+	
 	# Convert to EffectType enum
 	var effect_type = EffectType.string_to_type(effect_type_str)
 	
@@ -336,6 +342,12 @@ func parse_triggered_ability(trigger_text: String, svar_effects: Dictionary, car
 	# Convert trigger type to GameEventType
 	var game_event = _convert_trigger_type_to_game_event(trigger_type, trigger_conditions)
 	
+	# Validate effect name before converting
+	if not _is_valid_effect_type(effect_name):
+		push_error("❌ [CARD LOAD ERROR] Invalid effect type '" + effect_name + "' in triggered ability for card: " + card_data.cardName)
+		push_error("   Valid types: DealDamage, Pump, Draw, CreateToken, CreateCard, Cast, AddType, AddKeyword, MoveCard, SwitchPositions, etc.")
+		return null
+	
 	# Convert effect name to EffectType
 	var effect_type = EffectType.string_to_type(effect_name)
 	
@@ -409,6 +421,16 @@ func _add_elusive_ability(card_data: CardData):
 	var ability = parse_triggered_ability(trigger_string, svar_effects, card_data)
 	if ability:
 		card_data.add_ability(ability)
+
+# Validate if an effect type string is valid
+func _is_valid_effect_type(effect_type_str: String) -> bool:
+	"""Check if an effect type string is recognized by EffectType enum"""
+	var valid_types = [
+		"DealDamage", "Pump", "Draw", "CreateToken", "CreateCard", "Cast",
+		"AddType", "AddKeyword", "PumpAll", "MoveCard", "SwitchPositions",
+		"Destroy", "Bounce", "Exile", "Mill", "Discard", "Search", "Shuffle"
+	]
+	return effect_type_str.strip_edges() in valid_types
 
 # Helper to parse SVar definition into effect type and parameters
 func _parse_svar_definition(definition: String) -> Dictionary:
@@ -497,6 +519,12 @@ func parse_replacement_effect(replacement_text: String, svar_effects: Dictionary
 		if not svar_data.get("effect_type", "").is_empty():
 			effect_name = svar_data["effect_type"]
 	
+	# Validate event type before converting
+	if not _is_valid_effect_type(event_type):
+		push_error("❌ [CARD LOAD ERROR] Invalid event type '" + event_type + "' in replacement effect for card: " + card_data.cardName)
+		push_error("   Valid types: DealDamage, Pump, Draw, CreateToken, CreateCard, Cast, AddType, AddKeyword, MoveCard, SwitchPositions, etc.")
+		return null
+	
 	# Replacement abilities are keyed by the event they replace (e.g., CreateToken).
 	var effect_type = EffectType.string_to_type(event_type)
 	
@@ -580,6 +608,16 @@ func parse_activated_ability(activated_text: String, _svar_effects: Dictionary, 
 			effect_parameters["Amount"] = part.substr(8)
 		elif part.begins_with("Description$"):
 			description = part.substr(13)
+	
+	# Validate effect type before converting
+	if effect_type_str.is_empty():
+		push_error("❌ [CARD LOAD ERROR] No effect type specified in activated ability for card: " + card_data.cardName)
+		return null
+	
+	if not _is_valid_effect_type(effect_type_str):
+		push_error("❌ [CARD LOAD ERROR] Invalid effect type '" + effect_type_str + "' in activated ability for card: " + card_data.cardName)
+		push_error("   Valid types: DealDamage, Pump, Draw, CreateToken, CreateCard, Cast, AddType, AddKeyword, MoveCard, SwitchPositions, etc.")
+		return null
 	
 	# Convert effect name to EffectType
 	var effect_type = EffectType.string_to_type(effect_type_str)

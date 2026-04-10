@@ -13,6 +13,7 @@ signal end_of_turn(card_data: CardData)
 signal card_drawn(cards: Array, is_player: bool)
 signal card_changed_zones(card_data: CardData, from_zone: GameZone.e, to_zone: GameZone.e)
 signal strike(card_data: CardData)
+signal card_recycled(card_data: CardData)
 
 # Controller references (MVC: Controller layer)
 @onready var player_control: PlayerControl = $GameView/playerControl
@@ -193,7 +194,7 @@ func execute_move_card(cardData: CardData, destination_zone: GameZone.e, origin_
 	var origin_zone = origin_zone_enum
 	if origin_zone == GameZone.e.UNKNOWN:
 		origin_zone = game_data.get_card_zone(cardData)
-		
+	
 	# MVC Pattern: Update Model first (add to zone array), then animate View
 	game_data.move_card(cardData, destination_zone, index)
 	
@@ -243,6 +244,58 @@ func check_effect_condition(condition: String, source_card_data: CardData) -> bo
 		_:
 			push_warning("Unknown effect condition: ", condition)
 			return true  # Unknown conditions default to passing
+
+func recycle_card(card_data: CardData) -> bool:
+	"""Recycle a card from hand - removes it from game, grants gold, triggers event (Controller method)
+	
+	Args:
+		card_data: The card to recycle (must be in player's hand)
+	
+	Returns:
+		bool: True if card was successfully recycled, false otherwise
+	"""
+	if not card_data:
+		push_error("recycle_card: card_data is null")
+		return false
+	
+	# Validation: Check if card is in player's hand
+	var card_zone = game_data.get_card_zone(card_data)
+	if card_zone != GameZone.e.HAND_PLAYER:
+		print("⚠️ Cannot recycle card - not in player's hand (current zone: ", GameZone.e.keys()[card_zone], ")")
+		return false
+	
+	# Validation: Check if player has recycling uses remaining
+	if game_data.recycling_remaining.value <= 0:
+		print("⚠️ Cannot recycle card - no recycling uses remaining this turn")
+		return false
+	
+	print("♻️ Recycling card: ", card_data.cardName)
+	
+	# MVC Pattern: Update Model → Update View → Trigger Events
+	
+	# Model: Remove card from GameData
+	var destroyed = game_data.destroy_card(card_data)
+	if not destroyed:
+		push_error("recycle_card: Failed to destroy card in GameData")
+		return false
+	
+	# Model: Decrease recycling count
+	game_data.recycling_remaining.value -= 1
+	
+	# Model: Add gold to player
+	game_data.add_gold(1)
+	
+	# View: Handle visual feedback and cleanup
+	game_view.recycle_card_view(card_data)
+	
+	# Unsubscribe from game signals
+	card_data.unsubscribe_from_game_signals(self)
+	
+	# Event: Trigger card_recycled event
+	await emit_game_event(TriggeredAbility.GameEventType.CARD_RECYCLED, card_data)
+	
+	print("✅ Card recycled successfully. Recycling remaining: ", game_data.recycling_remaining.value, "/3")
+	return true
 
 
 func _move_deck_to_hand(card_data: CardData, dest_zone: GameZone.e):
@@ -377,28 +430,34 @@ func tryMoveCard(card_data: CardData, target_location: Node3D) -> void:
 	if not card_data:
 		return
 	
-	# Default to PlayerBase if no target specified
-	if not target_location:
-		target_location = game_view.get_player_base()
-	
 	var source_zone = game_data.get_card_zone(card_data)
 	
+	# Convert target location to zone enum
+	var dest_zone: GameZone.e
+	if target_location:
+		dest_zone = _get_target_zone(target_location)
+	else:
+		# Default to PlayerBase if no target specified
+		dest_zone = GameZone.e.BATTLEFIELD_PLAYER
+	
+	# Handle movement based on source zone
 	match source_zone:
 		GameZone.e.HAND_PLAYER, GameZone.e.EXTRA_DECK_PLAYER:
-			# Playing from hand - convert Node3D to zone data
-			var dest_zone: GameZone.e = GameZone.e.BATTLEFIELD_PLAYER if card_data.playerControlled else GameZone.e.BATTLEFIELD_OPPONENT
-			var combat_spot: CombatantFightingSpot = null
+			# Check for recycling - only allow when viewing player_hand (not extra_deck view)
+			if dest_zone == GameZone.e.RECYCLE_ZONE:
+				if activeHand != game_view.player_hand:
+					print("⚠️ Cannot recycle from extra deck view")
+					return
+				# Recycling is not a zone movement - call recycle_card directly
+				await recycle_card(card_data)
+				return
 			
-			if target_location is CombatantFightingSpot:
-				combat_spot = target_location as CombatantFightingSpot
-				# Determine which combat zone based on the spot's parent CombatZone
-				var combat_zone = combat_spot.get_parent() as CombatZone
-				var zone_index = game_view.get_combat_zones().find(combat_zone) + 1
-				if card_data.playerControlled:
-					dest_zone = (GameZone.e.COMBAT_PLAYER_1 + (zone_index - 1)) as GameZone.e
-				else:
-					dest_zone = (GameZone.e.COMBAT_OPPONENT_1 + (zone_index - 1)) as GameZone.e
+			# Playing from hand/extra deck
+			if dest_zone == GameZone.e.UNKNOWN:
+				# Default to battlefield if target is not recognized
+				dest_zone = GameZone.e.BATTLEFIELD_PLAYER
 			
+			# Try to play the card to the destination zone
 			tryPlayCard(card_data, dest_zone)
 		
 		GameZone.e.BATTLEFIELD_PLAYER:
@@ -723,7 +782,10 @@ func _get_all_player_cards() -> Array[Card]:
 	return all_cards
 
 func _get_target_zone(target_location: Node3D) -> GameZone.e:
-	# Note: This function may need player/opponent context to return the correct specific zone
+	"""Convert a 3D node location to a GameZone enum"""
+	if not target_location:
+		return GameZone.e.UNKNOWN
+	
 	if target_location is CombatantFightingSpot:
 		var combat_zone = target_location.get_parent() as CombatZone
 		var zone_index = game_view.get_combat_zones().find(combat_zone) + 1
@@ -733,6 +795,8 @@ func _get_target_zone(target_location: Node3D) -> GameZone.e:
 		return GameZone.e.BATTLEFIELD_PLAYER  # TODO: distinguish player/opponent
 	elif target_location == game_view.player_hand:
 		return GameZone.e.HAND_PLAYER
+	elif target_location == game_view.recycle_area:
+		return GameZone.e.RECYCLE_ZONE
 	else:
 		return GameZone.e.UNKNOWN
 	
@@ -1538,6 +1602,8 @@ func emit_game_event(event_type: TriggeredAbility.GameEventType, card_data: Card
 			beginning_of_turn.emit(card_data)
 		TriggeredAbility.GameEventType.STRIKE:
 			strike.emit(card_data)
+		TriggeredAbility.GameEventType.CARD_RECYCLED:
+			card_recycled.emit(card_data)
 	
 	# After emitting the event, resolve any resolvables that were added to the queue
 	await resolve_queue()

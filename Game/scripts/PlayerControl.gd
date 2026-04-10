@@ -74,7 +74,7 @@ func _input(event):
 				var is_outside_hand = !isMousePointerInHandZone()
 				var drop_target = null
 				if is_outside_hand:
-					drop_target = getObjectUnderMouse(CardLocation)
+					drop_target = getObjectUnderMouse(Node3D) 
 				
 				# End drag with target information
 				dragged_card.getAnimator().end_drag(drop_target)

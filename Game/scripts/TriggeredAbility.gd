@@ -15,7 +15,8 @@ enum GameEventType {
 	SPELL_CAST,           # When a spell is cast
 	END_OF_TURN,          # At end of turn
 	BEGINNING_OF_TURN,    # At beginning of turn
-	STRIKE                # Creature strikes
+	STRIKE,               # Creature strikes
+	CARD_RECYCLED         # When a card is recycled from hand
 }
 
 enum TriggerCondition {

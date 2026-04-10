@@ -329,6 +329,21 @@ func destroy_card_view(card_data: CardData) -> void:
 	
 	card.queue_free()
 
+## Recycle a card view (visual feedback for recycling)
+func recycle_card_view(card_data: CardData) -> void:
+	"""Handle visual feedback for card recycling
+	
+	Args:
+		card_data: The card being recycled
+	"""
+	if headless:
+		return
+	
+	print("♻️ Recycled: ", card_data.cardName)
+	# TODO: Add recycling animation here (card flies to recycle area, particle effects, etc.)
+	# For now, just destroy the view
+	destroy_card_view(card_data)
+
 ## Update hand arrangement
 func arrange_hand(hand_zone: CardHand, cards: Array[Card] = []) -> void:
 	if cards.is_empty():

@@ -884,7 +884,7 @@ func test_replace_with_insufficient_gold() -> bool:
 	if not assert_test_equal(final_hand_count, initial_hand_count - 1, "Hand count should decrease by 1"):
 		return false
 	
-	if not assert_test_equal(final_base_count, initial_base_count, "Base count should stay the same (child replaced by childbearer)"):
+	if not assert_test_equal(final_base_count, initial_base_count + 1, "Base count should increase by 1 (child replaced by childbearer who creates a token)"):
 		return false
 	
 	# Step 10: Verify the Childbearer is now in play
@@ -1194,4 +1194,128 @@ func test_move_effect() -> bool:
 	print("✅ Correct card was moved")
 	
 	print("✅ Move effect test passed!")
+	return true
+
+func test_recycling_three_uses_per_turn():
+	"""Test that cards can be recycled 3 times per turn with gold rewards and signal emissions"""
+	
+	# Step 1: Create 4 goblin cards in hand
+	var card1 = createCardFromName("Goblin", GameZone.e.HAND_PLAYER)
+	var card2 = createCardFromName("Goblin", GameZone.e.HAND_PLAYER)
+	var card3 = createCardFromName("Goblin", GameZone.e.HAND_PLAYER)
+	var card4 = createCardFromName("Goblin", GameZone.e.HAND_PLAYER)
+	
+	# Step 2: Verify initial setup
+	if not assertCardCount(4, "hand"):
+		return false
+	
+	# Step 3: Set up signal tracking (use Dictionary to capture by reference)
+	var signal_data = {"count": 0}
+	var signal_callback = func(card_data: CardData):
+		signal_data["count"] += 1
+		print("♻️ Signal emitted for: ", card_data.cardName)
+	
+	game.card_recycled.connect(signal_callback)
+	
+	# Step 4: Store initial gold
+	var initial_gold = game.game_data.player_gold.getValue()
+	print("💰 Initial gold: ", initial_gold)
+	
+	# Step 5: Recycle first card - should succeed
+	print("\n--- Recycling Card 1 ---")
+	var result1 = await game.recycle_card(card1)
+	if not assert_test_true(result1, "First recycle should succeed"):
+		game.card_recycled.disconnect(signal_callback)
+		return false
+	
+	# Verify card 1 effects
+	if not assertCardCount(3, "hand"):
+		game.card_recycled.disconnect(signal_callback)
+		return false
+	if not assert_test_equal(game.game_data.player_gold.getValue(), initial_gold + 1, "Gold should increase by 1 after first recycle"):
+		game.card_recycled.disconnect(signal_callback)
+		return false
+	if not assert_test_equal(signal_data["count"], 1, "Signal should have been emitted once"):
+		game.card_recycled.disconnect(signal_callback)
+		return false
+	if not assert_test_equal(game.game_data.recycling_remaining.value, 2, "Should have 2 recycles remaining"):
+		game.card_recycled.disconnect(signal_callback)
+		return false
+	
+	# Step 6: Recycle second card - should succeed
+	print("\n--- Recycling Card 2 ---")
+	var result2 = await game.recycle_card(card2)
+	if not assert_test_true(result2, "Second recycle should succeed"):
+		game.card_recycled.disconnect(signal_callback)
+		return false
+	
+	# Verify card 2 effects
+	if not assertCardCount(2, "hand"):
+		game.card_recycled.disconnect(signal_callback)
+		return false
+	if not assert_test_equal(game.game_data.player_gold.getValue(), initial_gold + 2, "Gold should increase by 2 total"):
+		game.card_recycled.disconnect(signal_callback)
+		return false
+	if not assert_test_equal(signal_data["count"], 2, "Signal should have been emitted twice"):
+		game.card_recycled.disconnect(signal_callback)
+		return false
+	if not assert_test_equal(game.game_data.recycling_remaining.value, 1, "Should have 1 recycle remaining"):
+		game.card_recycled.disconnect(signal_callback)
+		return false
+	
+	# Step 7: Recycle third card - should succeed
+	print("\n--- Recycling Card 3 ---")
+	var result3 = await game.recycle_card(card3)
+	if not assert_test_true(result3, "Third recycle should succeed"):
+		game.card_recycled.disconnect(signal_callback)
+		return false
+	
+	# Verify card 3 effects
+	if not assertCardCount(1, "hand"):
+		game.card_recycled.disconnect(signal_callback)
+		return false
+	if not assert_test_equal(game.game_data.player_gold.getValue(), initial_gold + 3, "Gold should increase by 3 total"):
+		game.card_recycled.disconnect(signal_callback)
+		return false
+	if not assert_test_equal(signal_data["count"], 3, "Signal should have been emitted three times"):
+		game.card_recycled.disconnect(signal_callback)
+		return false
+	if not assert_test_equal(game.game_data.recycling_remaining.value, 0, "Should have 0 recycles remaining"):
+		game.card_recycled.disconnect(signal_callback)
+		return false
+	
+	# Step 8: Try to recycle fourth card - should FAIL (no uses remaining)
+	print("\n--- Attempting to Recycle Card 4 (Should Fail) ---")
+	var gold_before_fourth = game.game_data.player_gold.getValue()
+	var result4 = await game.recycle_card(card4)
+	
+	if not assert_test_false(result4, "Fourth recycle should fail (no uses remaining)"):
+		game.card_recycled.disconnect(signal_callback)
+		return false
+	
+	# Verify card 4 stayed in hand
+	if not assertCardCount(1, "hand"):
+		game.card_recycled.disconnect(signal_callback)
+		return false
+	
+	# Verify card 4 is still the same card
+	var remaining_cards = game.game_data.get_cards_in_zone(GameZone.e.HAND_PLAYER)
+	if not assert_test_equal(remaining_cards[0], card4, "The remaining card should be card4"):
+		game.card_recycled.disconnect(signal_callback)
+		return false
+	
+	# Verify gold did not increase
+	if not assert_test_equal(game.game_data.player_gold.getValue(), gold_before_fourth, "Gold should not increase after failed recycle"):
+		game.card_recycled.disconnect(signal_callback)
+		return false
+	
+	# Verify signal was not emitted again
+	if not assert_test_equal(signal_data["count"], 3, "Signal should still be 3 (not emitted for failed recycle)"):
+		game.card_recycled.disconnect(signal_callback)
+		return false
+	
+	# Cleanup
+	game.card_recycled.disconnect(signal_callback)
+	
+	print("✅ Recycling three-uses-per-turn test passed!")
 	return true

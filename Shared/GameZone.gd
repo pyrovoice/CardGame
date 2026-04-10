@@ -18,6 +18,7 @@ enum e {
 	DECK_PLAYER,
 	DECK_OPPONENT,
 	EXTRA_DECK_PLAYER,
+	RECYCLE_ZONE,
 	
 	UNKNOWN
 }
@@ -40,6 +41,7 @@ static func get_as_string(zone: e) -> String:
 		e.DECK_PLAYER: return "deck_player"
 		e.DECK_OPPONENT: return "deck_opponent"
 		e.EXTRA_DECK_PLAYER: return "extra_deck_player"
+		e.RECYCLE_ZONE: return "recycle_zone"
 		_: return "unknown"
 
 # Helper to parse trigger zone strings to GameZone.e enum array

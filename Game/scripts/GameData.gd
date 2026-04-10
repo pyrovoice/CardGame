@@ -15,6 +15,7 @@ var player_shield: SignalInt
 var player_points: SignalInt
 var player_gold: SignalInt
 var opponent_gold: SignalInt
+var recycling_remaining: SignalInt
 var combatLocationDatas: Array[CombatLocationData] = []
 # Game state using SignalInt
 var danger_level: SignalInt
@@ -35,6 +36,7 @@ func _init():
 	player_points = SignalInt.new(0)
 	player_gold = SignalInt.new(3)  # Starting gold
 	opponent_gold = SignalInt.new(0)
+	recycling_remaining = SignalInt.new(3)  # Recycling uses per turn
 	danger_level = SignalInt.new(5)
 	current_turn = SignalInt.new(1)
 	
@@ -90,6 +92,8 @@ func start_new_turn():
 	"""Start a new turn and increase danger level"""
 	current_turn.value += 1
 	increase_danger_level()
+	# Reset recycling uses
+	recycling_remaining.value = 3
 
 func is_player_defeated() -> bool:
 	"""Check if the player has been defeated"""
@@ -245,6 +249,29 @@ func move_card(card_data: CardData, to_zone: GameZone.e, index: int = -1) -> int
 	if remove_card_from_zone(card_data):
 		return add_card_to_zone(card_data, to_zone, index)
 	return -1
+
+## Completely destroy a card - remove from all tracking
+func destroy_card(card_data: CardData) -> bool:
+	"""Remove a card entirely from the game (for recycling, exile, etc.)
+	
+	Args:
+		card_data: The card to destroy
+	
+	Returns:
+		bool: True if card was successfully destroyed
+	"""
+	if not card_data:
+		return false
+	
+	# Remove from current zone
+	var success = remove_card_from_zone(card_data)
+	if not success:
+		push_warning("destroy_card: Failed to remove card from zone: ", card_data.cardName)
+		return false
+	
+	# Card is now removed from all zone tracking
+	card_data.current_zone = GameZone.e.UNKNOWN
+	return true
 
 ## Get the zone a card is currently in (with verification)
 func get_card_zone(card_data: CardData) -> GameZone.e:

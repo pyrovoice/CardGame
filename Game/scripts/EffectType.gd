@@ -114,8 +114,7 @@ static func string_to_type(effect_string: String) -> Type:
 			return Type.SHUFFLE
 		_:
 			push_error("❌ UNKNOWN EFFECT TYPE: '" + normalized + "' (original: '" + effect_string + "') - Check card definition. Defaulting to DRAW.")
-			push_error("   Available types: " + str(get_all_strings()))
-			return Type.DRAW  # Default fallback
+			return Type.NONE  # Default fallback
 
 # Get all available effect type strings
 static func get_all_strings() -> Array[String]:
