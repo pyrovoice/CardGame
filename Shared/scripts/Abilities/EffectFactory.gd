@@ -18,6 +18,9 @@ static func create_effect(effect_type: EffectType.Type) -> Effect:
 		EffectType.Type.CREATE_TOKEN:
 			return CreateTokenEffect.new()
 		
+		EffectType.Type.CREATE_CARD:
+			return CreateCardEffect.new()
+		
 		EffectType.Type.CAST:
 			return CastEffect.new()
 		

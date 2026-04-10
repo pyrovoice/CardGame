@@ -27,15 +27,16 @@ func apply_modification(effect_context: Dictionary, game_context: Game) -> Dicti
 ## @param game_context: Game - The game context for accessing game state
 ## @return: bool - True if this effect should apply
 func applies_to(effect_type: String, effect_context: Dictionary, game_context: Game) -> bool:
-	# Check if the source card is still valid
-	var source_card = source_card_data.get_card_object()
-	if not source_card or not is_instance_valid(source_card):
+	# Check if the source card still exists in game data (headless-safe).
+	if not source_card_data:
+		return false
+	var source_zone = game_context.game_data.get_card_zone(source_card_data)
+	if source_zone == GameZone.e.UNKNOWN:
 		return false
 	
 	# Check ActiveZones condition
 	var active_zones = conditions.get("ActiveZones", "Any")
 	if active_zones != "Any":
-		var source_zone = game_context.getCardZone(source_card)
 		if not _is_zone_valid(active_zones, source_zone):
 			return false
 	
@@ -81,7 +82,7 @@ func _is_zone_valid(zone_condition: String, actual_zone: GameZone.e) -> bool:
 	
 	match zone_condition:
 		"Battlefield":
-			return actual_zone in [GameZone.e.BATTLEFIELD_PLAYER, GameZone.e.BATTLEFIELD_OPPONENT, GameZone.e.COMBAT_PLAYER, GameZone.e.COMBAT_OPPONENT]
+			return GameZone.is_in_play(actual_zone)
 		"Hand":
 			return actual_zone in [GameZone.e.HAND_PLAYER, GameZone.e.HAND_OPPONENT]
 		"Graveyard":

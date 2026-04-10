@@ -4,6 +4,7 @@ var owner_card_data: WeakRef  # Reference to the CardData that owns this ability
 var effect_type: EffectType.Type  # What effect does this ability have
 var effect_parameters: Dictionary  # Parameters for the effect (token name, damage amount, etc.)
 var targeting_requirements: Dictionary  # For abilities that need targets
+var description = ""
 
 func _init(p_owner: CardData):
 	owner_card_data = weakref(p_owner)

@@ -20,9 +20,6 @@ var is_facedown: bool = true
 
 var cardData: CardData
 var objectID
-var damage = 0
-var isToken = false
-var playerControlled: bool = true  # Which player controls this card
 
 static var objectUUID = -1
 static func getNextID():
@@ -51,11 +48,20 @@ func setData(_cardData):
 		return
 	cardData = _cardData
 	objectID = getNextID()
-	card_2d.set_card(cardData)
 	# Connect to CardData signal to update display when data changes
 	cardData.dirty_data.connect(_on_card_data_changed)
-	updateDisplay()
-	
+
+	if is_node_ready():
+		# Already ready, apply immediately
+		card_2d.set_card(cardData)
+		updateDisplay()
+	else:
+		# Defer display setup until _ready() has run and @onready vars are initialized
+		ready.connect(func():
+			card_2d.set_card(cardData)
+			updateDisplay()
+		, CONNECT_ONE_SHOT)
+
 	# Defer setting the card_object reference until after we're in the tree
 	# This prevents instantiation issues when creating cards
 	if is_inside_tree():
@@ -84,13 +90,10 @@ func getPower():
 	return cardData.power
 
 func getDamage():
-	return damage
+	return cardData.damage
 	
 func receiveDamage(v: int):
-	damage += v
-	# Emit dirty_data signal since damage affects display
-	if cardData:
-		cardData.dirty_data.emit()
+	cardData.receiveDamage(v)
 	updateDisplay()
 	
 	# Find the Game node and resolve state-based actions

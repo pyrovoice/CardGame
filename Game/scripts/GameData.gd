@@ -25,27 +25,8 @@ var playerDeckList: DeckList
 var opponentDeckList: DeckList
 
 # === CARD TRACKING (Data Model) ===
-# Zone tracking - arrays of CardData instances
-var cards_in_hand_player: Array[CardData] = []
-var cards_in_hand_opponent: Array[CardData] = []
-var cards_in_extra_hand_player: Array[CardData] = []
-var cards_on_battlefield_player: Array[CardData] = []
-var cards_on_battlefield_opponent: Array[CardData] = []
-var cards_in_graveyard_player: Array[CardData] = []
-var cards_in_graveyard_opponent: Array[CardData] = []
-var cards_in_deck_player: Array[CardData] = []
-var cards_in_deck_opponent: Array[CardData] = []
-var cards_in_extra_deck_player: Array[CardData] = []
-
-# Combat zone tracking - maps zone to arrays of CardData
-var cards_in_combat_zones: Dictionary = {}  # CombatZone -> Array[CardData]
-
-# Card zone tracking (MVC Model: Single source of truth for card locations)
-var card_to_zone: Dictionary = {}  # CardData -> GameZone.e
-var card_to_combat_spot: Dictionary = {}  # CardData -> CombatantFightingSpot
-
-# Note: Zone tracking now uses GameZone.e enum for type safety
-# Combat zones still use string-based tracking in cards_in_combat_zones since they're dynamic
+# Unified zone tracking - all zones use the same pattern (PRIVATE: use get_cards_in_zone())
+var _cards_by_zone: Dictionary = {}  # GameZone.e -> Array[CardData]
 
 func _init():
 	# Initialize SignalInt values
@@ -60,6 +41,12 @@ func _init():
 	# Initialize empty deck lists (will be populated in game.gd)
 	playerDeckList = DeckList.new([])
 	opponentDeckList = DeckList.new([])
+	
+	# Initialize all zone arrays
+	for zone in GameZone.e.values():
+		if zone != GameZone.e.UNKNOWN:
+			var zone_cards: Array[CardData] = []
+			_cards_by_zone[zone] = zone_cards
 
 func increase_danger_level():
 	"""Increase the danger level by 1 each turn"""
@@ -103,8 +90,6 @@ func start_new_turn():
 	"""Start a new turn and increase danger level"""
 	current_turn.value += 1
 	increase_danger_level()
-	# Add gold per turn (could be made configurable)
-	add_gold(1)
 
 func is_player_defeated() -> bool:
 	"""Check if the player has been defeated"""
@@ -184,12 +169,15 @@ func reset_combat_zone_data(combat_zone):
 ## Get all cards currently in play (battlefield + combat)
 func get_cards_in_play() -> Array[CardData]:
 	var result: Array[CardData] = []
-	result.append_array(cards_on_battlefield_player)
-	result.append_array(cards_on_battlefield_opponent)
 	
-	# Add cards from all combat zones
-	for zone_cards in cards_in_combat_zones.values():
-		result.append_array(zone_cards)
+	# Add battlefield cards
+	result.append_array(get_cards_in_zone(GameZone.e.BATTLEFIELD_PLAYER))
+	result.append_array(get_cards_in_zone(GameZone.e.BATTLEFIELD_OPPONENT))
+	
+	# Add combat zone cards
+	for zone in [GameZone.e.COMBAT_PLAYER_1, GameZone.e.COMBAT_PLAYER_2, GameZone.e.COMBAT_PLAYER_3,
+				 GameZone.e.COMBAT_OPPONENT_1, GameZone.e.COMBAT_OPPONENT_2, GameZone.e.COMBAT_OPPONENT_3]:
+		result.append_array(get_cards_in_zone(zone))
 	
 	return result
 
@@ -210,97 +198,146 @@ func get_opponent_owned_cards() -> Array[CardData]:
 	return get_cards_in_play().filter(func(c): return not c.playerOwned)
 
 ## Add a card to a specific zone
-func add_card_to_zone(card_data: CardData, zone: GameZone.e) -> void:
+func add_card_to_zone(card_data: CardData, zone: GameZone.e, index: int = -1) -> int:
 	if not card_data:
 		push_error("GameData.add_card_to_zone: card_data is null")
-		return
+		return -1
 	
 	# Remove from previous zone if exists
-	if card_to_zone.has(card_data):
-		remove_card_from_zone(card_data)
+	if card_data.current_zone != GameZone.e.UNKNOWN:
+		var removalSuccess = remove_card_from_zone(card_data)
+		if !removalSuccess:
+			return -1
 	
-	# Add to new zone
-	match zone:
-		GameZone.e.HAND_PLAYER:
-			cards_in_hand_player.append(card_data)
-		GameZone.e.HAND_OPPONENT:
-			cards_in_hand_opponent.append(card_data)
-		GameZone.e.BATTLEFIELD_PLAYER:
-			cards_on_battlefield_player.append(card_data)
-		GameZone.e.BATTLEFIELD_OPPONENT:
-			cards_on_battlefield_opponent.append(card_data)
-		GameZone.e.GRAVEYARD_PLAYER:
-			cards_in_graveyard_player.append(card_data)
-		GameZone.e.GRAVEYARD_OPPONENT:
-			cards_in_graveyard_opponent.append(card_data)
-		GameZone.e.DECK_PLAYER:
-			cards_in_deck_player.append(card_data)
-		GameZone.e.DECK_OPPONENT:
-			cards_in_deck_opponent.append(card_data)
-		GameZone.e.EXTRA_DECK_PLAYER:
-			cards_in_extra_deck_player.append(card_data)
-		GameZone.e.COMBAT_PLAYER, GameZone.e.COMBAT_OPPONENT:
-			# Combat zones tracked separately - use card_to_combat_spot for specific location
-			pass
-		_:
-			push_error("GameData.add_card_to_zone: Unknown zone: " + str(zone))
-			return
+	# Add to zone array
+	if zone == GameZone.e.UNKNOWN:
+		push_error("GameData.add_card_to_zone: Cannot add to UNKNOWN zone")
+		return -1
 	
-	# Update tracking
-	card_to_zone[card_data] = zone
+	# Insert at specified index or append to end
+	card_data.current_zone = zone
+	if index >= 0 and index < _cards_by_zone[zone].size():
+		_cards_by_zone[zone].insert(index, card_data)
+		return index
+	else:
+		_cards_by_zone[zone].append(card_data)
+		return _cards_by_zone[zone].size()
 
 ## Remove a card from its current zone
-func remove_card_from_zone(card_data: CardData) -> void:
+func remove_card_from_zone(card_data: CardData) -> bool:
 	if not card_data:
-		return
+		return false
 	
-	if not card_to_zone.has(card_data):
-		return
+	var zone: GameZone.e = card_data.current_zone
+	if zone == GameZone.e.UNKNOWN:
+		return false
 	
-	var zone: GameZone.e = card_to_zone[card_data]
+	# Remove from zone array
+	if _cards_by_zone.has(zone):
+		_cards_by_zone[zone].erase(card_data)
 	
-	match zone:
-		GameZone.e.HAND_PLAYER:
-			cards_in_hand_player.erase(card_data)
-		GameZone.e.HAND_OPPONENT:
-			cards_in_hand_opponent.erase(card_data)
-		GameZone.e.BATTLEFIELD_PLAYER:
-			cards_on_battlefield_player.erase(card_data)
-		GameZone.e.BATTLEFIELD_OPPONENT:
-			cards_on_battlefield_opponent.erase(card_data)
-		GameZone.e.GRAVEYARD_PLAYER:
-			cards_in_graveyard_player.erase(card_data)
-		GameZone.e.GRAVEYARD_OPPONENT:
-			cards_in_graveyard_opponent.erase(card_data)
-		GameZone.e.DECK_PLAYER:
-			cards_in_deck_player.erase(card_data)
-		GameZone.e.DECK_OPPONENT:
-			cards_in_deck_opponent.erase(card_data)
-		GameZone.e.EXTRA_DECK_PLAYER:
-			cards_in_extra_deck_player.erase(card_data)
-		GameZone.e.COMBAT_PLAYER, GameZone.e.COMBAT_OPPONENT:
-			# Combat zones - handled via card_to_combat_spot
-			pass
-	
-	card_to_zone.erase(card_data)
-	card_to_combat_spot.erase(card_data)
+	# Clear card's zone tracking
+	card_data.current_zone = GameZone.e.UNKNOWN
+	return true
 
 ## Move a card from one zone to another
-func move_card(card_data: CardData, to_zone: GameZone.e) -> void:
-	remove_card_from_zone(card_data)
-	add_card_to_zone(card_data, to_zone)
+func move_card(card_data: CardData, to_zone: GameZone.e, index: int = -1) -> int:
+	if remove_card_from_zone(card_data):
+		return add_card_to_zone(card_data, to_zone, index)
+	return -1
 
-## Get the zone a card is currently in
+## Get the zone a card is currently in (with verification)
 func get_card_zone(card_data: CardData) -> GameZone.e:
-	return card_to_zone.get(card_data, GameZone.e.UNKNOWN)
+	if not card_data:
+		return GameZone.e.UNKNOWN
+	
+	var claimed_zone = card_data.current_zone
+	
+	# Verify card is actually in the claimed zone
+	if claimed_zone != GameZone.e.UNKNOWN:
+		if _cards_by_zone.has(claimed_zone) and _cards_by_zone[claimed_zone].has(card_data):
+			return claimed_zone
+		
+		# Card claims a zone but isn't actually there - data corruption!
+		push_warning("GameData.get_card_zone: Card '%s' claims zone %s but isn't in that zone array. Searching all zones..." % [card_data.cardName, GameZone.get_as_string(claimed_zone)])
+	
+	# Card doesn't know its zone or verification failed - search all zones
+	var actual_zone = _find_card_in_zones(card_data)
+	if actual_zone != GameZone.e.UNKNOWN:
+		push_warning("GameData.get_card_zone: Card '%s' found in zone %s. Updating card's zone tracking." % [card_data.cardName, GameZone.get_as_string(actual_zone)])
+		card_data.current_zone = actual_zone
+		return actual_zone
+	
+	return GameZone.e.UNKNOWN
 
-## Assign card to combat spot
-func assign_card_to_combat_spot(card_data: CardData, spot: CombatantFightingSpot) -> void:
-	card_to_combat_spot[card_data] = spot
+## Search all zones to find a card (slow - only called when verification fails)
+func _find_card_in_zones(card_data: CardData) -> GameZone.e:
+	for zone in _cards_by_zone:
+		if _cards_by_zone[zone].has(card_data):
+			return zone
+	return GameZone.e.UNKNOWN
 
-## Get combat spot for card
-func get_card_combat_spot(card_data: CardData) -> CombatantFightingSpot:
-	return card_to_combat_spot.get(card_data, null)
+## Get array index of card in its combat zone (returns -1 if not in combat)
+func get_card_combat_index(card_data: CardData) -> int:
+	var zone = get_card_zone(card_data)
+	if not GameZone.is_combat_zone(zone):
+		return -1
+	return get_cards_in_zone(zone).find(card_data)
+
+## Get cards in a specific zone
+func get_cards_in_zone(zone: GameZone.e) -> Array[CardData]:
+	if not _cards_by_zone.has(zone):
+		return []
+	return (_cards_by_zone[zone] as Array[CardData])
+
+## Parse zone string to GameZone.e enum
+func parse_zone_string_to_enum(zone_str: String, from_player_perspective: bool) -> GameZone.e:
+	"""Parse zone string to GameZone.e enum
+	
+	Args:
+		zone_str: Zone string like "Graveyard.Opponent", "Deck.Player", "Hand.Controller"
+		from_player_perspective: If true, "Opponent" = opponent zones. If false (opponent card), "Opponent" = player zones.
+	
+	Returns:
+		GameZone.e enum
+	"""
+	# Handle .Controller - convert based on perspective
+	var resolved_zone = zone_str
+	if ".Controller" in zone_str:
+		if from_player_perspective:
+			resolved_zone = zone_str.replace(".Controller", ".Player")
+		else:
+			resolved_zone = zone_str.replace(".Controller", ".Opponent")
+	# For opponent-controlled cards, swap Player/Opponent perspective
+	elif not from_player_perspective:
+		if ".Player" in zone_str:
+			resolved_zone = zone_str.replace(".Player", ".Opponent")
+		elif ".Opponent" in zone_str:
+			resolved_zone = zone_str.replace(".Opponent", ".Player")
+	
+	# Map to GameZone.e enum
+	match resolved_zone:
+		"Graveyard.Player":
+			return GameZone.e.GRAVEYARD_PLAYER
+		"Graveyard.Opponent":
+			return GameZone.e.GRAVEYARD_OPPONENT
+		"Deck.Player":
+			return GameZone.e.DECK_PLAYER
+		"Deck.Opponent":
+			return GameZone.e.DECK_OPPONENT
+		"Hand.Player":
+			return GameZone.e.HAND_PLAYER
+		"Hand.Opponent":
+			return GameZone.e.HAND_OPPONENT
+		"ExtraDeck.Player":
+			return GameZone.e.EXTRA_DECK_PLAYER
+		"Battlefield.Player", "PlayerBase":
+			return GameZone.e.BATTLEFIELD_PLAYER
+		"Battlefield.Opponent":
+			return GameZone.e.BATTLEFIELD_OPPONENT
+		_:
+			push_error("Unknown zone string: ", zone_str, " (resolved to: ", resolved_zone, ")")
+			return GameZone.e.UNKNOWN
 
 ## Serialize complete game state to dictionary (for save/load/undo)
 func serialize() -> Dictionary:
@@ -321,19 +358,8 @@ func serialize() -> Dictionary:
 	}
 	
 	# Serialize each zone (use GameZone.get_as_string() for keys)
-	data["zones"][GameZone.get_as_string(GameZone.e.HAND_PLAYER)] = _serialize_card_array(cards_in_hand_player)
-	data["zones"][GameZone.get_as_string(GameZone.e.HAND_OPPONENT)] = _serialize_card_array(cards_in_hand_opponent)
-	data["zones"][GameZone.get_as_string(GameZone.e.BATTLEFIELD_PLAYER)] = _serialize_card_array(cards_on_battlefield_player)
-	data["zones"][GameZone.get_as_string(GameZone.e.BATTLEFIELD_OPPONENT)] = _serialize_card_array(cards_on_battlefield_opponent)
-	data["zones"][GameZone.get_as_string(GameZone.e.GRAVEYARD_PLAYER)] = _serialize_card_array(cards_in_graveyard_player)
-	data["zones"][GameZone.get_as_string(GameZone.e.GRAVEYARD_OPPONENT)] = _serialize_card_array(cards_in_graveyard_opponent)
-	data["zones"][GameZone.get_as_string(GameZone.e.DECK_PLAYER)] = _serialize_card_array(cards_in_deck_player)
-	data["zones"][GameZone.get_as_string(GameZone.e.DECK_OPPONENT)] = _serialize_card_array(cards_in_deck_opponent)
-	data["zones"][GameZone.get_as_string(GameZone.e.EXTRA_DECK_PLAYER)] = _serialize_card_array(cards_in_extra_deck_player)
-	
-	# Serialize combat zones
-	for zone_name in cards_in_combat_zones:
-		data["zones"][zone_name] = _serialize_card_array(cards_in_combat_zones[zone_name])
+	for zone in _cards_by_zone:
+		data["zones"][GameZone.get_as_string(zone)] = _serialize_card_array(_cards_by_zone[zone])
 	
 	return data
 
@@ -357,24 +383,8 @@ func duplicate_state() -> GameData:
 	copy.current_turn.value = current_turn.value
 	
 	# Deep copy all zone arrays
-	copy.cards_in_hand_player = cards_in_hand_player.duplicate()
-	copy.cards_in_hand_opponent = cards_in_hand_opponent.duplicate()
-	copy.cards_in_extra_hand_player = cards_in_extra_hand_player.duplicate()
-	copy.cards_on_battlefield_player = cards_on_battlefield_player.duplicate()
-	copy.cards_on_battlefield_opponent = cards_on_battlefield_opponent.duplicate()
-	copy.cards_in_graveyard_player = cards_in_graveyard_player.duplicate()
-	copy.cards_in_graveyard_opponent = cards_in_graveyard_opponent.duplicate()
-	copy.cards_in_deck_player = cards_in_deck_player.duplicate()
-	copy.cards_in_deck_opponent = cards_in_deck_opponent.duplicate()
-	copy.cards_in_extra_deck_player = cards_in_extra_deck_player.duplicate()
-	
-	# Deep copy combat zones
-	for zone_name in cards_in_combat_zones:
-		copy.cards_in_combat_zones[zone_name] = cards_in_combat_zones[zone_name].duplicate()
-	
-	# Copy dictionaries
-	copy.card_to_zone = card_to_zone.duplicate()
-	copy.card_to_combat_spot = card_to_combat_spot.duplicate()
+	for zone in _cards_by_zone:
+		copy._cards_by_zone[zone] = _cards_by_zone[zone].duplicate()
 	
 	return copy
 
@@ -384,12 +394,11 @@ func print_game_state() -> void:
 	print("Life: ", player_life.value, " | Shield: ", player_shield.value, " | Gold: ", player_gold.value)
 	print("Turn: ", current_turn.value, " | Danger: ", danger_level.value)
 	print("")
-	print("Player Hand: ", cards_in_hand_player.size(), " cards")
-	print("Opponent Hand: ", cards_in_hand_opponent.size(), " cards")
-	print("Player Battlefield: ", cards_on_battlefield_player.size(), " cards")
-	print("Opponent Battlefield: ", cards_on_battlefield_opponent.size(), " cards")
-	print("Player Graveyard: ", cards_in_graveyard_player.size(), " cards")
-	print("Opponent Graveyard: ", cards_in_graveyard_opponent.size(), " cards")
-	print("Combat Zones: ", cards_in_combat_zones.size())
-	print("Total tracked cards: ", card_to_zone.size())
+	print("Player Hand: ", get_cards_in_zone(GameZone.e.HAND_PLAYER).size(), " cards")
+	print("Opponent Hand: ", get_cards_in_zone(GameZone.e.HAND_OPPONENT).size(), " cards")
+	print("Player Battlefield: ", get_cards_in_zone(GameZone.e.BATTLEFIELD_PLAYER).size(), " cards")
+	print("Opponent Battlefield: ", get_cards_in_zone(GameZone.e.BATTLEFIELD_OPPONENT).size(), " cards")
+	print("Player Graveyard: ", get_cards_in_zone(GameZone.e.GRAVEYARD_PLAYER).size(), " cards")
+	print("Opponent Graveyard: ", get_cards_in_zone(GameZone.e.GRAVEYARD_OPPONENT).size(), " cards")
+	print("Total Zones: ", _cards_by_zone.size())
 	print("===========================")

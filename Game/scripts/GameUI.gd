@@ -40,12 +40,12 @@ func _update_all_ui():
 		_on_danger_level_changed(game_data.danger_level.value, game_data.danger_level.value)
 		_on_turn_changed(game_data.current_turn.value, game_data.current_turn.value)
 
-func _on_player_life_changed(new_value: float, old_value: float):
+func _on_player_life_changed(new_value: float, _old_value: float):
 	"""Update player life display"""
 	if player_life_label:
 		player_life_label.text = "Life: " + str(int(new_value))
 
-func _on_player_shield_changed(new_value: float, old_value: float):
+func _on_player_shield_changed(new_value: float, _old_value: float):
 	"""Update player shield display"""
 	if player_shield_label:
 		player_shield_label.text = "Shield: " + str(int(new_value))
@@ -61,16 +61,16 @@ func _on_player_gold_changed(new_value: float, old_value: float):
 	if player_gold:
 		player_gold.text = str(int(new_value))
 	print("Player Gold: ", old_value, " -> ", new_value)
-func _on_opponent_gold_changed(new_value: float, old_value: float):
+func _on_opponent_gold_changed(new_value: float, _old_value: float):
 	if opponent_gold:
 		opponent_gold.text = str(int(new_value))
 		
-func _on_danger_level_changed(new_value: float, old_value: float):
+func _on_danger_level_changed(new_value: float, _old_value: float):
 	"""Update danger level display"""
 	if danger_level_label:
 		danger_level_label.text = "Danger: " + str(int(new_value))
 
-func _on_turn_changed(new_value: float, old_value: float):
+func _on_turn_changed(new_value: float, _old_value: float):
 	"""Update turn display"""
 	if turn_label:
 		turn_label.text = "Turn: " + str(int(new_value))

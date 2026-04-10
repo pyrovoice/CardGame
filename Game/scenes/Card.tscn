@@ -3,7 +3,7 @@
 [ext_resource type="Script" uid="uid://m81mshlqb0l7" path="res://Game/scripts/Card.gd" id="1_p5v87"]
 [ext_resource type="PackedScene" uid="uid://d3lfyqqnp8p75" path="res://Shared/scenes/Card2D.tscn" id="2_card2d"]
 [ext_resource type="Texture2D" uid="uid://b83fgso4e737m" path="res://Shared/resources/card-back.png" id="4_g4dbd"]
-[ext_resource type="Script" path="res://Game/scripts/CardAnimator.gd" id="4_wt28i"]
+[ext_resource type="Script" uid="uid://crvy3nprwr6aw" path="res://Game/scripts/CardAnimator.gd" id="4_wt28i"]
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_card"]
 size = Vector3(0.66, 2.015, 0.27)

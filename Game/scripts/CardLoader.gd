@@ -1,12 +1,26 @@
 extends Node
 class_name CardLoader
 
+enum Archetype {
+	UNKNOWN,
+	PUNGLYND,
+	NECROMANCER,
+	# Add more archetypes as new folders are created
+}
+
 var cardData: Array[CardData] = []
 var extraDeckCardData: Array[CardData] = []
 var tokensData: Array[CardData] = []
 var opponentCards: Array[CardData] = []
 
+# Dictionary mapping Archetype enum to Array[CardData]
+var archetype_pools: Dictionary = {}
+
 func _ready():
+	# Initialize archetype pools with properly typed arrays
+	for archetype in Archetype.values():
+		var pool: Array[CardData] = []
+		archetype_pools[archetype] = pool
 	load_all_cards()
 	
 # Parse card data from text content (can be from file or string)
@@ -198,9 +212,10 @@ func parse_abilities(properties: Dictionary, card_data: CardData) -> Array[CardA
 				trigger_lines = [trigger_lines]
 			
 			for trigger_line in trigger_lines:
-				var trigger_ability = parse_triggered_ability(trigger_line, svar_effects, card_data)
-				if trigger_ability:
-					abilities.append(trigger_ability)
+				var trigger_abilities = _parse_multiple_triggered_abilities(trigger_line, svar_effects, card_data)
+				for trigger_ability in trigger_abilities:
+					if trigger_ability:
+						abilities.append(trigger_ability)
 		elif key == "R":
 			var replacement_lines = properties[key]
 			# Handle both single string and array of strings
@@ -221,6 +236,52 @@ func parse_abilities(properties: Dictionary, card_data: CardData) -> Array[CardA
 				var activated_ability = parse_activated_ability(activated_line, svar_effects, card_data)
 				if activated_ability:
 					abilities.append(activated_ability)
+	
+	return abilities
+
+# Helper to parse triggered abilities that may have multiple effects
+func _parse_multiple_triggered_abilities(trigger_text: String, svar_effects: Dictionary, card_data: CardData) -> Array[TriggeredAbility]:
+	"""Parse a trigger that may have multiple Execute$ effects separated by &"""
+	var abilities: Array[TriggeredAbility] = []
+	
+	# First, parse the base trigger to extract the Execute$ part
+	var execute_effects: Array[String] = []
+	var base_trigger = trigger_text
+	
+	# Look for Execute$ in the trigger text
+	if " Execute$ " in trigger_text or "|Execute$" in trigger_text:
+		var parts = trigger_text.split(" | ")
+		for i in range(parts.size()):
+			var part = parts[i].strip_edges()
+			if part.begins_with("Execute$"):
+				# Extract the effect names (may be multiple separated by &)
+				var effect_names_str = part.substr(9)  # Remove "Execute$ "
+				
+				# Split by & if there are multiple effects
+				if "&" in effect_names_str:
+					var effect_names = effect_names_str.split("&")
+					for effect_name in effect_names:
+						execute_effects.append(effect_name.strip_edges())
+				else:
+					execute_effects.append(effect_names_str.strip_edges())
+				
+				# Create base trigger without Execute$ for reuse
+				var base_parts = parts.duplicate()
+				base_parts.remove_at(i)
+				base_trigger = " | ".join(base_parts)
+				break
+	
+	# If no effects found, return empty array
+	if execute_effects.is_empty():
+		return abilities
+	
+	# Create a triggered ability for each effect
+	for effect_name in execute_effects:
+		# Reconstruct trigger with single Execute$
+		var single_trigger = base_trigger + " | Execute$ " + effect_name
+		var ability = parse_triggered_ability(single_trigger, svar_effects, card_data)
+		if ability:
+			abilities.append(ability)
 	
 	return abilities
 
@@ -263,16 +324,6 @@ func parse_triggered_ability(trigger_text: String, svar_effects: Dictionary, car
 		# Use the effect type from SVar if available
 		if not svar_data.get("effect_type", "").is_empty():
 			effect_name = svar_data["effect_type"]
-		
-		# Debug logging for Grave Whisperer
-		if card_data.cardName == "Grave Whisperer":
-			print("🔍 [PARSE] Grave Whisperer - Execute name: ", effect_name)
-			print("🔍 [PARSE] SVar data found: ", svar_data)
-			print("🔍 [PARSE] Effect parameters: ", effect_parameters)
-	else:
-		if card_data.cardName == "Grave Whisperer":
-			print("❌ [PARSE] Grave Whisperer - Execute '", effect_name, "' NOT FOUND in SVars!")
-			print("   Available SVars: ", svar_effects.keys())
 	
 	# Set default trigger zone to Battlefield if not specified
 	if not trigger_conditions.has(TriggeredAbility.TriggerCondition.TRIGGER_ZONES):
@@ -287,10 +338,6 @@ func parse_triggered_ability(trigger_text: String, svar_effects: Dictionary, car
 	
 	# Convert effect name to EffectType
 	var effect_type = EffectType.string_to_type(effect_name)
-	
-	# Debug logging for Grave Whisperer
-	if card_data.cardName == "Grave Whisperer":
-		print("🔍 [PARSE] Final effect_name: '", effect_name, "' -> EffectType: ", EffectType.type_to_string(effect_type))
 	
 	# Create the TriggeredAbility instance directly
 	var ability = TriggeredAbility.new(card_data, game_event, effect_type)
@@ -450,8 +497,8 @@ func parse_replacement_effect(replacement_text: String, svar_effects: Dictionary
 		if not svar_data.get("effect_type", "").is_empty():
 			effect_name = svar_data["effect_type"]
 	
-	# Convert effect name to EffectType
-	var effect_type = EffectType.string_to_type(effect_name)
+	# Replacement abilities are keyed by the event they replace (e.g., CreateToken).
+	var effect_type = EffectType.string_to_type(event_type)
 	
 	# Build conditions with event type
 	var conditions = replacement_conditions.duplicate()
@@ -476,13 +523,13 @@ func parse_replacement_effect(replacement_text: String, svar_effects: Dictionary
 	return ability
 
 # Helper to create appropriate ReplacementEffect instance based on effect type
-func _create_replacement_effect(owner: CardData, effect_type_str: String, conditions: Dictionary, modifications: Dictionary) -> ReplacementEffect:
+func _create_replacement_effect(source: CardData, effect_type_str: String, conditions: Dictionary, modifications: Dictionary) -> ReplacementEffect:
 	"""Create the appropriate ReplacementEffect subclass based on effect type"""
 	var effect: ReplacementEffect = null
 	
 	match effect_type_str:
 		"ReplaceToken":
-			effect = ReplaceTokenEffect.new(owner, conditions, modifications)
+			effect = ReplaceTokenEffect.new(source, conditions, modifications)
 		_:
 			print("⚠️ Unknown replacement effect type: ", effect_type_str)
 			return null
@@ -542,7 +589,7 @@ func parse_activated_ability(activated_text: String, _svar_effects: Dictionary, 
 	ability.activation_costs = activation_costs
 	ability.effect_parameters = effect_parameters
 	ability.targeting_requirements = target_conditions
-	
+	ability.description = description
 	return ability
 
 # Parse activation costs from cost string (e.g., "T Sac<1:Card.Creature>" or "Sac.Self+Pay.1")
@@ -648,6 +695,10 @@ func parse_effect_parameters(effect_text: String) -> Dictionary:
 			parameters["Defined"] = part.substr(9)
 		elif part.begins_with("NumCards$"):
 			parameters["NumCards"] = part.substr(10)
+		elif part.begins_with("Num$"):
+			parameters["Num"] = part.substr(5)
+		elif part.begins_with("Pool$"):
+			parameters["Pool"] = part.substr(6)
 		elif part.begins_with("Type$"):
 			parameters["Type"] = part.substr(6)
 		elif part.begins_with("Amount$"):
@@ -718,7 +769,7 @@ func load_card_art(card_name: String) -> Texture2D:
 	return null
 
 
-func load_card_from_file(file_path: String) -> CardData:
+func load_card_from_file(file_path: String, archetype: Archetype = Archetype.UNKNOWN) -> CardData:
 	var file = FileAccess.open(file_path, FileAccess.READ)
 	if not file:
 		push_error("Could not open file: " + file_path)
@@ -733,13 +784,41 @@ func load_card_from_file(file_path: String) -> CardData:
 	if card_data and card_data.cardName:
 		card_data.cardArt = load_card_art(card_data.cardName)
 	
+	# Add to archetype pool
+	if archetype != Archetype.UNKNOWN:
+		archetype_pools[archetype].append(card_data)
+	
 	if card_data.hasType(CardData.CardType.LEGENDARY):
 		extraDeckCardData.push_back(card_data)
 	else:
 		cardData.push_back(card_data)
 	return card_data
 
-func load_opponent_card_from_file(file_path: String) -> CardData:
+func load_token_from_file(file_path: String, archetype: Archetype = Archetype.UNKNOWN) -> CardData:
+	"""Load a token card file - tokens are NOT added to cardData/extraDeckCardData"""
+	var file = FileAccess.open(file_path, FileAccess.READ)
+	if not file:
+		push_error("Could not open file: " + file_path)
+		return null
+	
+	var file_content = file.get_as_text()
+	file.close()
+	
+	var card_data = parse_card_data(file_content)
+	
+	# Extract card name from file path to load corresponding art
+	if card_data and card_data.cardName:
+		card_data.cardArt = load_card_art(card_data.cardName)
+	
+	# Add to archetype pool
+	if archetype != Archetype.UNKNOWN:
+		archetype_pools[archetype].append(card_data)
+	
+	# Tokens are NOT added to cardData or extraDeckCardData
+	# They will be added to tokensData by the caller
+	return card_data
+
+func load_opponent_card_from_file(file_path: String, archetype: Archetype = Archetype.UNKNOWN) -> CardData:
 	var file = FileAccess.open(file_path, FileAccess.READ)
 	if not file:
 		push_error("Could not open file: " + file_path)
@@ -753,6 +832,10 @@ func load_opponent_card_from_file(file_path: String) -> CardData:
 	# Set opponent ownership property
 	if card_data:
 		card_data.playerOwned = false
+		
+		# Add to archetype pool
+		if archetype != Archetype.UNKNOWN:
+			archetype_pools[archetype].append(card_data)
 		
 		# Debug logging for Grave Whisperer
 		if card_data.cardName == "Grave Whisperer":
@@ -777,37 +860,46 @@ func load_all_cards():
 		extraDeckCardData = []
 		tokensData = []
 		opponentCards = []
-	# Load regular cards
+	# Load regular cards (recursively supports subdirectories)
 	var dir = DirAccess.open("res://Cards/Cards/")
 	
 	if not dir:
 		push_error("Could not open Cards/Cards directory")
 	else:
-		dir.list_dir_begin()
-		var file_name = dir.get_next()
-		
-		while file_name != "":
-			# Load card files, but skip directories
-			if file_name.ends_with(".txt") and not dir.current_is_dir():
-				load_card_from_file("res://Cards/Cards/" + file_name)
-			file_name = dir.get_next()
+		_load_cards_from_directory_recursive("res://Cards/Cards/", dir, false, "res://Cards/Cards")
+		print("Loaded ", cardData.size() + extraDeckCardData.size(), " regular cards")
 	
-	# Load tokens
+	# Load tokens (recursively supports subdirectories)
 	var token_dir = DirAccess.open("res://Cards/Tokens/")
 	
 	if not token_dir:
 		push_error("Could not open Cards/Tokens directory")
 	else:
+		# Tokens need special handling since they go in tokensData array
 		token_dir.list_dir_begin()
 		var token_file_name = token_dir.get_next()
 		
 		while token_file_name != "":
-			# Load token files, but skip directories
-			if token_file_name.ends_with(".txt") and not token_dir.current_is_dir():
-				var token_data = load_card_from_file("res://Cards/Tokens/" + token_file_name)
+			var full_path = "res://Cards/Tokens/" + token_file_name
+			
+			if token_dir.current_is_dir():
+				# Skip special directories
+				if token_file_name != "." and token_file_name != "..":
+					# Recursively search token subdirectories
+					var sub_dir = DirAccess.open(full_path)
+					if sub_dir:
+						_load_tokens_from_directory_recursive(full_path, sub_dir)
+			elif token_file_name.ends_with(".txt"):
+				# Extract archetype from folder structure
+				var archetype = _extract_archetype_from_path(full_path, "res://Cards/Tokens")
+				
+				var token_data = load_token_from_file(full_path, archetype)
 				if token_data:
 					tokensData.push_back(token_data)
+			
 			token_file_name = token_dir.get_next()
+		
+		print("Loaded ", tokensData.size(), " tokens")
 	
 	# Load opponent cards
 	var opponent_dir = DirAccess.open("res://Cards/OpponentCards/")
@@ -815,10 +907,16 @@ func load_all_cards():
 	if not opponent_dir:
 		push_error("Could not open Cards/OpponentCards directory")
 	else:
-		_load_cards_from_directory_recursive("res://Cards/OpponentCards/", opponent_dir, true)
+		_load_cards_from_directory_recursive("res://Cards/OpponentCards/", opponent_dir, true, "res://Cards/OpponentCards")
 		print("Loaded ", opponentCards.size(), " opponent cards")
+	
+	# Print archetype pool summary
+	for archetype in Archetype.values():
+		var pool_size = archetype_pools[archetype].size()
+		if pool_size > 0:
+			print("Archetype ", Archetype.keys()[archetype], ": ", pool_size, " cards")
 
-func _load_cards_from_directory_recursive(base_path: String, dir: DirAccess, is_opponent: bool = false):
+func _load_cards_from_directory_recursive(base_path: String, dir: DirAccess, is_opponent: bool = false, root_path: String = ""):
 	"""Recursively load card files from a directory and its subdirectories"""
 	dir.list_dir_begin()
 	var file_name = dir.get_next()
@@ -832,19 +930,80 @@ func _load_cards_from_directory_recursive(base_path: String, dir: DirAccess, is_
 				# Recursively search subdirectories
 				var sub_dir = DirAccess.open(full_path)
 				if sub_dir:
-					_load_cards_from_directory_recursive(full_path, sub_dir, is_opponent)
+					_load_cards_from_directory_recursive(full_path, sub_dir, is_opponent, root_path)
 		elif file_name.ends_with(".txt"):
+			# Extract archetype from folder structure
+			var archetype = _extract_archetype_from_path(full_path, root_path)
+			
 			# Load card file
 			if is_opponent:
-				var opponent_card = load_opponent_card_from_file(full_path)
+				var opponent_card = load_opponent_card_from_file(full_path, archetype)
 				if opponent_card:
 					opponentCards.push_back(opponent_card)
 			else:
-				load_card_from_file(full_path)
+				load_card_from_file(full_path, archetype)
 		
 		file_name = dir.get_next()
 	
 	dir.list_dir_end()
+
+func _load_tokens_from_directory_recursive(base_path: String, dir: DirAccess):
+	"""Recursively load token files from a directory and its subdirectories"""
+	dir.list_dir_begin()
+	var file_name = dir.get_next()
+	
+	while file_name != "":
+		var full_path = base_path + "/" + file_name
+		
+		if dir.current_is_dir():
+			# Skip special directories
+			if file_name != "." and file_name != "..":
+				# Recursively search subdirectories
+				var sub_dir = DirAccess.open(full_path)
+				if sub_dir:
+					_load_tokens_from_directory_recursive(full_path, sub_dir)
+		elif file_name.ends_with(".txt"):
+			# Extract archetype from folder structure
+			var archetype = _extract_archetype_from_path(full_path, "res://Cards/Tokens")
+			
+			# Load token file
+			var token_data = load_token_from_file(full_path, archetype)
+			if token_data:
+				tokensData.push_back(token_data)
+		
+		file_name = dir.get_next()
+	
+	dir.list_dir_end()
+
+func _extract_archetype_from_path(file_path: String, root_path: String) -> Archetype:
+	"""Extract archetype enum from file path based on subfolder name"""
+	# Remove root path to get relative path
+	var relative_path = file_path.replace(root_path + "/", "")
+	
+	# If there's no subfolder (file directly in root), return UNKNOWN
+	if not "/" in relative_path:
+		return Archetype.UNKNOWN
+	
+	# Get the first folder name
+	var folder_name = relative_path.split("/")[0].to_upper()
+	
+	# Map folder name to archetype enum
+	match folder_name:
+		"PUNGLYND":
+			return Archetype.PUNGLYND
+		"NECROMANCER":
+			return Archetype.NECROMANCER
+		_:
+			return Archetype.UNKNOWN
+
+func get_archetype_pool(archetype: Archetype) -> Array[CardData]:
+	"""Get all cards belonging to a specific archetype"""
+	if archetype in archetype_pools:
+		var pool = archetype_pools[archetype]
+		if pool is Array:
+			return pool
+	var empty_pool: Array[CardData] = []
+	return empty_pool
 
 # Get a random opponent card
 func getRandomOpponentCard() -> CardData:
@@ -858,12 +1017,6 @@ func getRandomCard() -> CardData:
 # Helper functions to duplicate abilities with new owner reference
 func _duplicate_triggered_ability(original: TriggeredAbility, new_owner: CardData) -> TriggeredAbility:
 	# Debug logging for Grave Whisperer
-	if new_owner.cardName == "Grave Whisperer":
-		print("🔍 [DUPLICATE] Grave Whisperer triggered ability:")
-		print("   - game_event_trigger: ", original.game_event_trigger)
-		print("   - effect_type: ", EffectType.type_to_string(original.effect_type))
-		print("   - effect_parameters: ", original.effect_parameters)
-		print("   - trigger_conditions: ", original.trigger_conditions)
 	
 	var copy = TriggeredAbility.new(new_owner, original.game_event_trigger, original.effect_type)
 	copy.effect_parameters = original.effect_parameters.duplicate()

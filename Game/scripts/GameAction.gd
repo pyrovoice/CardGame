@@ -22,7 +22,7 @@ func is_zone_change() -> bool:
 	return from_zone != to_zone
 
 func is_battlefield_entry() -> bool:
-	return to_zone in [GameZone.e.BATTLEFIELD_PLAYER, GameZone.e.BATTLEFIELD_OPPONENT, GameZone.e.COMBAT_PLAYER, GameZone.e.COMBAT_OPPONENT]
+	return GameZone.is_in_play(to_zone)
 
 func is_battlefield_exit() -> bool:
-	return from_zone in [GameZone.e.BATTLEFIELD_PLAYER, GameZone.e.BATTLEFIELD_OPPONENT, GameZone.e.COMBAT_PLAYER, GameZone.e.COMBAT_OPPONENT]
+	return GameZone.is_in_play(from_zone)

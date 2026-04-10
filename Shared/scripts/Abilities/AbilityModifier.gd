@@ -153,7 +153,7 @@ func _is_zone_valid(zone_condition: String, actual_zone: GameZone.e) -> bool:
 	
 	match zone_condition:
 		"Battlefield":
-			return actual_zone in [GameZone.e.BATTLEFIELD_PLAYER, GameZone.e.BATTLEFIELD_OPPONENT, GameZone.e.COMBAT_PLAYER, GameZone.e.COMBAT_OPPONENT]
+			return GameZone.is_in_play(actual_zone)
 		"Hand":
 			return actual_zone in [GameZone.e.HAND_PLAYER, GameZone.e.HAND_OPPONENT]
 		"Graveyard":

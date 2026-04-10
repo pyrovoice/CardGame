@@ -1,0 +1,2 @@
+
+CardText: I have +1 might for each debuf.

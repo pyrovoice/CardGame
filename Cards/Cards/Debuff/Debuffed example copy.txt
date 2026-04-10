@@ -1,0 +1,2 @@
+
+CardText: If I would receive a debuff, give me a +1 might buff instead.

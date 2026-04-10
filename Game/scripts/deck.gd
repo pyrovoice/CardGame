@@ -19,11 +19,11 @@ func get_card_count() -> int:
 	if game and game.game_data:
 		match zone_name:
 			GameZone.e.DECK_PLAYER:
-				return game.game_data.cards_in_deck_player.size()
+				return game.game_data.get_cards_in_zone(GameZone.e.DECK_PLAYER).size()
 			GameZone.e.DECK_OPPONENT:
-				return game.game_data.cards_in_deck_opponent.size()
+				return game.game_data.get_cards_in_zone(GameZone.e.DECK_OPPONENT).size()
 			GameZone.e.EXTRA_DECK_PLAYER:
-				return game.game_data.cards_in_extra_deck_player.size()
+				return game.game_data.get_cards_in_zone(GameZone.e.EXTRA_DECK_PLAYER).size()
 	return 0
 
 # Override update_size to adjust the height of the CardMesh based on GameData card count

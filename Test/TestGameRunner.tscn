@@ -2,5 +2,103 @@
 
 [ext_resource type="Script" uid="uid://d0kui2ggtoihp" path="res://Test/TestGameRunner.gd" id="1_testgamerunner"]
 
-[node name="TestGameRunner" type="Node"]
+[node name="TestGameRunner" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
 script = ExtResource("1_testgamerunner")
+
+[node name="SuiteSelector" type="Panel" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="VBox" type="VBoxContainer" parent="SuiteSelector"]
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -200.0
+offset_top = -150.0
+offset_right = 200.0
+offset_bottom = 150.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Title" type="Label" parent="SuiteSelector/VBox"]
+layout_mode = 2
+text = "Select Test Suite"
+horizontal_alignment = 1
+
+[node name="Spacer" type="Control" parent="SuiteSelector/VBox"]
+custom_minimum_size = Vector2(0, 20)
+layout_mode = 2
+
+[node name="ControllerButton" type="Button" parent="SuiteSelector/VBox"]
+layout_mode = 2
+text = "Run Controller Tests (Headless)"
+
+[node name="ViewButton" type="Button" parent="SuiteSelector/VBox"]
+layout_mode = 2
+text = "Run View Tests (With Animations)"
+
+[node name="BothButton" type="Button" parent="SuiteSelector/VBox"]
+layout_mode = 2
+text = "Run Both Test Suites"
+
+[node name="TestUI" type="Panel" parent="."]
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="RunAll" type="Button" parent="TestUI"]
+layout_mode = 0
+offset_left = 7.0
+offset_top = 16.0
+offset_right = 106.0
+offset_bottom = 54.0
+text = "Run All Tests"
+
+[node name="RunFailed" type="Button" parent="TestUI"]
+layout_mode = 0
+offset_left = 117.0
+offset_top = 16.0
+offset_right = 216.0
+offset_bottom = 54.0
+text = "Run Failed Tests"
+
+[node name="RunUntilFail" type="Button" parent="TestUI"]
+layout_mode = 0
+offset_left = 227.0
+offset_top = 16.0
+offset_right = 326.0
+offset_bottom = 54.0
+text = "Run To Fail"
+
+[node name="Back" type="Button" parent="TestUI"]
+layout_mode = 0
+offset_left = 1040.0
+offset_top = 16.0
+offset_right = 1139.0
+offset_bottom = 54.0
+text = "Back to Menu"
+
+[node name="TestGrid" type="GridContainer" parent="TestUI"]
+layout_mode = 0
+offset_left = 26.0
+offset_top = 71.0
+offset_right = 1109.0
+offset_bottom = 611.0
+columns = 4

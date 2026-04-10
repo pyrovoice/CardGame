@@ -30,18 +30,29 @@ func canPayCosts(costs: Array[Dictionary], source_card_data: CardData) -> bool:
 				
 				if target == "Self":
 					# Can always sacrifice self if the card is in play
-					var source_zone = source_card_data.current_zone
-					if source_zone not in [GameZone.e.BATTLEFIELD_PLAYER, GameZone.e.COMBAT_PLAYER]:
+					var source_zone = current_game.game_data.get_card_zone(source_card_data)
+					var is_correct_controller_zone = GameZone.is_player_zone(source_zone) if source_card_data.playerControlled else GameZone.is_opponent_zone(source_zone)
+					if not GameZone.is_in_play(source_zone) or not is_correct_controller_zone:
 						return false
 				else:
 					# Check if there are enough valid cards to sacrifice based on the filter
-					var cards_data = current_game.game_data.get_cards_in_play()
-					var valid_count = 0
-					for card_data in cards_data:
-						if _matches_card_filter(card_data, target):
-							valid_count += 1
+					var controller_filter = "YouCtrl" if source_card_data.playerControlled else "OppCtrl"
+					
+					# Inject controller filter into each OR branch
+					var target_filter: String
+					if target == "":
+						target_filter = controller_filter
+					else:
+						# Split by "/" (OR), inject controller into each, rejoin
+						var or_branches = target.split("/")
+						var filtered_branches: Array[String] = []
+						for branch in or_branches:
+							filtered_branches.append(controller_filter + "+" + branch)
+						target_filter = "/".join(filtered_branches)
+					
+					var valid_count = current_game._matches_card_filter(target_filter).size()
 					if valid_count < count:
-						print("⚠️ Not enough valid cards to sacrifice (need ", count, ", found ", valid_count, ") for filter: ", target)
+						print("⚠️ Not enough valid cards to sacrifice (need ", count, ", found ", valid_count, ") for filter: ", target_filter)
 						return false
 			
 			"PayMana":
@@ -221,7 +232,8 @@ func tryPayCard(card_data: CardData, selected_additional_cards_data: Array[CardD
 	
 	# Check if we can afford it
 	if not current_game.game_data.has_gold(gold_cost, card_data.playerControlled):
-		print("❌ Not enough gold! Need: ", gold_cost, " Have: ", current_game.game_data.get_gold(card_data.playerControlled))
+		var current_gold = current_game.game_data.player_gold.getValue() if card_data.playerControlled else current_game.game_data.opponent_gold.getValue()
+		print("❌ Not enough gold! Need: ", gold_cost, " Have: ", current_gold)
 		return result
 	
 	result.gold_cost = gold_cost
@@ -263,6 +275,18 @@ func findReplaceTarget(card_data: CardData, selected_cards_data: Array[CardData]
 	
 	return null
 
+func _get_matching_cards_in_pool(filter: String, card_pool: Array[CardData]) -> Array[CardData]:
+	"""Filter a specific card pool using game's global card filter matcher."""
+	var matching_cards: Array[CardData] = []
+	if not current_game or card_pool.is_empty():
+		return matching_cards
+
+	for card_data in current_game._matches_card_filter(filter):
+		if card_data in card_pool:
+			matching_cards.append(card_data)
+
+	return matching_cards
+
 func isValidReplaceTarget(card: CardData, replace_target_data: CardData) -> bool:
 	"""Check if a specific card is a valid Replace target for the given card"""
 	if not card or not replace_target_data:
@@ -271,14 +295,16 @@ func isValidReplaceTarget(card: CardData, replace_target_data: CardData) -> bool
 	# Check if card has Replace option and validate the target directly
 	for cost_data in card.additionalCosts:
 		if cost_data.get("cost_type", "") == "Replace":
+			var single_target: Array[CardData] = [replace_target_data]
+			
 			# Check primary valid targets
 			var valid_card_filter = cost_data.get("valid_card", "")
-			if valid_card_filter != "" and _matches_card_filter(replace_target_data, valid_card_filter):
+			if valid_card_filter != "" and _get_matching_cards_in_pool(valid_card_filter, single_target).size() > 0:
 				return true
 			
 			# Check alternative valid targets
 			var valid_card_alt_filter = cost_data.get("valid_card_alt", "")
-			if valid_card_alt_filter != "" and _matches_card_filter(replace_target_data, valid_card_alt_filter):
+			if valid_card_alt_filter != "" and _get_matching_cards_in_pool(valid_card_alt_filter, single_target).size() > 0:
 				return true
 			
 			break
@@ -327,6 +353,11 @@ func canPaySingleAdditionalCost(cost_data: Dictionary, playerSide = true) -> boo
 
 func canSacrificePermanents(cost_data: Dictionary, playerSide = true) -> bool:
 	"""Check if player can sacrifice the required permanents"""
+	# Defensive check: ensure this method is called with the correct cost type
+	if cost_data.get("cost_type", "") != "SacrificePermanent":
+		print("    ERROR: canSacrificePermanents called with wrong cost_type: ", cost_data.get("cost_type", ""))
+		return false
+	
 	if not current_game:
 		print("    ERROR: current_game is null")
 		return false
@@ -342,15 +373,15 @@ func canSacrificePermanents(cost_data: Dictionary, playerSide = true) -> bool:
 		available_cards_data = current_game.game_data.get_opponent_controlled_cards()
 	
 	# Count valid cards
-	var valid_count = 0
-	for card_data in available_cards_data:
-		if _matches_card_filter(card_data, valid_card_filter):
-			valid_count += 1
-	
-	return valid_count >= required_count
+	return _get_matching_cards_in_pool(valid_card_filter, available_cards_data).size() >= required_count
 
 func canUseReplace(cost_data: Dictionary, playerSide = true) -> bool:
 	"""Check if player can use Replace (has valid targets for replacement)"""
+	# Defensive check: ensure this method is called with the correct cost type
+	if cost_data.get("cost_type", "") != "Replace":
+		print("    ERROR: canUseReplace called with wrong cost_type: ", cost_data.get("cost_type", ""))
+		return false
+	
 	if not current_game:
 		print("    ERROR: current_game is null")
 		return false
@@ -364,17 +395,13 @@ func canUseReplace(cost_data: Dictionary, playerSide = true) -> bool:
 	
 	# Check primary valid targets
 	var valid_card_filter = cost_data.get("valid_card", "")
-	if valid_card_filter != "":
-		for card_data in available_cards_data:
-			if _matches_card_filter(card_data, valid_card_filter):
-				return true
+	if valid_card_filter != "" and _get_matching_cards_in_pool(valid_card_filter, available_cards_data).size() > 0:
+		return true
 	
 	# Check alternative valid targets
 	var valid_card_alt_filter = cost_data.get("valid_card_alt", "")
-	if valid_card_alt_filter != "":
-		for card_data in available_cards_data:
-			if _matches_card_filter(card_data, valid_card_alt_filter):
-				return true
+	if valid_card_alt_filter != "" and _get_matching_cards_in_pool(valid_card_alt_filter, available_cards_data).size() > 0:
+		return true
 	
 	# No valid targets found
 	return false
@@ -385,72 +412,32 @@ func payAdditionalCosts(additional_costs: Array[Dictionary], selected_cards_data
 	Returns Array[CardData] of cards to sacrifice (game.gd handles actual movement)
 	"""
 	var cards_to_sacrifice: Array[CardData] = []
-	
-	# Find Replace targets based on the actual Replace cost data
-	var replace_targets: Array[CardData] = []
-	
-	# Check if we have Replace costs to identify Replace targets
-	var has_replace_cost = false
-	for cost_data in additional_costs:
-		if cost_data.get("cost_type", "") == "Replace":
-			has_replace_cost = true
-			break
-	
-	if has_replace_cost:
-		replace_targets = findActualReplaceTargets(additional_costs, selected_cards_data)
-	
-	# Add Replace targets to sacrifice list
-	for replace_target in replace_targets:
-		cards_to_sacrifice.append(replace_target)
-	
-	# Process regular additional costs (like SacrificePermanent)
+
+	# selected_cards_data is assumed to contain cards for a single cost type flow:
+	# either Replace targets or SacrificePermanent targets, never both.
 	for cost_data in additional_costs:
 		var cost_type = cost_data.get("cost_type", "")
 		if cost_type == "Replace":
-			continue # Skip Replace costs - handled above
-			
-		if cost_type == "SacrificePermanent":
-			var sacrifice_cards = getSacrificeCards(cost_data, selected_cards_data, replace_targets)
+			for card_data in selected_cards_data:
+				if card_data and card_data not in cards_to_sacrifice:
+					cards_to_sacrifice.append(card_data)
+		elif cost_type == "SacrificePermanent":
+			var sacrifice_cards = getSacrificeCards(cost_data, selected_cards_data)
 			cards_to_sacrifice.append_array(sacrifice_cards)
 	
 	return cards_to_sacrifice
 
-func getSacrificeCards(cost_data: Dictionary, selected_cards_data: Array[CardData], exclude_cards: Array[CardData]) -> Array[CardData]:
-	"""Get cards to sacrifice from selected cards (excluding Replace targets)"""
+func getSacrificeCards(cost_data: Dictionary, selected_cards_data: Array[CardData]) -> Array[CardData]:
+	"""Get cards to sacrifice from selected cards"""
 	var result: Array[CardData] = []
 	var required_count = cost_data.get("count", 1)
 	
 	for card_data in selected_cards_data:
-		if card_data not in exclude_cards:
-			result.append(card_data)
-			if result.size() >= required_count:
-				break
+		result.append(card_data)
+		if result.size() >= required_count:
+			break
 	
 	return result
-
-func findActualReplaceTargets(additional_costs: Array[Dictionary], selected_cards_data: Array[CardData]) -> Array[CardData]:
-	"""Find actual Replace targets by checking against Replace cost criteria"""
-	var replace_targets: Array[CardData] = []
-	
-	for cost_data in additional_costs:
-		if cost_data.get("cost_type", "") == "Replace":
-			# Check each selected card against Replace criteria
-			var valid_card_filter = cost_data.get("valid_card", "")
-			var valid_card_alt_filter = cost_data.get("valid_card_alt", "")
-			
-			for card_data in selected_cards_data:
-				if card_data:
-					# Check against primary criteria
-					if valid_card_filter != "" and _matches_card_filter(card_data, valid_card_filter):
-						replace_targets.append(card_data)
-						continue
-					
-					# Check against alternative criteria
-					if valid_card_alt_filter != "" and _matches_card_filter(card_data, valid_card_alt_filter):
-						replace_targets.append(card_data)
-			break # Only one Replace cost per card
-	
-	return replace_targets
 
 func findReplaceTargetsInCards(selected_cards_data: Array[CardData]) -> Array[CardData]:
 	"""Find Replace targets among selected cards (used when we don't have the casting card context)"""
@@ -510,7 +497,8 @@ func calculateReplaceCost(card_data: CardData, replacement_target_data: CardData
 		if cost_data.get("cost_type", "") == "Replace":
 			# Check if this target matches the alternative criteria for extra reduction
 			var valid_card_alt_filter = cost_data.get("valid_card_alt", "")
-			if valid_card_alt_filter != "" and _matches_card_filter(replacement_target_data, valid_card_alt_filter):
+			var single_target: Array[CardData] = [replacement_target_data]
+			if valid_card_alt_filter != "" and _get_matching_cards_in_pool(valid_card_alt_filter, single_target).size() > 0:
 				additional_reduction = cost_data.get("add_reduction", 0)
 			break
 	
@@ -531,33 +519,18 @@ func getValidReplaceTargets(card_data: CardData, replace_cost_data: Dictionary) 
 	else:
 		available_cards_data = current_game.game_data.get_opponent_controlled_cards()
 	
-	# Add primary valid targets
+	# Add primary valid targets using unified filter
 	var valid_card_filter = replace_cost_data.get("valid_card", "")
 	if valid_card_filter != "":
-		# Filter CardData directly
-		for card_data_item in available_cards_data:
-			if _matches_card_filter(card_data_item, valid_card_filter):
-				valid_targets.append(card_data_item)
+		var primary_targets = _get_matching_cards_in_pool(valid_card_filter, available_cards_data)
+		valid_targets.append_array(primary_targets)
 	
-	# Add alternative valid targets
+	# Add alternative valid targets using unified filter
 	var valid_card_alt_filter = replace_cost_data.get("valid_card_alt", "")
 	if valid_card_alt_filter != "":
-		for card_data_item in available_cards_data:
-			if _matches_card_filter(card_data_item, valid_card_alt_filter):
-				if card_data_item not in valid_targets:
-					valid_targets.append(card_data_item)
+		var alt_targets = _get_matching_cards_in_pool(valid_card_alt_filter, available_cards_data)
+		for target in alt_targets:
+			if target not in valid_targets:
+				valid_targets.append(target)
 	
 	return valid_targets
-
-# Helper to match card filter (simplified version - expand as needed)
-func _matches_card_filter(card_data: CardData, filter: String) -> bool:
-	"""Check if CardData matches the filter string"""
-	match filter:
-		"Card":
-			return true
-		"Creature":
-			return card_data.hasType(CardData.CardType.CREATURE)
-		"Goblin":
-			return card_data.hasType(CardData.CardType.CREATURE) and card_data.hasSubtype("Goblin")
-		_:
-			return false

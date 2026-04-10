@@ -1,0 +1,10 @@
+Name:Punglynd Prince
+ManaCost:1
+Types:Creature Punglynd Child
+Power:1
+T:Mode$ CardEnters | Origin$ Any | Destination$ Battlefield | ValidCard$ Card.Self | Execute$ TrigToken&TrigCreateCard | TriggerDescription$ Whenever CARDNAME enters or attack, a Punglynd Child is born.
+SVar:TrigToken$ Token | TokenScript$ Punglynd Child
+SVar:TrigCreateCard$ CreateCard | Num$ 1 | Pool$ Archetype.Punglynd | Modif$ fleeting
+AA:$ Pump | Cost$ Discard<1> | ValidCards$ Creature.YouCtrl | KW$ Haste | Duration$ EndOfTurn
+CardText:When I enter, create a random fleeting Punglynd card in your hand and create a Child.
+Discard a card: Target creature you control gains haste this turn.

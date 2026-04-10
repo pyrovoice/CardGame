@@ -33,16 +33,12 @@ func activateAbility(source_card_data: CardData, activated_ability: ActivatedAbi
 	
 	# Execute payment: sacrifice cards
 	for sacrifice_card_data in payment_info.cards_to_sacrifice:
-		var sacrifice_card_node = sacrifice_card_data.get_card_object()
-		if sacrifice_card_node and is_instance_valid(sacrifice_card_node):
-			var dest_zone = GameZone.e.GRAVEYARD_PLAYER if sacrifice_card_data.playerOwned else GameZone.e.GRAVEYARD_OPPONENT
-			await game_context.execute_move_card(sacrifice_card_node, dest_zone)
+		var dest_zone = GameZone.e.GRAVEYARD_PLAYER if sacrifice_card_data.playerOwned else GameZone.e.GRAVEYARD_OPPONENT
+		await game_context.execute_move_card(sacrifice_card_data, dest_zone)
 	
 	# Execute payment: tap card if needed
 	if payment_info.card_to_tap:
-		var card_to_tap_node = payment_info.card_to_tap.get_card_object()
-		if card_to_tap_node and is_instance_valid(card_to_tap_node):
-			card_to_tap_node.tap()
+		payment_info.card_to_tap.tap()
 	
 	# Execute the ability effect using CardData (which persists even if Card is freed)
 	await executeAbilityEffect(source_card_data, activated_ability, game_context)
@@ -100,21 +96,26 @@ func executeAbilityEffect(source_card_data: CardData, ability, game_context: Gam
 	
 	# Resolve targets at the ability level (before effect execution)
 	var resolved_parameters = effect_parameters.duplicate()
-	
-	# For effects that need target resolution
-	match effect_type_enum:
-		EffectType.Type.ADD_KEYWORD:
-			# Merge ValidCards from target_conditions
-			if target_conditions.has("ValidCards"):
-				resolved_parameters["ValidCards"] = target_conditions.get("ValidCards")
-			# Resolve targets
-			var targets = TargetResolver.resolve_targets(resolved_parameters, source_card_data, game_context)
-			resolved_parameters["Targets"] = targets
-		
-		EffectType.Type.ADD_TYPE:
-			# Resolve Self or other targets
-			var targets = TargetResolver.resolve_targets(resolved_parameters, source_card_data, game_context)
-			resolved_parameters["Targets"] = targets
+
+	# Merge target conditions generically; effect classes decide how to resolve targets.
+	for condition_key in target_conditions.keys():
+		if not resolved_parameters.has(condition_key):
+			resolved_parameters[condition_key] = target_conditions[condition_key]
+
+	# Resolve targets at orchestration level (not inside effects).
+	# If required targeting cannot be satisfied, cancel effect execution.
+	var has_preselected_targets = resolved_parameters.has("Targets") and not resolved_parameters.get("Targets", []).is_empty()
+	var has_targeting_spec = resolved_parameters.has("Target") or resolved_parameters.has("ValidCards") or resolved_parameters.has("ValidTargets")
+	var requires_targets = bool(target_conditions.get("required", false)) or EffectType.requires_targeting(effect_type_enum)
+
+	if not has_preselected_targets and has_targeting_spec:
+		var resolved_targets = TargetResolver.resolve_targets(resolved_parameters, source_card_data, game_context)
+		if not resolved_targets.is_empty():
+			resolved_parameters["Targets"] = resolved_targets
+
+	if requires_targets and (not resolved_parameters.has("Targets") or resolved_parameters.get("Targets", []).is_empty()):
+		print("⚠️ No valid targets resolved for required effect ", EffectType.type_to_string(effect_type_enum), " on ", source_card_data.cardName, " - cancelling effect")
+		return
 	
 	# Apply replacement effects from the registry
 	# This happens before the effect executes
@@ -143,13 +144,13 @@ func onEffectTrigger(effect_context: Dictionary, game_context: Game) -> Dictiona
 		
 		for ability in card_data.replacement_abilities:
 			# Check if this replacement effect applies to the current effect
-			if shouldReplacementEffectApply(ability, effect_context, card_data):
+			if shouldReplacementEffectApply(ability, effect_context, card_data, game_context):
 				# Apply the replacement effect
 				modified_context = applyReplacementEffect(ability, modified_context, card_data)
 	
 	return modified_context
 
-func shouldReplacementEffectApply(replacement_ability: ReplacementAbility, effect_context: Dictionary, replacement_source_data: CardData) -> bool:
+func shouldReplacementEffectApply(replacement_ability: ReplacementAbility, effect_context: Dictionary, replacement_source_data: CardData, game_context: Game) -> bool:
 	"""Check if a replacement effect should apply to the current effect"""
 	var effect_type = effect_context.get("effect_type", "")
 	var ability_event_type = replacement_ability.effect_parameters.get("event_type", "")
@@ -167,9 +168,9 @@ func shouldReplacementEffectApply(replacement_ability: ReplacementAbility, effec
 	var active_zones = conditions.get("ActiveZones", "Any")
 	
 	if active_zones != "Any":
-		var replacement_source_zone = replacement_source_data.current_zone
+		var replacement_source_zone = game_context.game_data.get_card_zone(replacement_source_data)
 		if active_zones == "Battlefield":
-			if replacement_source_zone not in [GameZone.e.BATTLEFIELD_PLAYER, GameZone.e.BATTLEFIELD_OPPONENT, GameZone.e.COMBAT_PLAYER, GameZone.e.COMBAT_OPPONENT]:
+			if not GameZone.is_in_play(replacement_source_zone):
 				return false
 		elif active_zones == "Hand":
 			if replacement_source_zone not in [GameZone.e.HAND_PLAYER, GameZone.e.HAND_OPPONENT]:
@@ -201,7 +202,7 @@ func _isZoneConditionMet(zone_condition: String, actual_zone: GameZone.e) -> boo
 	
 	match zone_condition:
 		"Battlefield":
-			return actual_zone in [GameZone.e.BATTLEFIELD_PLAYER, GameZone.e.BATTLEFIELD_OPPONENT, GameZone.e.COMBAT_PLAYER, GameZone.e.COMBAT_OPPONENT]
+			return GameZone.is_in_play(actual_zone)
 		"Hand":
 			return actual_zone in [GameZone.e.HAND_PLAYER, GameZone.e.HAND_OPPONENT]
 		"Graveyard":

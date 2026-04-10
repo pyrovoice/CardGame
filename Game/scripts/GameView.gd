@@ -18,23 +18,25 @@ class_name GameView
 ## - Handle input (that's Game's job via PlayerControl)
 
 # Zone container references
-var player_hand: CardHand
-var extra_hand: CardHand
-var opponent_hand: CardHand
-var player_base: PlayerBase
-var deck: Deck
-var deck_opponent: Deck
-var extra_deck: CardContainer
-var graveyard: Graveyard
-var graveyard_opponent: Graveyard
+@onready var player_hand: CardHand = $PlayerHand
+@onready var extra_hand: CardHand = $ExtraHand
+@onready var opponent_hand: CardHand = $OpponentHand
+@onready var player_base: PlayerBase = $playerBase
+@onready var deck: Deck = $Deck
+@onready var deck_opponent: Deck = $DeckOpponent
+@onready var extra_deck: CardContainer = $extraDeck
+@onready var graveyard: Graveyard = $graveyard
+@onready var graveyard_opponent: Graveyard = $graveyardOpponent
 var combat_zones: Array[CombatZone] = []
+@onready var opponentbase: PlayerBase = $opponentbase
+@onready var recycle_area: Area3D = $recycleArea
 
 # UI references
-var game_ui: GameUI
-var draw_button: Button
-var admin_button: Button
-var alternative_cast_choice: Control
-var admin_scene: AdminConsole
+@onready var game_ui: GameUI = $UI
+@onready var draw_button: Button = $UI/draw
+@onready var admin_button: Button = $UI/AdminButton
+@onready var alternative_cast_choice: Control = $UI/AlternativeCastChoice
+@onready var admin_scene: AdminConsole = $UI/AdminScene
 
 # Headless mode - skips all animations and visual updates
 var headless: bool = false
@@ -47,38 +49,113 @@ func _init():
 ## Initialize view by finding all child nodes from itself
 func setup(is_headless: bool = false) -> void:
 	headless = is_headless
-	# Find zone containers (all children of GameView node)
-	player_hand = get_node("PlayerHand")
-	extra_hand = get_node("ExtraHand")
-	opponent_hand = get_node("OpponentHand")
-	player_base = get_node("playerBase")
-	deck = get_node("Deck")
-	deck_opponent = get_node("DeckOpponent")
-	extra_deck = get_node("extraDeck")
-	graveyard = get_node("graveyard")
-	graveyard_opponent = get_node("graveyardOpponent")
-	
 	# Combat zones
 	combat_zones = [
 		get_node("combatZone"),
 		get_node("combatZone2"),
 		get_node("combatZone3")
 	]
-	
-	# UI references
-	game_ui = get_node("UI")
-	draw_button = game_ui.get_node("draw")
-	admin_button = game_ui.get_node("AdminButton")
-	alternative_cast_choice = game_ui.get_node("AlternativeCastChoice")
-	admin_scene = game_ui.get_node("AdminScene")
 
 ## Create a Card view node for the given CardData
-func create_card_view(card_data: CardData, is_player_controlled: bool, is_token: bool = false) -> Card:
+func create_card_view(card_data: CardData, zone: GameZone.e = GameZone.e.UNKNOWN) -> Card:
+	if headless:
+		return card_data.get_card_object() if card_data else null
+
 	var card: Card = CARD_SCENE.instantiate()
-	card.cardData = card_data
-	card.is_player_controlled = is_player_controlled
-	
+	if not card:
+		push_error("GameView.create_card_view: Failed to instantiate Card scene")
+		return null
+
+	if card_data:
+		card.setData(card_data)
+		card.name = card_data.cardName + "_" + str(Game.getObjectCountAndIncrement())
+
+	var game = get_parent() as Game
+	if game:
+		game.connect_card_to_highlight_manager(card)
+
+	if zone != GameZone.e.UNKNOWN:
+		var zone_container = get_zone_container(zone)
+		if zone_container:
+			zone_container.add_child(card)
+		else:
+			game.add_child(card)
+
 	return card
+
+func _is_container_zone(zone: GameZone.e) -> bool:
+	return zone == GameZone.e.DECK_PLAYER or \
+		zone == GameZone.e.DECK_OPPONENT or \
+		zone == GameZone.e.GRAVEYARD_PLAYER or \
+		zone == GameZone.e.GRAVEYARD_OPPONENT or \
+		zone == GameZone.e.EXTRA_DECK_PLAYER
+
+func get_target_node_for_zone(zone: GameZone.e) -> Node3D:
+	var zone_container = get_zone_container(zone)
+	if zone_container and zone_container is Node3D:
+		return zone_container as Node3D
+	return null
+
+func _get_or_create_card_for_zone_move(card_data: CardData) -> Card:
+	var card = card_data.get_card_object() if card_data else null
+	if card and is_instance_valid(card):
+		return card
+
+	if not card_data:
+		push_error("GameView._get_or_create_card_for_zone_move: card_data is null")
+		return null
+
+	var source_zone: GameZone.e = card_data.current_zone
+	var source_container = get_target_node_for_zone(source_zone)
+
+	if source_container and _is_container_zone(source_zone):
+		card = create_card_view(card_data)
+		if card:
+			source_container.add_child(card)
+			return card
+	else:
+		push_error("GameView._get_or_create_card_for_zone_move: Missing card view for non-container zone " + str(GameZone.e.keys()[source_zone]) + ". Creating fallback card view.")
+
+	card = create_card_view(card_data)
+	if card:
+		add_child(card)
+	return card
+
+func move_card_to_zone(card_data: CardData, target_zone: GameZone.e, duration: float = 0.5, local_target_offset: Vector3 = Vector3.INF, turn_face_up: bool = true, make_small_before_move: bool = false) -> void:
+	if headless:
+		return
+
+	var card = _get_or_create_card_for_zone_move(card_data)
+	if not card:
+		push_error("GameView.move_card_to_zone: Could not get or create card view")
+		return
+
+	var target_node = get_target_node_for_zone(target_zone)
+	if not target_node:
+		push_error("GameView.move_card_to_zone: Could not resolve target node for zone " + str(GameZone.e.keys()[target_zone]))
+		return
+
+	var final_local_target = local_target_offset
+	if final_local_target == Vector3.INF:
+		if target_zone == GameZone.e.BATTLEFIELD_PLAYER or target_zone == GameZone.e.BATTLEFIELD_OPPONENT:
+			var base = player_base if target_zone == GameZone.e.BATTLEFIELD_PLAYER else opponentbase
+			var battlefield_pos = base.getNextEmptyLocation()
+			if battlefield_pos == Vector3.INF:
+				push_error("GameView.move_card_to_zone: No space on battlefield")
+				return
+			final_local_target = battlefield_pos + Vector3(0, 0.2, 0)
+		else:
+			final_local_target = Vector3.ZERO
+
+	if turn_face_up:
+		card.setFlip(true)
+
+	if make_small_before_move:
+		card.getAnimator().make_small()
+
+	var tween = card.getAnimator().move_to_position(final_local_target, duration, target_node)
+	if tween:
+		await tween.finished
 
 func get_zone_container(zone: GameZone.e) -> Node:
 	match zone:
@@ -89,7 +166,7 @@ func get_zone_container(zone: GameZone.e) -> Node:
 		GameZone.e.BATTLEFIELD_PLAYER:
 			return player_base
 		GameZone.e.BATTLEFIELD_OPPONENT:
-			return player_base  # Both use same PlayerBase for now
+			return opponentbase
 		GameZone.e.GRAVEYARD_PLAYER:
 			return graveyard
 		GameZone.e.GRAVEYARD_OPPONENT:
@@ -100,9 +177,12 @@ func get_zone_container(zone: GameZone.e) -> Node:
 			return deck_opponent
 		GameZone.e.EXTRA_DECK_PLAYER:
 			return extra_deck
-		GameZone.e.COMBAT_PLAYER, GameZone.e.COMBAT_OPPONENT:
-			# Combat zones handled via card_to_combat_spot in GameData
-			return null
+		GameZone.e.COMBAT_PLAYER_1, GameZone.e.COMBAT_OPPONENT_1:
+			return combat_zones[0] if combat_zones.size() > 0 else null
+		GameZone.e.COMBAT_PLAYER_2, GameZone.e.COMBAT_OPPONENT_2:
+			return combat_zones[1] if combat_zones.size() > 1 else null
+		GameZone.e.COMBAT_PLAYER_3, GameZone.e.COMBAT_OPPONENT_3:
+			return combat_zones[2] if combat_zones.size() > 2 else null
 		_:
 			push_error("GameView.get_zone_container: Unknown zone: " + str(zone))
 			return null
@@ -120,7 +200,7 @@ func animate_draw_card(card_data: CardData, deck_position: Vector3, hand_positio
 	var draw_position = Vector3(0, 2, 1)
 	var animator = card.getAnimator()
 	
-	animator.draw_card(
+	var tween = animator.draw_card(
 		deck_position,
 		draw_position,
 		hand_position,
@@ -128,7 +208,8 @@ func animate_draw_card(card_data: CardData, deck_position: Vector3, hand_positio
 		should_flip
 	)
 	
-	await card.get_tree().create_timer(delay + 0.6).timeout
+	if tween:
+		await tween.finished
 
 ## Animate card from deck to hand (complete flow)
 func animate_deck_to_hand(card_data: CardData, dest_zone: GameZone.e) -> void:
@@ -158,7 +239,7 @@ func animate_deck_to_hand(card_data: CardData, dest_zone: GameZone.e) -> void:
 	# Create draw animation
 	var draw_position = Vector3(0, 2, 1)
 	var animator = card.getAnimator()
-	animator.draw_card(
+	var tween = animator.draw_card(
 		origin_pos,
 		draw_position,
 		dest_hand.global_position,
@@ -170,62 +251,22 @@ func animate_deck_to_hand(card_data: CardData, dest_zone: GameZone.e) -> void:
 	GameUtility.reparentCardWithoutMovingRepresentation(card, dest_hand)
 	
 	# Wait for animation to complete
-	await get_tree().create_timer(0.6).timeout
+	if tween:
+		await tween.finished
 	
 	# Arrange cards in hand
 	dest_hand.arrange_cards_fan([card])
 
 ## Animate card entering battlefield
 func animate_card_to_battlefield(card_data: CardData, dest_zone: GameZone.e) -> void:
-	if headless:
-		return
-	
-	# Get destination container
-	var dest = get_zone_container(dest_zone)
-	if not dest:
-		push_error("GameView.animate_card_to_battlefield: Could not find battlefield container")
-		return
-	
-	# Get or create Card view
-	var card = card_data.get_card_object()
-	if not card or not is_instance_valid(card):
-		card = create_card_view(card_data, card_data.playerControlled, false)
-	
-	# Reparent to battlefield container
-	GameUtility.reparentWithoutMoving(card, dest)
-	
-	# Get next available battlefield position
-	var target_position = get_next_battlefield_location()
-	if target_position == Vector3.INF:
-		push_error("GameView.animate_card_to_battlefield: No space on battlefield")
-		return
-	
-	# Set visual properties
-	card.setFlip(true)
-	card.getAnimator().make_small()
-	
-	# Animate to target position
-	var local_target = target_position + Vector3(0, 0.2, 0)
-	var tween = card.getAnimator().move_to_position(local_target, 0.8, dest)
-	if tween:
-		await tween.finished
+	await move_card_to_zone(card_data, dest_zone, 0.8, Vector3.INF, true, true)
 
 ## Animate card to graveyard
-func animate_card_to_graveyard(card_data: CardData, graveyard_position: Vector3) -> void:
-	if headless:
-		return
-	
-	var card = card_data.get_card_object()
-	if not card:
-		push_error("GameView.animate_card_to_graveyard: No view exists for card")
-		return
-	
-	var tween = card.getAnimator().move_to_position(graveyard_position, 0.5)
-	if tween:
-		await tween.finished
+func animate_card_to_graveyard(card_data: CardData, graveyard_zone: GameZone.e) -> void:
+	await move_card_to_zone(card_data, graveyard_zone, 0.5)
 
 ## Animate card to combat zone
-func animate_card_to_combat(card_data: CardData, combat_spot: CombatantFightingSpot) -> void:
+func animate_card_to_combat(card_data: CardData, combat_spot: GameZone.e, targetPosition: int = -1) -> void:
 	if headless:
 		return
 	
@@ -233,24 +274,17 @@ func animate_card_to_combat(card_data: CardData, combat_spot: CombatantFightingS
 	if not card:
 		push_error("GameView.animate_card_to_combat: No view exists for card")
 		return
-	
-	# CombatantFightingSpot.setCard handles the animation
-	combat_spot.setCard(card)
+
+	var combat_zone = get_zone_container(combat_spot) as CombatZone
+	if not combat_zone:
+		push_error("GameView.animate_card_to_combat: Invalid combat spot zone " + str(GameZone.e.keys()[combat_spot]))
+		return
+
+	combat_zone.set_card(card, targetPosition)
 
 ## Animate card back to base from combat
-func animate_card_to_base(card_data: CardData, base_position: Vector3, parent: Node) -> void:
-	if headless:
-		return
-	
-	var card = card_data.get_card_object()
-	if not card:
-		push_error("GameView.animate_card_to_base: No view exists for card")
-		return
-	
-	var local_target = base_position + Vector3(0, 0.2, 0)
-	var tween = card.getAnimator().move_to_position(local_target, 0.8, parent)
-	if tween:
-		await tween.finished
+func animate_card_to_base(card_data: CardData, targetZone: GameZone.e) -> void:
+	await move_card_to_zone(card_data, targetZone, 0.8, Vector3.INF, true, true)
 
 ## Generic card movement animation
 func animate_card_move(card_data: CardData, target_position: Vector3, duration: float = 0.5) -> void:
@@ -320,8 +354,8 @@ func set_zone_names() -> void:
 	graveyard_opponent.zone_name = GameZone.e.GRAVEYARD_OPPONENT
 
 ## Get next empty location on battlefield
-func get_next_battlefield_location() -> Vector3:
-	return player_base.getNextEmptyLocation()
+func get_next_battlefield_location(is_player: bool = true) -> Vector3:
+	return player_base.getNextEmptyLocation() if is_player else opponentbase.getNextEmptyLocation()
 
 ## Update deck visual size
 func update_deck_visuals() -> void:
@@ -428,7 +462,7 @@ func create_and_animate_drawn_cards(cards_to_draw: Array[CardData], is_player: b
 	
 	# Create Card views
 	for card_data in cards_to_draw:
-		var card_view = create_card_callback.call(card_data, is_player, null)
+		var card_view = create_card_callback.call(card_data, is_player)
 		card_view.global_position = deck_position
 		card_views.append(card_view)
 		hand.add_child(card_view)
@@ -443,19 +477,24 @@ func create_and_animate_drawn_cards(cards_to_draw: Array[CardData], is_player: b
 	for card in card_views:
 		card.card_representation.global_position = deck_position
 	
-	# Animate each card
+	# Animate each card, collect tweens
+	var draw_position = Vector3(0, 2, 1)
+	var last_tween: Tween = null
 	for i in range(card_views.size()):
-		var card = card_views[i]
-		animate_draw_card(
-			card.cardData,
+		var card_view = card_views[i]
+		var tween = card_view.getAnimator().draw_card(
 			deck_position,
-			card.global_position,
+			draw_position,
+			card_view.global_position,
 			i * 0.1,
-			is_player and card.is_facedown
+			is_player and card_view.is_facedown
 		)
+		if tween:
+			last_tween = tween
 	
-	# Wait for all animations to complete
-	await get_tree().create_timer(card_views.size() * 0.2 + 0.6).timeout
+	# Wait for the last card's tween to finish (it has the longest stagger delay)
+	if last_tween:
+		await last_tween.finished
 	
 	return card_views
 

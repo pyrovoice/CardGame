@@ -83,7 +83,6 @@ func register_to_game(game: Node):
 		
 		var owner = get_owner()
 		var card_name = owner.cardName if owner else "Unknown"
-		print("📡 [ABILITY REGISTER] ", card_name, " listening to '", signal_name, "'")
 
 func unregister_from_game(game: Node):
 	"""Disconnect from game signal (called when card leaves play or is destroyed)"""
@@ -128,20 +127,20 @@ func _on_game_event(event_card_data: CardData = null, _from_zone = null, _to_zon
 	
 	game.trigger_queue.add_resolvable(owner, self, event_context)
 
-func _check_trigger_conditions(owner: CardData, event_card_data: CardData, game: Node) -> bool:
+func _check_trigger_conditions(cardData: CardData, event_card_data: CardData, game: Game) -> bool:
 	"""Check if the trigger conditions for this ability are met"""
 	var trigger_zones = trigger_conditions.get(TriggerCondition.TRIGGER_ZONES, [])
 	if trigger_zones is Array and trigger_zones.size() > 0:
-		var owner_zone = game.game_data.get_card_zone(owner)
+		var cardData_zone = game.game_data.get_card_zone(cardData)
 		
-		if owner_zone not in trigger_zones:
+		if cardData_zone not in trigger_zones:
 			return false 
 			
 	var valid_card_filter = trigger_conditions.get(TriggerCondition.VALID_CARD, "")
 	if valid_card_filter != "":
 		# Special case: "Card.Self" means only this card can trigger this ability
 		if valid_card_filter == "Card.Self":
-			var matches = event_card_data == owner
+			var matches = event_card_data == cardData
 			if not matches:
 				return false
 		else:
@@ -149,54 +148,18 @@ func _check_trigger_conditions(owner: CardData, event_card_data: CardData, game:
 			if not event_card_data:
 				return false  # No card to validate against
 			
-			# Use CardData-based filtering (works in both headless and normal mode)
-			if not _matches_card_filter(event_card_data, valid_card_filter, game):
+			# Use unified filter from game (works in both headless and normal mode)
+			var single_card: Array[CardData] = [event_card_data]
+			if game._matches_card_filter(valid_card_filter).has(single_card):
 				return false
 	
 	# Check "Condition" field (e.g., "Self.Attacked+ThisTurn")
 	var condition_str = trigger_conditions.get(TriggerCondition.CONDITION, "")
 	if condition_str != "":
 		# Use AbilityManager to evaluate the condition
-		var condition_met = AbilityManagerAL.evaluateCondition(condition_str, owner)
+		var condition_met = AbilityManagerAL.evaluateCondition(condition_str, cardData)
 		if not condition_met:
 			return false
-	
-	return true
-
-func _matches_card_filter(card_data: CardData, filter: String, game) -> bool:
-	"""Check if CardData matches a filter string (works in headless mode)"""
-	if not card_data:
-		return false
-	
-	# Parse filter tokens (e.g., "Creature.YouCtrl" → ["Creature", "YouCtrl"])
-	var tokens = filter.split(".")
-	
-	for token in tokens:
-		match token:
-			"Card":
-				continue  # Generic, always matches
-			"Creature":
-				if card_data.cardType.to_lower() != "creature":
-					return false
-			"Instant":
-				if card_data.cardType.to_lower() != "instant":
-					return false
-			"Sorcery":
-				if card_data.cardType.to_lower() != "sorcery":
-					return false
-			"YouCtrl", "You Control":
-				if card_data.controller != game.game_data.get_player_id():
-					return false
-			"OppCtrl", "Opponent Control":
-				if card_data.controller == game.game_data.get_player_id():
-					return false
-			_:
-				# Unknown token - could be a subtype or custom check
-				# For now, check if it matches a subtype
-				if card_data.subtypes and token in card_data.subtypes:
-					continue  # Matches subtype
-				# If we don't recognize the token, fail conservatively
-				return false
 	
 	return true
 

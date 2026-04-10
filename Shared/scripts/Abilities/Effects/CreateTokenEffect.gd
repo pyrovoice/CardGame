@@ -21,13 +21,18 @@ func execute(parameters: Dictionary, source_card_data: CardData, game_context: G
 	
 	# Create the tokens
 	for i in range(tokens_to_create):
-		# Duplicate and register abilities for each token
-		var token_data = game_context.createCardData(token_template)
-		var card = game_context.createToken(token_data, source_card_data.playerControlled)
-	# Tokens enter the battlefield
+		# Tokens enter the battlefield immediately on creation.
 		var dest_zone = GameZone.e.BATTLEFIELD_PLAYER if source_card_data.playerControlled else GameZone.e.BATTLEFIELD_OPPONENT
-		await game_context.execute_move_card(card, dest_zone)
-		await game_context.resolveStateBasedAction()
+
+		# Create token data + view + movement through the centralized creation path.
+		var token_data = game_context.createCardData(
+			token_template,
+			dest_zone,
+			source_card_data.playerOwned
+		)
+		if not token_data:
+			continue
+		token_data.isToken = true
 
 func validate_parameters(parameters: Dictionary) -> bool:
 	return parameters.has("TokenScript")

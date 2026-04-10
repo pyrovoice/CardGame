@@ -54,6 +54,31 @@ func getCardSlot(i: int , allyTeam: bool) -> CombatantFightingSpot:
 	var spot = find_child(side + str(i))
 	return spot
 
+func set_card(card: Card, target_position: int = -1) -> void:
+	if not card or not is_instance_valid(card):
+		push_error("CombatZone.set_card: card is null or invalid")
+		return
+	if not card.cardData or not is_instance_valid(card.cardData):
+		push_error("CombatZone.set_card: card has no valid cardData")
+		return
+
+	var ally_team: bool = card.cardData.playerControlled
+	var spot: CombatantFightingSpot = null
+
+	if target_position >= 1 and target_position <= 3:
+		spot = getCardSlot(target_position, ally_team)
+		if spot and spot.getCard() != null:
+			spot = null
+
+	if not spot:
+		spot = getFirstEmptyLocation(ally_team)
+
+	if not spot:
+		push_error("CombatZone.set_card: No empty combat slot available")
+		return
+
+	spot.setCard(card)
+
 func update_resolve_fight_display(is_resolved: bool):
 	"""Update the appearance of the resolve fight label based on resolution status"""
 	resolve_fight_button.set_ready(is_resolved)

@@ -4,7 +4,7 @@ class_name TargetResolver
 ## Resolves targets for ability effects based on targeting parameters
 ## Handles ValidCards, Target specifications, and filtering
 
-static func resolve_targets(parameters: Dictionary, source_card_data: CardData, game_context: Game) -> Array:
+static func resolve_targets(parameters: Dictionary, source_card_data: CardData, game_context: Game) -> Array[CardData]:
 	"""
 	Resolve targets for an ability effect based on parameters.
 	
@@ -43,7 +43,7 @@ static func resolve_targets(parameters: Dictionary, source_card_data: CardData, 
 			print("⚠️ Unknown target specification: ", target_spec)
 			return []
 
-static func _resolve_self_target(source_card_data: CardData) -> Array:
+static func _resolve_self_target(source_card_data: CardData) -> Array[CardData]:
 	"""Resolve 'Self' target to the source card (returns CardData for consistency)"""
 	return [source_card_data]
 

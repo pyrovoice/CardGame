@@ -1,0 +1,2 @@
+
+CardText: When I enter or attack, move a debuf from one creature to another.

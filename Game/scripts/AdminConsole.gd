@@ -42,12 +42,8 @@ func _on_add_card_pressed():
 		print("Admin Error: Card '", card_name, "' not found")
 		return
 	
-	# Create card from data
-	var card: Card = game.createCardFromData(card_data, true)
-	card.getAnimator().make_small()
-	card.setFlip(true)
-	# Note: Size animation now handled internally by CardAnimator
-	GameUtility.reparentWithoutMoving(card, game.player_hand)
+	# Create card through controller - handles data, view, signals, and zone registration
+	game.createCardData(card_data, GameZone.e.HAND_PLAYER, true)
 	game.activeHand.arrange_cards_fan()
 
 func _on_close_pressed():

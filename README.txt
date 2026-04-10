@@ -88,6 +88,7 @@ Opponent AI:
 
 Other stuff:
 - Find a way to have a Sphere mask transition: https://www.reddit.com/r/unrealengine/comments/lrd086/landscape_transition_effect_using_sphere_masks/ or https://www.reddit.com/r/godot/comments/1nidl3l/worldmerging_shader/ or https://github.com/lukky-nl/Stencil-Buffer-Holographic-Display
+- Card shattering? https://www.reddit.com/r/godot/comments/1oywws4/godot_has_shatter_option/
 - Make each location resolved on player choice, with possibility to play in-between each fight? Offers more startegy to the player, less confusion, gameplay possibility of repeating a battle...
 - Link Danger to actual game stuff: Card in graveyard, playerlife... makes things that usually would have no effect on the play be useful and open counterplay for the player
 - Make battlefield resolve separately

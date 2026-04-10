@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://bw34nxf3e02c4"]
+
+[ext_resource type="Script" uid="uid://chua74t6by54i" path="res://ordered_zone.gd" id="1_vjh4i"]
+
+[node name="OrderedZone" type="Node3D"]
+script = ExtResource("1_vjh4i")

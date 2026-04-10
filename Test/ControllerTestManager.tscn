@@ -1,0 +1,44 @@
+[gd_scene load_steps=2 format=3 uid="uid://cgf1t5m8jg8ap"]
+
+[ext_resource type="Script" uid="uid://cjxksgn6d5lwo" path="res://Test/ControllerTestManager.gd" id="1_controller"]
+
+[node name="Control" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_controller")
+
+[node name="AllTests" type="Button" parent="."]
+layout_mode = 0
+offset_left = 7.0
+offset_top = 16.0
+offset_right = 146.0
+offset_bottom = 54.0
+text = "Run All Controller Tests"
+
+[node name="FailedTests" type="Button" parent="."]
+layout_mode = 0
+offset_left = 157.0
+offset_top = 17.0
+offset_right = 283.0
+offset_bottom = 55.0
+text = "Run Failed Tests"
+
+[node name="FailedTests2" type="Button" parent="."]
+layout_mode = 0
+offset_left = 294.0
+offset_top = 18.0
+offset_right = 420.0
+offset_bottom = 56.0
+text = "Run To Fail"
+
+[node name="GridContainer" type="GridContainer" parent="."]
+layout_mode = 0
+offset_left = 26.0
+offset_top = 71.0
+offset_right = 1109.0
+offset_bottom = 611.0
+columns = 4

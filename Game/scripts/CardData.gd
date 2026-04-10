@@ -34,14 +34,33 @@ var card_object: WeakRef  # Reference to Card object (using WeakRef to avoid cyc
 var hasAttackedThisTurn: bool = false  # Track if the card attacked this turn
 var isTapped: bool = false  # Track if the card is currently tapped
 var temporary_effects: Array[TemporaryEffect] = []  # Track temporary effects applied to this card
+var isToken = false
+var current_zone: GameZone.e = GameZone.e.UNKNOWN  # Current zone this card is in (set by GameData)
+var damage: int = 0  # Damage dealt to this card this turn
+
+func receiveDamage(v: int):
+	damage += v
+	dirty_data.emit()
+
+func getDamage() -> int:
+	return damage
+
+func reset_damage():
+	damage = 0
+	dirty_data.emit()
 
 ## Property interception - automatically applies temporary effects
 func _get(property):
 	"""Intercept property reads to apply temporary effects"""
+	# Don't intercept properties that already start with underscore (base properties)
+	if property.begins_with("_"):
+		return null  # Let normal property access continue
+	
 	var base_prop = "_" + property
 	
 	# Check if this is a managed property
 	if base_prop in self:
+		# get() will call _get("_power") which returns null, allowing normal access
 		var base_value = get(base_prop)
 		return _apply_modification_layers(property, base_value)
 	
@@ -49,10 +68,15 @@ func _get(property):
 
 func _set(property, value):
 	"""Intercept property writes to redirect to base properties"""
+	# Don't intercept properties that already start with underscore
+	if property.begins_with("_"):
+		return false  # Let normal property assignment continue
+	
 	var base_prop = "_" + property
 	
 	# Check if this is a managed property
 	if base_prop in self:
+		# set() will call _set("_power") which returns false, allowing normal access
 		set(base_prop, value)
 		return true
 	

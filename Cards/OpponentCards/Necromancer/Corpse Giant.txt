@@ -1,0 +1,4 @@
+Name:Corpse Giant
+Types:Creature,Zombie
+CardText:Innert while might below 10.
+This gets +1 Might whenever a cards enters a graveyard.

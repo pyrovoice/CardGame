@@ -5,17 +5,12 @@ class_name AddTypeEffect
 ## Expects targets to be pre-resolved and passed in parameters["Targets"]
 
 func execute(parameters: Dictionary, source_card_data: CardData, game_context: Game):
-	# Get pre-resolved targets (should be provided by ability system)
-	var target_cards: Array = parameters.get("Targets", [])
-	
-	# Fallback: if no targets provided, default to Self
+	# Effects do not resolve/select targets; caller must provide them.
+	var target_cards: Array[CardData] = parameters.get("Targets", [])
+
 	if target_cards.is_empty():
-		var source_card = source_card_data.get_card_object()
-		if source_card:
-			target_cards = [source_card]
-		else:
-			print("⚠️ Cannot add type - no valid targets")
-			return
+		print("⚠️ AddTypeEffect missing pre-resolved Targets")
+		return
 	
 	# Parse types to add
 	var types_to_add = parameters.get("Types", "")
@@ -27,10 +22,10 @@ func execute(parameters: Dictionary, source_card_data: CardData, game_context: G
 	var duration = parameters.get("Duration", "Permanent")
 	
 	# Add the types to each target card
-	for target_card in target_cards:
-		_add_types_to_card(target_card, types_to_add, duration)
+	for target_card_data in target_cards:
+		_add_types_to_card(target_card_data, types_to_add, duration)
 
-func _add_types_to_card(target_card: Card, types_string: String, duration: String):
+func _add_types_to_card(target_card_data: CardData, types_string: String, duration: String):
 	"""Add types/subtypes to a card with specified duration"""
 	
 	# Split types by space if multiple types specified
@@ -44,10 +39,10 @@ func _add_types_to_card(target_card: Card, types_string: String, duration: Strin
 		# Check if it's a main card type or subtype
 		if CardData.isValidCardTypeString(type_part):
 			# It's a main card type
-			CardModifier.modify_card(target_card, "type", {"type": type_part}, duration)
+			CardModifier.modify_card(target_card_data, "type", {"type": type_part}, duration)
 		else:
 			# It's a subtype
-			CardModifier.modify_card(target_card, "subtype", {"subtype": type_part}, duration)
+			CardModifier.modify_card(target_card_data, "subtype", {"subtype": type_part}, duration)
 
 func validate_parameters(parameters: Dictionary) -> bool:
 	return parameters.has("Types")

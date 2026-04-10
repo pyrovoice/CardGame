@@ -18,8 +18,8 @@ func execute_main_phase():
 	# Step 3: Cast cards from hand while possible
 	var cards_cast = 0
 	var loopCount = 1
-	while game.game_data.opponent_gold.getValue() > 0 and game.opponent_hand.get_children().size() > 0 and loopCount>0:
-		var opponent_hand_cards = game.opponent_hand.get_children()
+	while game.game_data.opponent_gold.getValue() > 0 and game.game_view.opponent_hand.get_children().size() > 0 and loopCount>0:
+		var opponent_hand_cards = game.game_view.opponent_hand.get_children()
 		loopCount -=1
 		# Find castable cards within budget
 		var castable_cards = _get_castable_cards(opponent_hand_cards, game.game_data.opponent_gold.getValue())
@@ -40,10 +40,18 @@ func execute_main_phase():
 			continue
 		
 		# Cast the card using the existing game logic
-		await game.tryPlayCard(card_to_cast, target_location)
+		var combat_spot = target_location as CombatantFightingSpot
+		var dest_zone: GameZone.e
+		if combat_spot:
+			var combat_zone = combat_spot.get_parent() as CombatZone
+			var zone_index = game.game_view.get_combat_zones().find(combat_zone)
+			dest_zone = (GameZone.e.COMBAT_PLAYER_1 + zone_index) as GameZone.e
+		else:
+			dest_zone = GameZone.e.BATTLEFIELD_OPPONENT
+		await game.tryPlayCard(card_to_cast.cardData, dest_zone)
 		
 		# Update the hand cards list
-		opponent_hand_cards = game.opponent_hand.get_children()
+		opponent_hand_cards = game.game_view.opponent_hand.get_children()
 		cards_cast += 1
 	
 	print("=== Opponent cast ", cards_cast, " cards. End of main phase ===")
@@ -73,14 +81,14 @@ func _find_target_location(card: Card) -> Node3D:
 	
 	# For spells, return a generic target (spells don't need specific locations)
 	# The spell targeting will be handled by the existing spell system
-	return game.player_base  # Spells can be "cast" targeting the player base area
+	return game.game_view.player_base  # Spells can be "cast" targeting the player base area
 	
 func _find_random_empty_enemy_location() -> CombatantFightingSpot:
 	"""Find a random empty location on the enemy side of combat zones"""
 	var available_locations: Array[CombatantFightingSpot] = []
 	
 	# Collect all empty enemy locations
-	for combat_zone in game.combatZones:
+	for combat_zone in game.game_view.combat_zones:
 		var empty_location = combat_zone.getFirstEmptyLocation(false)  # false = enemy side
 		if empty_location:
 			available_locations.append(empty_location)

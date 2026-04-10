@@ -1,0 +1,1 @@
+CardText: Target creature gains Indestructible this turn. Sacrifice it at the end of the turn.

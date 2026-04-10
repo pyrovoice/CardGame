@@ -41,7 +41,7 @@ static func apply_replacement_effects(effect_type: String, effect_parameters: Di
 	var applied_count = 0
 	
 	# Clean up invalid effects
-	_cleanup_invalid_effects()
+	_cleanup_invalid_effects(game_context)
 	
 	# Apply each applicable replacement effect
 	for effect in _replacement_effects:
@@ -54,17 +54,16 @@ static func apply_replacement_effects(effect_type: String, effect_parameters: Di
 	
 	return modified_params
 
-static func _cleanup_invalid_effects():
-	"""Remove replacement effects whose source cards are no longer valid"""
+static func _cleanup_invalid_effects(game_context: Game):
+	"""Remove replacement effects whose source cards are no longer active in game data"""
 	var to_remove: Array[ReplacementEffect] = []
 	
 	for effect in _replacement_effects:
-		var source_card = effect.source_card_data.get_card_object()
-		if not source_card:
-			print("  ⚠️ [CLEANUP] Card object is null for ", effect.source_card_data.cardName)
+		if not effect.source_card_data:
 			to_remove.append(effect)
-		elif not is_instance_valid(source_card):
-			print("  ⚠️ [CLEANUP] Card object is not valid for ", effect.source_card_data.cardName)
+			continue
+		var zone = game_context.game_data.get_card_zone(effect.source_card_data)
+		if zone == GameZone.e.UNKNOWN:
 			to_remove.append(effect)
 	
 	for effect in to_remove:

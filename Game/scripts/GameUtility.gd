@@ -13,56 +13,17 @@ static func find_container_for_card_data(game: Game, cardData: CardData) -> Card
 		return null
 	
 	# Query GameData to find which zone contains the card
-	if game.game_data.cards_in_deck_player.has(cardData):
+	if game.game_data.get_cards_in_zone(GameZone.e.DECK_PLAYER).has(cardData):
 		return game.game_view.deck
-	elif game.game_data.cards_in_deck_opponent.has(cardData):
+	elif game.game_data.get_cards_in_zone(GameZone.e.DECK_OPPONENT).has(cardData):
 		return game.game_view.deck_opponent
-	elif game.game_data.cards_in_graveyard_player.has(cardData):
+	elif game.game_data.get_cards_in_zone(GameZone.e.GRAVEYARD_PLAYER).has(cardData):
 		return game.game_view.graveyard
-	elif game.game_data.cards_in_graveyard_opponent.has(cardData):
+	elif game.game_data.get_cards_in_zone(GameZone.e.GRAVEYARD_OPPONENT).has(cardData):
 		return game.game_view.graveyard_opponent
-	elif game.game_data.cards_in_extra_deck_player.has(cardData):
+	elif game.game_data.get_cards_in_zone(GameZone.e.EXTRA_DECK_PLAYER).has(cardData):
 		return game.game_view.extra_deck
 	return null
-
-static func createCardFromData(game: Game, cardData: CardData, player_controlled: bool, isToken: bool, container: CardContainer = null):
-	if cardData == null:
-		return null
-	
-	var CARD = preload("res://Game/scenes/Card.tscn")
-	
-	if !CARD.can_instantiate():
-		push_error("Can't instantiate.")
-		return
-	
-	var card_instance: Card = CARD.instantiate() as Card
-	
-	if card_instance == null:
-		push_error("Card instance is null! Check if Card.gd is attached to Card.tscn root.")
-		return
-	
-	# If no container provided, try to find which container has this CardData
-	if container == null:
-		container = find_container_for_card_data(game, cardData)
-	
-	# Note: CardData removal from zones is now handled by GameData, not containers
-	# Containers no longer track cards
-	
-	# Parent to the container (if provided), otherwise parent to game
-	if container:
-		container.add_child(card_instance)
-	else:
-		game.add_child(card_instance)
-	
-	# Set data and configure card
-	card_instance.setData(cardData)
-	card_instance.playerControlled = player_controlled
-	cardData.playerControlled = player_controlled  # Sync CardData playerControlled flag
-	card_instance.name = cardData.cardName + "_" + str(Game.getObjectCountAndIncrement())
-	card_instance.isToken = isToken
-	game.connect_card_to_highlight_manager(card_instance)
-	
-	return card_instance
 
 ## REMOVED: getCardZone - Use game.game_data.get_card_zone(card_data) instead
 ## The old function returned generic zones and relied on Card views, which doesn't work in headless mode.
@@ -78,9 +39,9 @@ static func get_graveyard_for_controller(game: Game, is_player_controlled: bool)
 static func get_cards_in_graveyard(game: Game, is_player_controlled: bool) -> Array[CardData]:
 	"""Get all cards in the graveyard for the specified controller"""
 	if is_player_controlled:
-		return game.game_data.cards_in_graveyard_player
+		return game.game_data.get_cards_in_zone(GameZone.e.GRAVEYARD_PLAYER)
 	else:
-		return game.game_data.cards_in_graveyard_opponent
+		return game.game_data.get_cards_in_zone(GameZone.e.GRAVEYARD_OPPONENT)
 
 static func _calculate_game_popup_position(game: Game) -> Vector2:
 	"""Calculate the position for card popup in game view (left side of screen)"""

@@ -11,7 +11,7 @@ signal spell_cast(card_data: CardData)
 signal beginning_of_turn(card_data: CardData)
 signal end_of_turn(card_data: CardData)
 signal card_drawn(cards: Array, is_player: bool)
-signal card_changed_zones(card_data: CardData, from_zone: Node, to_zone: Node)
+signal card_changed_zones(card_data: CardData, from_zone: GameZone.e, to_zone: GameZone.e)
 signal strike(card_data: CardData)
 
 # Controller references (MVC: Controller layer)
@@ -50,18 +50,31 @@ func setActiveHand(hand: CardHand):
 	activeHand = hand
 	player_control.activeHand = hand
 
-func createCardDatas(card_data_templates: Array[CardData]) -> Array[CardData]:
-	var new:Array[CardData] = []
+func createCardDatas(card_data_templates: Array[CardData], destination_zone: GameZone.e, player_owned: bool) -> Array[CardData]:
+	var new_cards: Array[CardData] = []
 	for c in card_data_templates:
-		new.push_back(createCardData(c))
-	return new
+		var new_card_data = createCardData(c, destination_zone, player_owned)
+		if new_card_data != null:
+			new_cards.push_back(new_card_data)
+	return new_cards
 	
-func createCardData(card_data_template: CardData) -> CardData:
+func createCardData(card_data_template: CardData, destination_zone: GameZone.e, player_owned: bool) -> CardData:
 	"""Create a new CardData by duplicating a template and registering its abilities to game signals"""
+	if destination_zone == GameZone.e.UNKNOWN:
+		push_error("createCardData: destination_zone cannot be UNKNOWN")
+		return null
 	var new_card_data = CardLoaderAL.duplicateCardScript(card_data_template)
-	print("🔍 [CREATEDATA] After duplicateCardScript - ", new_card_data.cardName, " isTapped: ", new_card_data.isTapped)
+	new_card_data.playerOwned = player_owned
+	new_card_data.playerControlled = player_owned
 	
-	# Subscribe card data to game signals (registers all abilities and signal listeners)
+	# Add to zone first
+	game_data.add_card_to_zone(new_card_data, destination_zone)
+	
+	# Create view
+	game_view.create_card_view(new_card_data, destination_zone)
+	
+	# Subscribe to game signals (registers triggered abilities, applies static/replacement abilities)
+	# For battlefield zones, this will properly register all abilities
 	new_card_data.subscribe_to_game_signals(self)
 	
 	return new_card_data
@@ -87,9 +100,9 @@ func _ready() -> void:
 	
 	# Load deck configuration from DeckConfig (set by MainMenu or tests)
 	if DeckConfigAL.has_deck_configuration():
-		game_data.playerDeckList.deck_cards = createCardDatas(DeckConfigAL.player_deck_cards)
-		game_data.playerDeckList.extra_deck_cards = createCardDatas(DeckConfigAL.player_extra_deck_cards)
-		game_data.opponentDeckList.deck_cards = createCardDatas(DeckConfigAL.opponent_deck_cards)
+		game_data.playerDeckList.deck_cards = DeckConfigAL.player_deck_cards.duplicate()
+		game_data.playerDeckList.extra_deck_cards = DeckConfigAL.player_extra_deck_cards.duplicate()
+		game_data.opponentDeckList.deck_cards = DeckConfigAL.opponent_deck_cards.duplicate()
 	else:
 		# No deck configuration - leave empty (for tests)
 		print("⚠️ No deck configuration found - decks will be empty")
@@ -131,10 +144,9 @@ func setupGame():
 	
 func populate_decks():
 	# MVC Pattern: Populate both Model (GameData) and View (containers)
-	refilLDeck(createCardDatas(game_data.playerDeckList.deck_cards), true, GameZone.e.DECK_PLAYER)
-	refilLDeck(createCardDatas(game_data.playerDeckList.deck_cards), true, GameZone.e.DECK_PLAYER)
-	refilLDeck(createCardDatas(game_data.playerDeckList.extra_deck_cards), true, GameZone.e.EXTRA_DECK_PLAYER)
-	refilLDeck(createCardDatas(game_data.opponentDeckList.deck_cards), false, GameZone.e.DECK_OPPONENT)
+	replenish_deck_zone(GameZone.e.DECK_PLAYER, 2)
+	replenish_deck_zone(GameZone.e.EXTRA_DECK_PLAYER)
+	replenish_deck_zone(GameZone.e.DECK_OPPONENT)
 
 func onTurnStart(skipFirstTurn = false):
 	# Start a new turn (increases danger level via SignalInt)
@@ -149,157 +161,89 @@ func onTurnStart(skipFirstTurn = false):
 		game_data.reset_combat_resolution_flags()
 		# Trigger beginning of turn phase
 		await trigger_phase("BeginningOfTurn")
-	await drawCard()
+	await drawCard(3)
 	@warning_ignore("integer_division")
 	await drawCard(game_data.danger_level.getValue()/3, false)
 	game_data.setOpponentGold()
 	await opponent_ai.execute_main_phase()
 
-func execute_move_card(card: Card, destination_zone: GameZone.e, combat_spot: CombatantFightingSpot = null, card_data: CardData = null, origin_zone_enum: GameZone.e = GameZone.e.UNKNOWN) -> bool:
+func execute_move_card(cardData: CardData, destination_zone: GameZone.e, origin_zone_enum: GameZone.e = GameZone.e.UNKNOWN, index: int = -1) -> bool:
 	"""Centralized zone change system - handles all card movements with appropriate animations and triggers (MVC pattern)
-	
-	Can be called with either:
-	- Card object: card parameter
-	- CardData directly: card_data + origin_zone_enum parameters
 	
 	All costs and selections should be paid/made before calling this.
 	Events and triggers fire AFTER animations complete.
 	
+	For combat zones, the card's position is determined by its index in the combat zone array.
+	
 	Args:
-		card: The Card object to move (optional if card_data provided)
+		cardData: The CardData to move
 		destination_zone: Target zone enum (e.g., GameZone.e.GRAVEYARD_PLAYER)
-		combat_spot: Optional specific combat spot node (only for combat moves)
-		card_data: CardData (optional if card provided)
-		origin_zone_enum: Source zone (optional if card provided)
+		origin_zone_enum: Source zone (if UNKNOWN, will be queried from game_data)
+		index: Optional array index for positioning in destination zone (-1 = end of array)
 	
 	Returns:
 		bool: True if move was successful, false otherwise
 	"""
-	# Get card_data and origin from either Card object or parameters
-	if card:
-		card_data = card.cardData
-		var origin_zone = card.get_parent()
-		origin_zone_enum = _get_zone_enum(origin_zone)
-	elif not card_data:
-		push_error("execute_move_card: must provide either card or card_data")
+	# Validate cardData is provided
+	if not cardData:
+		push_error("execute_move_card: cardData is required")
 		return false
 	
-	var origin_zone_node: Node = card.get_parent() if card else game_view.get_zone_container(origin_zone_enum)
+	# Get origin zone - either from parameter or query game_data
+	var origin_zone = origin_zone_enum
+	if origin_zone == GameZone.e.UNKNOWN:
+		origin_zone = game_data.get_card_zone(cardData)
+		
+	# MVC Pattern: Update Model first (add to zone array), then animate View
+	game_data.move_card(cardData, destination_zone, index)
 	
-	print("📦 Moving ", card_data.cardName, " from ", GameZone.e.keys()[origin_zone_enum], " to ", GameZone.e.keys()[destination_zone])
-	
-	# MVC Pattern: Update Model first, then animate View
-	# Combat zones handled separately via card_to_combat_spot
-	if destination_zone != GameZone.e.COMBAT_PLAYER and destination_zone != GameZone.e.COMBAT_OPPONENT:
-		game_data.move_card(card_data, destination_zone)
-	else:
-		# Combat: Store spot assignment in GameData
-		if combat_spot:
-			game_data.assign_card_to_combat_spot(card_data, combat_spot)
+	# Get origin zone node for signal emissions
+	var origin_zone_node = game_view.get_zone_container(origin_zone)
 	
 	# Route to specific movement handlers for animations and triggers
-	match [origin_zone_enum, destination_zone]:
-		[GameZone.e.DECK_PLAYER, GameZone.e.HAND_PLAYER], [GameZone.e.DECK_OPPONENT, GameZone.e.HAND_OPPONENT]:
-			await _move_deck_to_hand(card_data, destination_zone)
-		[_, GameZone.e.BATTLEFIELD_PLAYER], [_, GameZone.e.BATTLEFIELD_OPPONENT]:
-			await _move_to_battlefield(card_data, destination_zone)
-		[_, GameZone.e.GRAVEYARD_PLAYER], [_, GameZone.e.GRAVEYARD_OPPONENT]:
-			await _move_to_graveyard(card_data, destination_zone, origin_zone_enum)
-		[GameZone.e.BATTLEFIELD_PLAYER, GameZone.e.COMBAT_PLAYER], [GameZone.e.BATTLEFIELD_OPPONENT, GameZone.e.COMBAT_OPPONENT]:
-			await _move_base_to_combat(card_data, combat_spot, origin_zone_node)
-		[GameZone.e.COMBAT_PLAYER, GameZone.e.BATTLEFIELD_PLAYER], [GameZone.e.COMBAT_OPPONENT, GameZone.e.BATTLEFIELD_OPPONENT]:
-			await _move_combat_to_base(card_data, destination_zone, origin_zone_node)
-		_:
-			await _move_generic(card_data, destination_zone, origin_zone_enum, origin_zone_node)
+	# Check for specific zone transition patterns
+	if (origin_zone == GameZone.e.DECK_PLAYER and destination_zone == GameZone.e.HAND_PLAYER) or \
+	   (origin_zone == GameZone.e.DECK_OPPONENT and destination_zone == GameZone.e.HAND_OPPONENT):
+		await _move_deck_to_hand(cardData, destination_zone)
+	elif GameZone.is_battlefield_zone(destination_zone):
+		await _move_to_battlefield(cardData, destination_zone)
+	elif destination_zone == GameZone.e.GRAVEYARD_PLAYER or destination_zone == GameZone.e.GRAVEYARD_OPPONENT:
+		await _move_to_graveyard(cardData, destination_zone, origin_zone_enum)
+	elif GameZone.is_battlefield_zone(origin_zone) and GameZone.is_combat_zone(destination_zone):
+		await _move_base_to_combat(cardData, destination_zone, index)
+	elif GameZone.is_combat_zone(origin_zone) and GameZone.is_battlefield_zone(destination_zone):
+		await _move_combat_to_base(cardData, destination_zone, origin_zone_node)
+	else:
+		await _move_generic(cardData, destination_zone, origin_zone_enum, origin_zone_node)
 	
-	print("✅ Move complete: ", card_data.cardName)
 	return true
 
-func _get_zone_type(container: Node) -> String:
-	"""Determine the type of a zone container for routing (legacy string-based)"""
-	if container is CardContainer:
-		if container == game_view.deck or container == game_view.deck_opponent:
-			return "Deck"
-		elif container == game_view.graveyard:
-			return "Player's Graveyard"
-		elif container == game_view.graveyard_opponent:
-			return "Opponent's Graveyard"
-		elif container == game_view.extra_deck:
-			return "ExtraDeck"
-		else:
-			return "Container"
-	elif container is CardHand:
-		return "Hand"
-	elif container is PlayerBase:
-		return "PlayerBase"
-	elif container is CombatantFightingSpot:
-		return "Combat"
-	else:
-		return "Unknown"
 
-func _get_zone_enum(container: Node) -> GameZone.e:
-	"""Map a zone container Node to its GameZone.e enum value"""
-	if not container:
-		return GameZone.e.UNKNOWN
+func check_effect_condition(condition: String, source_card_data: CardData) -> bool:
+	"""Check if an effect condition is met (Controller method)
 	
-	# Check CardContainer types by zone_name if available
-	if container is CardContainer and container.zone_name != GameZone.e.UNKNOWN:
-		return container.zone_name
+	Args:
+		condition: Condition string (e.g., "IfAlive", "IfTapped")
+		source_card_data: The card executing the effect
 	
-	# Fall back to manual checking
-	if container == game_view.player_hand:
-		return GameZone.e.HAND_PLAYER
-	elif container == game_view.opponent_hand:
-		return GameZone.e.HAND_OPPONENT
-	elif container == game_view.get_player_base():
-		return GameZone.e.BATTLEFIELD_PLAYER
-	elif container is CombatantFightingSpot:
-		# Combat zones - determine owner from spot
-		return GameZone.e.COMBAT_PLAYER  # TODO: distinguish player/opponent
-	else:
-		return GameZone.e.UNKNOWN
+	Returns:
+		bool: True if condition is met, false otherwise
+	"""
+	match condition:
+		"IfAlive":
+			# Check if source card is in play using GameData (Model) - headless-safe
+			var source_zone = game_data.get_card_zone(source_card_data)
+			if not GameZone.is_in_play(source_zone):
+				print("⚠️ ", source_card_data.cardName, " is not alive (zone: ", GameZone.e.keys()[source_zone], "), condition not met")
+				return false
+			return true
+		"":
+			# No condition - always passes
+			return true
+		_:
+			push_warning("Unknown effect condition: ", condition)
+			return true  # Unknown conditions default to passing
 
-
-func _get_card_from_zone(card_data: CardData, zone_container: Node) -> Card:
-	"""Get or create a Card object from a zone for animation"""
-	var card: Card = null
-	
-	if zone_container is CardContainer:
-		# Create Card for animation (Card view may not exist yet for container zones)
-		# Note: Should check GameData to verify card is actually in this zone
-		card = createCardFromData(card_data, card_data.playerControlled, zone_container)
-		GameUtility.reparentCardWithoutMovingRepresentation(card, self)
-		card.global_position = zone_container.global_position
-	elif zone_container is CardHand:
-		# Find existing Card in hand
-		for c in zone_container.get_children():
-			if c is Card and c.cardData == card_data:
-				card = c
-				GameUtility.reparentCardWithoutMovingRepresentation(card, self)
-				break
-	elif zone_container is PlayerBase:
-		# Find existing Card in PlayerBase
-		for c in zone_container.get_children():
-			if c is Card and c.cardData == card_data:
-				card = c
-				GameUtility.reparentCardWithoutMovingRepresentation(card, self)
-				break
-	elif zone_container is CombatantFightingSpot:
-		# Get card from combat spot
-		card = zone_container.getCard()
-		if card and card.cardData == card_data:
-			GameUtility.reparentCardWithoutMovingRepresentation(card, self)
-		else:
-			card = null
-	elif zone_container is Game:
-		# Card is parented to game node (e.g., during casting) - search direct children
-		for c in zone_container.get_children():
-			if c is Card and c.cardData == card_data:
-				card = c
-				# Already parented to game, no need to reparent
-				break
-	
-	return card
 
 func _move_deck_to_hand(card_data: CardData, dest_zone: GameZone.e):
 	"""Handle deck to hand movement - draw animation + trigger (MVC pattern)"""
@@ -327,7 +271,7 @@ func _move_to_battlefield(card_data: CardData, dest_zone: GameZone.e):
 	for ability in card_data.replacement_abilities:
 		ability.apply_to_game(self)
 
-func _move_to_graveyard(card_data: CardData, dest_zone: GameZone.e, origin_zone_enum: GameZone.e):
+func _move_to_graveyard(card_data: CardData, dest_zone: GameZone.e, origin_zone: GameZone.e):
 	"""Handle battlefield/anywhere to graveyard - death (MVC pattern)"""
 	# Note: GameData already updated by execute_move_card
 	
@@ -337,11 +281,10 @@ func _move_to_graveyard(card_data: CardData, dest_zone: GameZone.e, origin_zone_
 		push_error("_move_to_graveyard: Could not find graveyard container")
 		return
 	
-	await game_view.animate_card_to_graveyard(card_data, dest.global_position)
+	await game_view.animate_card_to_graveyard(card_data, dest_zone)
 	
 	# Remove battlefield abilities if leaving battlefield
-	var from_battlefield = (origin_zone_enum == GameZone.e.BATTLEFIELD_PLAYER or origin_zone_enum == GameZone.e.BATTLEFIELD_OPPONENT or 
-						   origin_zone_enum == GameZone.e.COMBAT_PLAYER or origin_zone_enum == GameZone.e.COMBAT_OPPONENT)
+	var from_battlefield = GameZone.is_in_play(origin_zone)
 	
 	if from_battlefield:
 		for ability in card_data.triggered_abilities:
@@ -360,16 +303,24 @@ func _move_to_graveyard(card_data: CardData, dest_zone: GameZone.e, origin_zone_
 	# Clean up Card view
 	game_view.destroy_card_view(card_data)
 
-func _move_base_to_combat(card_data: CardData, combat_spot: CombatantFightingSpot, origin_zone_node: Node):
-	"""Handle PlayerBase to Combat - attack movement (MVC pattern)"""
-	if not combat_spot:
-		push_error("_move_base_to_combat: combat_spot is required")
-		return
+func _move_base_to_combat(card_data: CardData, destination_zone: GameZone.e, targetPosition: int):
+	"""Handle PlayerBase to Combat - attack movement (MVC pattern)
 	
-	# View: Animate to combat
-	game_view.animate_card_to_combat(card_data, combat_spot)
+	Args:
+		card_data: The card to move
+		origin_zone_node: The battlefield zone container the card is coming from
+		destination_zone: The combat zone enum the card is moving to
 	
-	card_changed_zones.emit(card_data, origin_zone_node, combat_spot)
+	The card has already been added to the zone array by move_card().
+	Positioning is handled by GameData.add_card_to_zone().
+	"""
+	
+	# Get the spot based on the card's actual index in the combat zone array
+	var insertIndex = game_data.move_card(card_data, destination_zone, targetPosition)
+	if insertIndex != -1:
+		# View: Animate to combat
+		game_view.animate_card_to_combat(card_data, destination_zone, insertIndex)
+		card_changed_zones.emit(card_data, GameZone.e.BATTLEFIELD_PLAYER, destination_zone)
 
 func _move_combat_to_base(card_data: CardData, dest_zone: GameZone.e, origin_zone_node: Node):
 	"""Handle Combat to PlayerBase - retreat movement"""
@@ -378,16 +329,12 @@ func _move_combat_to_base(card_data: CardData, dest_zone: GameZone.e, origin_zon
 		push_error("_move_combat_to_base: Could not find battlefield container")
 		return
 	
-	var target_position = game_view.get_next_battlefield_location()
-	if target_position == Vector3.INF:
-		return
-	
 	# View: Animate back to base
-	await game_view.animate_card_to_base(card_data, target_position, dest)
+	await game_view.animate_card_to_base(card_data, dest_zone)
 	
 	card_changed_zones.emit(card_data, origin_zone_node, dest)
 
-func _move_generic(card_data: CardData, dest_zone: GameZone.e, origin_zone_enum: GameZone.e, origin_zone_node: Node):
+func _move_generic(card_data: CardData, dest_zone: GameZone.e, origin_zone: GameZone.e, origin_zone_node: Node):
 	"""Handle any other zone transitions with generic animation (MVC pattern)"""
 	var dest = game_view.get_zone_container(dest_zone)
 	if not dest:
@@ -404,14 +351,13 @@ func _move_generic(card_data: CardData, dest_zone: GameZone.e, origin_zone_enum:
 		if card:
 			GameUtility.reparentCardWithoutMovingRepresentation(card, dest)
 			dest.arrange_cards_fan([card])
-		elif dest is CombatantFightingSpot:
-			game_view.animate_card_to_combat(card_data, dest)
-		else:
-			push_error("_move_generic: Unsupported destination type")
-			return
+	elif dest is CombatantFightingSpot:
+		game_view.animate_card_to_combat(card_data, dest)
+	else:
+		push_error("_move_generic: Unsupported destination type")
+		return
 	
-	var from_battlefield = (origin_zone_enum == GameZone.e.BATTLEFIELD_PLAYER or origin_zone_enum == GameZone.e.BATTLEFIELD_OPPONENT or 
-						   origin_zone_enum == GameZone.e.COMBAT_PLAYER or origin_zone_enum == GameZone.e.COMBAT_OPPONENT)
+	var from_battlefield = GameZone.is_in_play(origin_zone)
 	
 	if from_battlefield:
 		for ability in card_data.static_abilities:
@@ -435,20 +381,30 @@ func tryMoveCard(card_data: CardData, target_location: Node3D) -> void:
 	if not target_location:
 		target_location = game_view.get_player_base()
 	
-	var source_zone = card_data.current_zone
+	var source_zone = game_data.get_card_zone(card_data)
 	
 	match source_zone:
 		GameZone.e.HAND_PLAYER, GameZone.e.EXTRA_DECK_PLAYER:
-			# Playing from hand - use the full play logic
-			# Get Card view for play logic
-			var card = card_data.get_card_object()
-			if card:
-				tryPlayCard(card, target_location)
+			# Playing from hand - convert Node3D to zone data
+			var dest_zone: GameZone.e = GameZone.e.BATTLEFIELD_PLAYER if card_data.playerControlled else GameZone.e.BATTLEFIELD_OPPONENT
+			var combat_spot: CombatantFightingSpot = null
+			
+			if target_location is CombatantFightingSpot:
+				combat_spot = target_location as CombatantFightingSpot
+				# Determine which combat zone based on the spot's parent CombatZone
+				var combat_zone = combat_spot.get_parent() as CombatZone
+				var zone_index = game_view.get_combat_zones().find(combat_zone) + 1
+				if card_data.playerControlled:
+					dest_zone = (GameZone.e.COMBAT_PLAYER_1 + (zone_index - 1)) as GameZone.e
+				else:
+					dest_zone = (GameZone.e.COMBAT_OPPONENT_1 + (zone_index - 1)) as GameZone.e
+			
+			tryPlayCard(card_data, dest_zone)
 		
 		GameZone.e.BATTLEFIELD_PLAYER:
 			await _try_move_from_battlefield(card_data, target_location)
 		
-		GameZone.e.COMBAT_PLAYER:
+		GameZone.e.COMBAT_PLAYER_1, GameZone.e.COMBAT_PLAYER_2, GameZone.e.COMBAT_PLAYER_3:
 			await _try_move_from_combat(card_data, target_location)
 
 func _try_move_from_battlefield(card_data: CardData, target_location: Node3D) -> void:
@@ -474,10 +430,13 @@ func _try_move_from_battlefield(card_data: CardData, target_location: Node3D) ->
 	card_data.tap()
 	card_data.hasAttackedThisTurn = true
 	
-	var card = card_data.get_card_object()
+	# Determine which combat zone based on the spot
+	var combat_zone = combat_spot.get_parent() as CombatZone
+	var zone_index = game_view.get_combat_zones().find(combat_zone)
+	var dest_zone = (GameZone.e.COMBAT_PLAYER_1 + zone_index) as GameZone.e
 	
 	# Move using centralized system
-	await execute_move_card(card, GameZone.e.COMBAT_PLAYER, combat_spot, card_data, card_data.current_zone)
+	await execute_move_card(card_data, dest_zone)
 
 func _try_move_from_combat(card_data: CardData, target_location: Node3D) -> void:
 	"""Handle user-initiated movement from combat zone (retreat or swap)"""
@@ -487,10 +446,8 @@ func _try_move_from_combat(card_data: CardData, target_location: Node3D) -> void
 			# Tap card for movement
 			card_data.tap()
 			
-			var card = card_data.get_card_object()
-			
 			# Move using centralized system
-			await execute_move_card(card, GameZone.e.BATTLEFIELD_PLAYER, null, card_data, card_data.current_zone)
+			await execute_move_card(card_data, GameZone.e.BATTLEFIELD_PLAYER)
 	elif target_location is CombatantFightingSpot:
 		# Swapping positions within the same combat zone
 		var card = card_data.get_card_object()
@@ -500,57 +457,80 @@ func _try_move_from_combat(card_data: CardData, target_location: Node3D) -> void
 	else:
 		print("❌ Cannot move card from combat to that location")
 
-func tryPlayCard(card: Card, target_location: Node3D, pre_selections: SelectionManager.CardPlaySelections = null, pay_cost = true, from_default_zones = true) -> void:
-	if not card:
-		print("❌ [TRYPLAYCARD] Card is null")
-		return
-	print("🎮 [TRYPLAYCARD] Attempting to play: ", card.cardData.cardName)
-	var source_zone = getCardZone(card)
-	print("🎮 [TRYPLAYCARD] Source zone: ", GameZone.e.keys()[source_zone])
+func _canPlayCard(source_zone: GameZone.e) -> bool:
+	"""Check if cards can be played from this zone"""
+	return source_zone in [GameZone.e.HAND_PLAYER, GameZone.e.HAND_OPPONENT, GameZone.e.EXTRA_DECK_PLAYER]
+
+func tryPlayCard(card_data: CardData, destination_zone: GameZone.e = GameZone.e.UNKNOWN, pre_selections: SelectionManager.CardPlaySelections = null, pay_cost = true) -> void:
+	"""Play a card from hand/extra deck to battlefield or combat
 	
-	if from_default_zones && not _canPlayCard(source_zone):
+	Args:
+		card_data: The card to play
+		destination_zone: Target zone (defaults to appropriate battlefield zone)
+		pre_selections: Pre-made selections for costs and targets
+		pay_cost: Whether to pay costs (false for effect-based casting)
+	"""
+	if not card_data:
+		print("❌ [TRYPLAYCARD] CardData is null")
+		return
+	print("🎮 [TRYPLAYCARD] Attempting to play: ", card_data.cardName)
+	var source_zone = game_data.get_card_zone(card_data)
+	print("🎮 [TRYPLAYCARD] Source zone: ", GameZone.e.keys()[source_zone] + ", Dest: ", GameZone.e.keys()[destination_zone])
+	
+	# Validate source zone
+	if not _canPlayCard(source_zone):
 		print("❌ [TRYPLAYCARD] Cannot play from this zone")
 		return
-	if pay_cost && not CardPaymentManagerAL.canPayCard(card.cardData):
-		print("❌ [TRYPLAYCARD] Cannot pay for card")
-		return
+	
+	# Determine destination zone if not specified
+	if destination_zone == GameZone.e.UNKNOWN:
+		destination_zone = GameZone.e.BATTLEFIELD_PLAYER if card_data.playerControlled else GameZone.e.BATTLEFIELD_OPPONENT
 	
 	print("✅ [TRYPLAYCARD] Passed initial checks, proceeding with card play")
 	
 	# Use CardPlaySelections directly
+	# If pre_selections is provided (even empty), skip interactive selection entirely
 	var selection_data: SelectionManager.CardPlaySelections
-	if pre_selections != null and pre_selections.has_selections():
+	if pre_selections != null:
 		print("🎯 Using pre-specified selections for card play")
 		selection_data = pre_selections
 	else:
 		selection_data = null
 
-	# Only process additional selections if playing from hand or extra deck
-	var correct_hand
-	if source_zone == GameZone.e.HAND_PLAYER or source_zone == GameZone.e.EXTRA_DECK_PLAYER:
-		if card.cardData.playerControlled:
-			if source_zone == GameZone.e.HAND_PLAYER:
-				correct_hand = game_view.player_hand
-			elif source_zone == GameZone.e.EXTRA_DECK_PLAYER:
-				correct_hand = game_view.extra_hand
-		else:
-			correct_hand = game_view.opponent_hand
-	current_casting_card = card
-	casting_card_original_parent = correct_hand
-	
-	# Animate casting preparation (only for cards from hand/extra deck)
-	if source_zone == GameZone.e.HAND_PLAYER or source_zone == GameZone.e.EXTRA_DECK_PLAYER:
-		GameUtility.reparentCardWithoutMovingRepresentation(card, self)
+	# Get Card view object for animations (only if needed)
+	var card: Card = null
+	var correct_hand = null
+	if source_zone == GameZone.e.HAND_PLAYER or source_zone == GameZone.e.HAND_OPPONENT or source_zone == GameZone.e.EXTRA_DECK_PLAYER:
+		# Get Card view for animation (only required in non-headless mode)
+		card = card_data.get_card_object()
 		
-		# Move card to cast preparation position
-		await game_view.animate_casting_preparation(card, card.is_facedown)
-		if !card.cardData.playerControlled:
-			await get_tree().create_timer(0.5).timeout
+		# In headless mode or when Card view doesn't exist, skip animations
+		if card and not game_view.headless:
+			if card_data.playerControlled:
+				if source_zone == GameZone.e.HAND_PLAYER:
+					correct_hand = game_view.player_hand
+				elif source_zone == GameZone.e.EXTRA_DECK_PLAYER:
+					correct_hand = game_view.extra_hand
+			else:
+				correct_hand = game_view.opponent_hand
+			
+			current_casting_card = card
+			casting_card_original_parent = correct_hand
+			
+			# Animate casting preparation
+			GameUtility.reparentCardWithoutMovingRepresentation(card, self)
+			await game_view.animate_casting_preparation(card, card.is_facedown)
+			if !card_data.playerControlled:
+				await get_tree().create_timer(0.5).timeout
+		elif not game_view.headless and not card:
+			# Non-headless mode but no Card view - this is an error
+			print("❌ [TRYPLAYCARD] Card view not found for animation (required in non-headless mode)")
+			return
 	
 	# Collect all required player selections upfront (including casting choice)
 	if selection_data == null:
-		print("🎮 [TRYPLAYCARD] Calling _collectAllPlayerSelections for ", card.cardData.cardName)
-		selection_data = await _collectAllPlayerSelections(card)
+		print("🎮 [TRYPLAYCARD] Calling _collectAllPlayerSelections for ", card_data.cardName)
+		selection_data = await _collectAllPlayerSelections(card_data)
 	else:
 		print("🎯 Skipping selection collection - using pre-specified selections")
 	
@@ -560,56 +540,37 @@ func tryPlayCard(card: Card, target_location: Node3D, pre_selections: SelectionM
 		return
 	
 	# Execute the card play with all collected selections
-	await tryPayAndSelectsForCardPlay(card.cardData, source_zone, selection_data, pay_cost)
+	await tryPayAndSelectsForCardPlay(card_data, selection_data, pay_cost)
 	
-	if target_location is CombatantFightingSpot:
-		var combat_spot = target_location as CombatantFightingSpot
-		
-		# Find empty slot if target is occupied
-		if combat_spot.getCard():
-			combat_spot = (combat_spot.get_parent() as CombatZone).getFirstEmptyLocation(card.cardData.playerControlled)
-		
-		if combat_spot:
-			# Check if card can be tapped
-			if card.cardData.can_tap():
-				card.cardData.tap()
-				card.cardData.hasAttackedThisTurn = true
-				
-				await execute_move_card(card, GameZone.e.COMBAT_PLAYER, combat_spot)
+	# If playing directly to combat, handle combat entry
+	if GameZone.is_combat_zone(destination_zone):
+		await execute_move_card(card_data, destination_zone)
 
-func _canPlayCard(source_zone: GameZone.e) -> bool:
-	# Can play cards from hand or extra deck (use specific player zones)
-	var can_play_from_zone = (source_zone == GameZone.e.HAND_PLAYER) or (source_zone == GameZone.e.EXTRA_DECK_PLAYER)
-	if not can_play_from_zone:
-		return false
-	return true
-
-func _executeCardPlay(card: Card, source_zone: GameZone.e, spell_targets: Array):
-	
+func _executeCardPlay(cardData: CardData, spell_targets: Array[CardData]):
 	# Handle spells differently - they cast their effects then go to graveyard
-	if card.cardData.hasType(CardData.CardType.SPELL):
-		await _executeSpellWithTargets(card, spell_targets)
+	if cardData.hasType(CardData.CardType.SPELL):
+		await _executeSpellWithTargets(cardData, spell_targets)
 		# Move spell to graveyard after effects resolve using centralized movement system
-		var graveyard_zone = GameZone.e.GRAVEYARD_PLAYER if card.cardData.playerOwned else GameZone.e.GRAVEYARD_OPPONENT
-		await execute_move_card(card, graveyard_zone)
+		var graveyard_zone = GameZone.e.GRAVEYARD_PLAYER if cardData.playerOwned else GameZone.e.GRAVEYARD_OPPONENT
+		await execute_move_card(cardData, graveyard_zone)
 	else:
 		# Non-spell cards enter the battlefield normally
-		var dest_zone = GameZone.e.BATTLEFIELD_PLAYER if card.cardData.playerControlled else GameZone.e.BATTLEFIELD_OPPONENT
-		await execute_move_card(card, dest_zone)
+		var dest_zone = GameZone.e.BATTLEFIELD_PLAYER if cardData.playerControlled else GameZone.e.BATTLEFIELD_OPPONENT
+		await execute_move_card(cardData, dest_zone)
 	await resolveStateBasedAction()
 
-func _executeSpellWithTargets(card: Card, targets: Array):
-	if not card.cardData.hasType(CardData.CardType.SPELL):
-		print("❌ Tried to execute spell effects on non-spell card: ", card.cardData.cardName)
+func _executeSpellWithTargets(cardData: CardData, targets: Array[CardData]):
+	if not cardData.hasType(CardData.CardType.SPELL):
+		print("❌ Tried to execute spell effects on non-spell card: ", cardData.cardName)
 		return
 	
-	print("✨ Casting spell: ", card.cardData.cardName)
+	print("✨ Casting spell: ", cardData.cardName)
 	
 	# Get spell abilities from the card
-	var spell_abilities = card.cardData.spell_abilities
+	var spell_abilities = cardData.spell_abilities
 	
 	if spell_abilities.is_empty():
-		print("⚠️ Spell has no effects to execute: ", card.cardData.cardName)
+		print("⚠️ Spell has no effects to execute: ", cardData.cardName)
 		return
 	
 	# Execute each spell effect with targets
@@ -622,17 +583,17 @@ func _executeSpellWithTargets(card: Card, targets: Array):
 			effect_targets = [targets[target_index]]
 			target_index += 1
 		
-		await _executeSpellEffectWithTargets(card, spell_ability, effect_targets)
+		await _executeSpellEffectWithTargets(cardData, spell_ability, effect_targets)
 	
-	print("✨ Finished casting spell: ", card.cardData.cardName)
+	print("✨ Finished casting spell: ", cardData.cardName)
 
-func _executeSpellEffectWithTargets(card: Card, spell_ability: SpellAbility, targets: Array):
+func _executeSpellEffectWithTargets(cardData: CardData, spell_ability: SpellAbility, targets: Array):
 	# For targeting effects, add targets to parameters
 	if targets.size() > 0:
 		spell_ability.effect_parameters["Targets"] = targets
 	
 	# Use the unified ability execution system (pass CardData instead of Card)
-	await AbilityManagerAL.executeAbilityEffect(card.cardData, spell_ability, self)
+	await AbilityManagerAL.executeAbilityEffect(cardData, spell_ability, self)
 
 func _executeSpellDamageWithTargets(card: Card, parameters: Dictionary, targets: Array):
 	var damage_amount = parameters.get("NumDamage", 1)
@@ -670,7 +631,8 @@ func drawCard(howMany: int = 1, player = true):
 	var deck_position = _deck.global_position
 	
 	# Model: Get top N cards from GameData deck zone
-	var deck_cards = game_data.cards_in_deck_player if player else game_data.cards_in_deck_opponent
+	var deck_zone = GameZone.e.DECK_PLAYER if player else GameZone.e.DECK_OPPONENT
+	var deck_cards = game_data.get_cards_in_zone(deck_zone)
 	var cards_to_draw = deck_cards.slice(0, min(howMany, deck_cards.size()))
 	
 	if cards_to_draw.is_empty():
@@ -682,7 +644,7 @@ func drawCard(howMany: int = 1, player = true):
 		game_data.move_card(card_data, zone_name)
 	
 	# View: Create and animate card views
-	var card_views = await game_view.create_and_animate_drawn_cards(cards_to_draw, player, deck_position, createCardFromData)
+	var card_views = await game_view.create_and_animate_drawn_cards(cards_to_draw, player, deck_position, game_view.create_card_view)
 	
 	# Emit card_drawn signal for triggered abilities
 	card_drawn.emit(card_views, player)
@@ -690,28 +652,42 @@ func drawCard(howMany: int = 1, player = true):
 
 func resolveCombats():
 	var lock = playerControlLock.addLock()
-	for cv in game_view.get_combat_zones():
-		await resolveCombatInZone(cv)
+	for i in range(game_view.get_combat_zones().size()):
+		var combat_zone_enum := (GameZone.e.COMBAT_PLAYER_1 + i) as GameZone.e
+		await resolveCombatInZone(combat_zone_enum)
 	playerControlLock.removeLock(lock)
 
 func resolve_unresolved_combats():
 	var lock = playerControlLock.addLock()
 	for cld in game_data.combatLocationDatas:
 		if !cld.isCombatResolved.value:
-			await resolve_combat_for_zone(cld.relatedLocation)
+			# Convert CombatZone to GameZone.e
+			var zone_index = game_view.get_combat_zones().find(cld.relatedLocation)
+			if zone_index >= 0:
+				var combat_zone_enum := (GameZone.e.COMBAT_PLAYER_1 + zone_index) as GameZone.e
+				await resolve_combat_for_zone(combat_zone_enum)
 	
 	playerControlLock.removeLock(lock)
 
-func resolve_combat_for_zone(combat_zone: CombatZone):
+func resolve_combat_for_zone(combat_zone_enum: GameZone.e):
+	
+	# Convert to player zone to get the view object (combat zones share the same physical location)
+	var player_zone_enum = combat_zone_enum
+	if combat_zone_enum >= GameZone.e.COMBAT_OPPONENT_1 and combat_zone_enum <= GameZone.e.COMBAT_OPPONENT_3:
+		# Convert opponent zone to player zone to get the view
+		player_zone_enum = (combat_zone_enum - 3) as GameZone.e
+	
+	var combat_zone_view = game_view.get_zone_container(player_zone_enum) as CombatZone
 	
 	# Check if already resolved
-	if game_data.is_combat_resolved(combat_zone):
+	if combat_zone_view and game_data.is_combat_resolved(combat_zone_view):
 		return
 	
 	# Resolve this zone's combat
 	var lock = playerControlLock.addLock()
-	await resolveCombatInZone(combat_zone)
-	game_data.set_combat_resolved(combat_zone, true)
+	await resolveCombatInZone(combat_zone_enum)
+	if combat_zone_view:
+		game_data.set_combat_resolved(combat_zone_view, true)
 	playerControlLock.removeLock(lock)
 
 func reset_all_card_turn_tracking():
@@ -749,7 +725,10 @@ func _get_all_player_cards() -> Array[Card]:
 func _get_target_zone(target_location: Node3D) -> GameZone.e:
 	# Note: This function may need player/opponent context to return the correct specific zone
 	if target_location is CombatantFightingSpot:
-		return GameZone.e.COMBAT_PLAYER  # TODO: distinguish player/opponent
+		var combat_zone = target_location.get_parent() as CombatZone
+		var zone_index = game_view.get_combat_zones().find(combat_zone) + 1
+		# TODO: distinguish player/opponent properly
+		return (GameZone.e.COMBAT_PLAYER_1 + (zone_index - 1)) as GameZone.e
 	elif target_location is PlayerBase:
 		return GameZone.e.BATTLEFIELD_PLAYER  # TODO: distinguish player/opponent
 	elif target_location == game_view.player_hand:
@@ -757,49 +736,78 @@ func _get_target_zone(target_location: Node3D) -> GameZone.e:
 	else:
 		return GameZone.e.UNKNOWN
 	
-func resolveCombatInZone(combatZone: CombatZone):
+func resolveCombatInZone(combat_zone: GameZone.e):
 	print("🔥 === Resolving Combat in Zone ===")
 	
+	# MVC Pattern: Query GameData for cards in this combat zone
+	# Determine if this is a player or opponent zone and get both sides
+	var is_player_zone = combat_zone >= GameZone.e.COMBAT_PLAYER_1 and combat_zone <= GameZone.e.COMBAT_PLAYER_3
+	var player_zone: GameZone.e
+	var opponent_zone: GameZone.e
+	
+	if is_player_zone:
+		# combat_zone is player side (8, 9, 10), opponent is +3 (11, 12, 13)
+		player_zone = combat_zone
+		opponent_zone = (combat_zone + 3) as GameZone.e
+	else:
+		# combat_zone is opponent side (11, 12, 13), player is -3 (8, 9, 10)
+		opponent_zone = combat_zone
+		player_zone = (combat_zone - 3) as GameZone.e
+	
+	var player_cards = game_data.get_cards_in_zone(player_zone)
+	var opponent_cards = game_data.get_cards_in_zone(opponent_zone)
+	print("  🐛 [DEBUG] Player cards: ", player_cards.size(), " | Opponent cards: ", opponent_cards.size())
+	
+	# Get CombatZone View for animations and location damage (use player zone to identify location)
+	var combatZone = game_view.get_zone_container(player_zone) as CombatZone
+	
 	# Step 1: Mark all attacking cards as having attacked
-	for slot_index in range(1, 4):
-		var player_card = combatZone.getCardSlot(slot_index, true).getCard()
-		if player_card:
-			player_card.cardData.hasAttackedThisTurn = true
-			print("⚔️ ", player_card.cardData.cardName, " is attacking")
+	for card_data in player_cards:
+		card_data.hasAttackedThisTurn = true
+		print("⚔️ ", card_data.cardName, " is attacking")
 	
 	# Step 2: Trigger attack declared once for the combat location (before fights)
-	attack_declared.emit(combatZone)
+	if combatZone:
+		attack_declared.emit(combatZone)
 	await resolve_queue()
 	
-	# Step 3: Resolve each slot's combat
-	for slot_index in range(1, 4):
-		var player_card = combatZone.getCardSlot(slot_index, true).getCard()
-		var opponent_card = combatZone.getCardSlot(slot_index, false).getCard()
+	# Step 3: Resolve each slot's combat (match by index)
+	var max_slots = max(player_cards.size(), opponent_cards.size())
+	for slot_index in range(max_slots):
+		var player_card_data = player_cards[slot_index] if slot_index < player_cards.size() else null
+		var opponent_card_data = opponent_cards[slot_index] if slot_index < opponent_cards.size() else null
 		
-		if not player_card and not opponent_card:
+		if not player_card_data and not opponent_card_data:
 			continue
 		
-		var player_damage = player_card.getPower() if player_card else 0
-		var opponent_damage = opponent_card.getPower() if opponent_card else 0
+		var player_damage = player_card_data.power if player_card_data else 0
+		var opponent_damage = opponent_card_data.power if opponent_card_data else 0
 		
 		# Combat strike animations and damage
-		if player_card and opponent_card:
+		if player_card_data and opponent_card_data:
 			# Both cards strike each other
-			game_view.animate_combat_strike(player_card, opponent_card)
+			var player_card = player_card_data.get_card_object()
+			var opponent_card = opponent_card_data.get_card_object()
+			if player_card and opponent_card:
+				game_view.animate_combat_strike(player_card, opponent_card)
 			
 			# Emit strike events for triggered abilities
-			await emit_game_event(TriggeredAbility.GameEventType.STRIKE, player_card.cardData)
-			await emit_game_event(TriggeredAbility.GameEventType.STRIKE, opponent_card.cardData)
-			player_card.receiveDamage(opponent_damage)
-			opponent_card.receiveDamage(player_damage)
-		elif player_card and not opponent_card:
+			await emit_game_event(TriggeredAbility.GameEventType.STRIKE, player_card_data)
+			await emit_game_event(TriggeredAbility.GameEventType.STRIKE, opponent_card_data)
+			
+			# Apply damage
+			player_card_data.receiveDamage(opponent_damage)
+			opponent_card_data.receiveDamage(player_damage)
+		elif player_card_data and not opponent_card_data:
 			# Player attacks location directly
-			await emit_game_event(TriggeredAbility.GameEventType.STRIKE, player_card.cardData)
-			_apply_damage_to_location(player_damage, true, combatZone)
-		elif opponent_card and not player_card:
+			await emit_game_event(TriggeredAbility.GameEventType.STRIKE, player_card_data)
+			if combatZone:
+				_apply_damage_to_location(player_damage, true, combatZone)
+		elif opponent_card_data and not player_card_data:
 			# Opponent attacks location directly
-			await emit_game_event(TriggeredAbility.GameEventType.STRIKE, opponent_card.cardData)
-			_apply_damage_to_location(opponent_damage, false, combatZone)
+			await emit_game_event(TriggeredAbility.GameEventType.STRIKE, opponent_card_data)
+			if combatZone:
+				_apply_damage_to_location(opponent_damage, false, combatZone)
 	
 	await resolveStateBasedAction()
 	resolve_queue()
@@ -842,22 +850,14 @@ func resolveStateBasedAction():
 	print("🔍 [SBA] Checking ", cards_in_play_data.size(), " cards in play for state-based actions")
 	
 	for card_data in cards_in_play_data:
-		# Get the Card node for this CardData
-		var c = card_data.get_card_object()
-		
-		# Skip cards that don't have a valid Card node (already freed or moved)
-		if not c or not is_instance_valid(c):
-			print("  ⚠️ [SBA] Skipping invalid card node for ", card_data.cardName)
-			continue
-			
-		var damage = c.getDamage()
-		var power = c.getPower()
+		var damage = card_data.getDamage()
+		var power = card_data.power
 		
 		if damage > 0 && damage >= power:
 			print("  💀 [SBA] ", card_data.cardName, " is dead (damage: ", damage, " >= power: ", power, "), moving to graveyard")
 			var graveyard_zone = GameZone.e.GRAVEYARD_PLAYER if card_data.playerOwned else GameZone.e.GRAVEYARD_OPPONENT
-			await execute_move_card(c, graveyard_zone)
-			print("  ✅ [SBA] Finished moving ", card_data.cardName if is_instance_valid(c) else "[freed card]", " to graveyard")
+			await execute_move_card(card_data, graveyard_zone)
+			print("  ✅ [SBA] Finished moving ", card_data.cardName, " to graveyard")
 	if game_data.player_life.getValue() <= 0:
 		get_tree().change_scene_to_file("res://MainMenu/scenes/MainMenu.tscn")
 	if game_data.player_points.getValue() >= 6:
@@ -868,21 +868,35 @@ func resolveStateBasedAction():
 	highlightCastableCards()
 
 func updateDecks():
-	if game_data.cards_in_deck_player.size() <= game_data.playerDeckList.deck_cards.size():
-		refilLDeck(createCardDatas(game_data.playerDeckList.deck_cards), true, GameZone.e.DECK_PLAYER)
+	if game_data.get_cards_in_zone(GameZone.e.DECK_PLAYER).size() <= game_data.playerDeckList.deck_cards.size():
+		replenish_deck_zone(GameZone.e.DECK_PLAYER)
 	
-	if game_data.cards_in_deck_opponent.size() <= game_data.opponentDeckList.deck_cards.size():
-		refilLDeck(createCardDatas(game_data.opponentDeckList.deck_cards), false, GameZone.e.DECK_OPPONENT)
+	if game_data.get_cards_in_zone(GameZone.e.DECK_OPPONENT).size() <= game_data.opponentDeckList.deck_cards.size():
+		replenish_deck_zone(GameZone.e.DECK_OPPONENT)
 
-func refilLDeck(cards: Array[CardData], isPlayerOwned: bool, zone_name: GameZone.e):
-	for c:CardData in cards:
-		c.playerOwned = isPlayerOwned
-	
-	cards.shuffle()
-	
-	# Add to GameData model (handles zone array and tracking)
-	for c in cards:
-		game_data.add_card_to_zone(c, zone_name)
+func replenish_deck_zone(zone_name: GameZone.e, copies: int = 1):
+	var card_templates: Array[CardData] = []
+	var is_player_owned := true
+
+	match zone_name:
+		GameZone.e.DECK_PLAYER:
+			card_templates = game_data.playerDeckList.deck_cards
+			is_player_owned = true
+		GameZone.e.EXTRA_DECK_PLAYER:
+			card_templates = game_data.playerDeckList.extra_deck_cards
+			is_player_owned = true
+		GameZone.e.DECK_OPPONENT:
+			card_templates = game_data.opponentDeckList.deck_cards
+			is_player_owned = false
+		_:
+			push_error("replenish_deck_zone: Unsupported deck zone " + str(zone_name))
+			return
+
+	for _i in range(copies):
+		var templates_to_create: Array[CardData] = card_templates.duplicate()
+		templates_to_create.shuffle()
+		# Create all cards through createCardData so signal wiring and zone setup stay centralized.
+		createCardDatas(templates_to_create, zone_name, is_player_owned)
 	
 func opponentMainOne():
 	if opponent_ai:
@@ -894,30 +908,6 @@ static var objectCount = 0
 static func getObjectCountAndIncrement():
 	objectCount +=1
 	return objectCount-1
-
-## MVC Pattern: Create card view through GameView
-func create_card_view_mvc(card_data: CardData, is_player_controlled: bool, zone: GameZone.e) -> Card:
-	"""Create a Card view using MVC pattern - Model → View"""
-	# Model: Add to GameData
-	game_data.add_card_to_zone(card_data, zone)
-	
-	# View: Create Card node
-	var card = game_view.create_card_view(card_data, is_player_controlled, false)
-	
-	# Get zone container and add card to it
-	var zone_container = game_view.get_zone_container(zone)
-	if zone_container:
-		zone_container.add_child(card)
-	
-	return card
-	
-## Legacy: Old card creation (to be phased out)
-func createCardFromData(cardData: CardData, player_controlled: bool, container: CardContainer = null):
-	# TODO: Migrate callers to use create_card_view_mvc instead
-	return GameUtility.createCardFromData(self, cardData, player_controlled, false, container)
-
-func createToken(cardData: CardData, player_controlled: bool) -> Card:
-	return GameUtility.createCardFromData(self, cardData, player_controlled, true, null)
 
 func getCardZone(card: Card) -> GameZone.e:
 	"""Legacy method - prefer using game_data.get_card_zone(card_data) for MVC compliance"""
@@ -975,7 +965,7 @@ func _updateExtraDeckOutline():
 	"""Update extra deck outline visibility based on whether there are castable cards"""
 	var has_castable_cards = false
 	
-	for card_data: CardData in game_data.cards_in_extra_deck_player:
+	for card_data: CardData in game_data.get_cards_in_zone(GameZone.e.EXTRA_DECK_PLAYER):
 		if CardPaymentManagerAL.isCardDataCastable(card_data):
 			has_castable_cards = true
 			break
@@ -989,11 +979,11 @@ func _toggleExtraDeckView():
 		setActiveHand(game_view.extra_hand)
 		# Get castable cards for display
 		var castable_cards: Array[CardData] = []
-		for card_data: CardData in game_data.cards_in_extra_deck_player:
+		for card_data: CardData in game_data.get_cards_in_zone(GameZone.e.EXTRA_DECK_PLAYER):
 			if CardPaymentManagerAL.isCardDataCastable(card_data):
 				castable_cards.append(card_data)
 		# View handles arrangement and headless check
-		await game_view.arrange_extra_deck_hand(castable_cards, createCardFromData)
+		await game_view.arrange_extra_deck_hand(castable_cards, game_view.create_card_view)
 	else:
 		setActiveHand(game_view.player_hand)
 
@@ -1066,7 +1056,12 @@ func _on_left_click(objectUnderMouse):
 			if await tryActivateAbility(card):
 				return
 	elif objectUnderMouse is ResolveFightButton:
-		resolve_combat_for_zone(objectUnderMouse.get_parent())
+		# Convert CombatZone to GameZone.e
+		var combat_zone_view = objectUnderMouse.get_parent() as CombatZone
+		var zone_index = game_view.get_combat_zones().find(combat_zone_view)
+		if zone_index >= 0:
+			var combat_zone_enum := (GameZone.e.COMBAT_PLAYER_1 + zone_index) as GameZone.e
+			resolve_combat_for_zone(combat_zone_enum)
 	elif objectUnderMouse == game_view.extra_deck:
 		_toggleExtraDeckView()
 
@@ -1086,33 +1081,121 @@ func _calculate_game_popup_position() -> Vector2:
 func _card_matches_requirement(card: Card, requirement: Dictionary) -> bool:
 	return GameUtility._card_matches_requirement(card, requirement)
 
-func start_card_selection(requirement: Dictionary, possible_cards: Array[CardData], selection_type: String, casting_card: Card = null, preselected_cards: Array[CardData] = []) -> Array[CardData]:
+func start_card_selection(requirement: Dictionary, possible_cards: Array[CardData], selection_type: String, casting_card_data: CardData = null, preselected_cards: Array[CardData] = []) -> Array[CardData]:
 	# If we have pre-selected cards, use them directly
 	if preselected_cards.size() > 0:
 		print("🎯 Using pre-selected cards for ", selection_type, ": ", preselected_cards.size(), " cards")
 		return preselected_cards
 	
 	# If we have a casting card, set up animation and state tracking
-	if casting_card:
-		current_casting_card = casting_card
-		# Move to card selection position - using legacy method for now
-		await AnimationsManagerAL.animate_card_to_card_selection_position(casting_card)
+	if casting_card_data:
+		var casting_card = casting_card_data.get_card_object()
+		if casting_card:
+			current_casting_card = casting_card
+			# Move to card selection position - using legacy method for now
+			await AnimationsManagerAL.animate_card_to_card_selection_position(casting_card)
 	
 	# SelectionManager now takes CardData arrays and returns CardData arrays
-	var selected_cards = await selection_manager.start_selection_and_wait(requirement, possible_cards, selection_type, self, casting_card.card_data if casting_card else null, preselected_cards)
+	var selected_cards = await selection_manager.start_selection_and_wait(requirement, possible_cards, selection_type, self, casting_card_data, preselected_cards)
 	
 	# Clear casting state when selection completes (successfully or cancelled)
-	if casting_card:
+	if casting_card_data:
 		current_casting_card = null
 		casting_card_original_parent = null
 	
 	return selected_cards
 
+## ===== UNIFIED CARD FILTER SYSTEM =====
+## Single source of truth for matching cards against filter criteria.
+## Used by: effects, abilities, payment logic, targeting systems.
+
+func _matches_card_filter(filter: String) -> Array[CardData]:
+	"""Return all cards from possible_cards that match the filter string.
+	
+	If possible_cards is empty, searches all cards in play.
+	
+	Filter format supports AND (+) and OR (/) logic:
+	- "Creature+YouCtrl" - creatures you control (AND)
+	- "Creature+NonToken/Creature+Grown-up" - (non-token creatures) OR (Grown-up creatures)
+	- Conditions separated by '+' (AND logic)
+	- Branches separated by '/' (OR logic)
+	
+	Supported tokens:
+	- "Card" - always matches (generic)
+	- "Creature", "Instant", "Sorcery", "Spell", etc. - card type checks
+	- "YouCtrl" / "You Control" - checks if player controls this card
+	- "OppCtrl" / "Opponent Control" - checks if opponent controls this card
+	- "Cost.N" - checks if card cost equals N
+		- "NonToken" - filters tokens
+		- "Token" - filters non-tokens
+	- Any other token - treated as subtype check (e.g., "Goblin", "Punglynd")
+	"""
+	var all_cards: Array = game_data.get_cards_in_play()
+	var result_cards: Array[CardData] = []
+	
+	# Handle OR logic first - split by '/'
+	var or_branches = filter.split("/")
+	
+	for branch in or_branches:
+		var cards: Array = all_cards.duplicate()
+		
+		# Handle AND logic within this branch - split by '+'
+		for condition in branch.split("+"):
+			var tokens = condition.split(".")
+			var token_index = 0
+			while token_index < tokens.size():
+				var key = tokens[token_index]
+				
+				match key:
+					"", "Card":
+						pass
+					
+					"Creature":
+						cards = cards.filter(func(c): return c.hasType(CardData.CardType.CREATURE))
+					
+					"Instant":
+						cards = cards.filter(func(c): return c.hasType(CardData.CardType.SPELL))
+					
+					"Spell", "Sorcery":
+						cards = cards.filter(func(c): return c.hasType(CardData.CardType.SPELL))
+					
+					"YouCtrl", "You Control":
+						cards = cards.filter(func(c): return c.playerControlled)
+					
+					"OppCtrl", "Opponent Control":
+						cards = cards.filter(func(c): return not c.playerControlled)
+					
+					"Token":
+						cards = cards.filter(func(c): return c.isToken)
+					
+					"NonToken":
+						cards = cards.filter(func(c): return not c.isToken)
+					
+					"Cost":
+						if token_index + 1 < tokens.size():
+							var target_cost = int(tokens[token_index + 1])
+							cards = cards.filter(func(c): return c.goldCost == target_cost)
+							token_index += 1
+						else:
+							cards = []
+					
+					_:
+						cards = cards.filter(func(c): return c.hasSubtype(key))
+				
+				token_index += 1
+		
+		# Add cards from this branch to results (union of all OR branches)
+		for card in cards:
+			if card not in result_cards:
+				result_cards.append(card)
+	
+	return result_cards
+
 func _requiresPlayerSelection(additional_costs: Array[Dictionary]) -> bool:
 	"""Check if any additional costs require player selection (like sacrifice)"""
 	return GameUtility._requiresPlayerSelection(additional_costs)
 
-func _collectAllPlayerSelections(card: Card, pre_selections: SelectionManager.CardPlaySelections = null) -> SelectionManager.CardPlaySelections:
+func _collectAllPlayerSelections(card_data: CardData, pre_selections: SelectionManager.CardPlaySelections = null) -> SelectionManager.CardPlaySelections:
 	"""Collect all required player selections for a card before playing it"""
 	var selection_data = SelectionManager.CardPlaySelections.new()
 	
@@ -1122,18 +1205,18 @@ func _collectAllPlayerSelections(card: Card, pre_selections: SelectionManager.Ca
 		return pre_selections
 	
 	# Step 1: Check for alternative casting options (Replace)
-	var has_replace = CardPaymentManagerAL.hasReplaceOption(card.cardData)
-	print("🔍 [REPLACE CHECK] hasReplaceOption returned: ", has_replace, " for ", card.cardData.cardName)
+	var has_replace = CardPaymentManagerAL.hasReplaceOption(card_data)
+	print("🔍 [REPLACE CHECK] hasReplaceOption returned: ", has_replace, " for ", card_data.cardName)
 	if has_replace:
 		# Get valid replacement targets for selection
 		var replace_cost_data = null
-		for cost_data in card.cardData.additionalCosts:
+		for cost_data in card_data.additionalCosts:
 			if cost_data.get("cost_type", "") == "Replace":
 				replace_cost_data = cost_data
 				break
 		
 		if replace_cost_data:
-			var valid_targets = CardPaymentManagerAL.getValidReplaceTargets(card.cardData, replace_cost_data)
+			var valid_targets = CardPaymentManagerAL.getValidReplaceTargets(card_data, replace_cost_data)
 			if valid_targets.size() > 0:
 				# TODO: Show CastChoice.tscn UI here - for now use selection manager
 				var requirement = {
@@ -1150,8 +1233,8 @@ func _collectAllPlayerSelections(card: Card, pre_selections: SelectionManager.Ca
 				var selected_replace_target = await start_card_selection(
 					requirement, 
 					valid_targets, 
-					"replace_for_" + card.cardData.cardName, 
-					card,
+					"replace_for_" + card_data.cardName, 
+					card_data,
 					preselected_replace
 				)
 				
@@ -1162,15 +1245,15 @@ func _collectAllPlayerSelections(card: Card, pre_selections: SelectionManager.Ca
 					selection_data.set_replace_target(selected_replace_target[0])
 	
 	# Step 2: Check for additional costs that require selection
-	if card.cardData.hasAdditionalCosts():
-		var additional_costs = card.cardData.getAdditionalCosts()
+	if card_data.hasAdditionalCosts():
+		var additional_costs = card_data.getAdditionalCosts()
 		if _requiresPlayerSelection(additional_costs):
 			# Check for pre-selected sacrifice target cards
 			var preselected_sacrifice: Array[CardData] = []
 			if pre_selections != null and pre_selections.sacrifice_targets.size() > 0:
 				preselected_sacrifice = pre_selections.sacrifice_targets
 			
-			var selected_cards = await _startAdditionalCostSelection(card, additional_costs, preselected_sacrifice)
+			var selected_cards = await _startAdditionalCostSelection(card_data, additional_costs, preselected_sacrifice)
 			if selected_cards.is_empty():
 				selection_data.cancelled = true
 				return selection_data
@@ -1178,18 +1261,18 @@ func _collectAllPlayerSelections(card: Card, pre_selections: SelectionManager.Ca
 				selection_data.add_sacrifice_target(card_selection)
 	
 	# Step 3: Check if spell requires targeting
-	if card.cardData.hasType(CardData.CardType.SPELL):
+	if card_data.hasType(CardData.CardType.SPELL):
 		# Check for pre-selected spell targets
 		var preselected_spell_targets: Array[CardData] = []
 		if pre_selections != null and pre_selections.spell_targets.size() > 0:
 			preselected_spell_targets = pre_selections.spell_targets
 		
-		var spell_targets = await _getSpellTargetsIfRequired(card, preselected_spell_targets)
+		var spell_targets: Array[CardData] = await _getSpellTargetsIfRequired(card_data, preselected_spell_targets)
 		if spell_targets == null:  # null means selection was cancelled
 			selection_data.cancelled = true
 			return selection_data
 		# Only check for empty targets if the spell actually requires targeting
-		if spell_targets is Array and spell_targets.is_empty() and _spellRequiresTargeting(card):
+		if spell_targets.is_empty() and _spellRequiresTargeting(card_data):
 			print("❌ No valid targets available - cancelling spell")
 			selection_data.cancelled = true
 			return selection_data
@@ -1198,15 +1281,15 @@ func _collectAllPlayerSelections(card: Card, pre_selections: SelectionManager.Ca
 	
 	return selection_data
 
-func _spellRequiresTargeting(card: Card) -> bool:
+func _spellRequiresTargeting(card_data: CardData) -> bool:
 	"""Check if a spell has any effects that require targeting"""
-	for ability in card.cardData.spell_abilities:
+	for ability in card_data.spell_abilities:
 		if ability.requires_target():
 			return true
 	return false
 
-func _getSpellTargetsIfRequired(card: Card, preselected_targets: Array[CardData] = []) -> Variant:
-	"""Get spell targets if the spell requires targeting, returns null if cancelled"""
+func _getSpellTargetsIfRequired(card_data: CardData, preselected_targets: Array[CardData] = []) -> Array[CardData]:
+	"""Get spell targets if the spell requires targeting, returns empty array if cancelled"""
 	
 	# If pre-selected targets are provided, return them
 	if preselected_targets.size() > 0:
@@ -1215,7 +1298,7 @@ func _getSpellTargetsIfRequired(card: Card, preselected_targets: Array[CardData]
 	
 	# Get spell abilities that require targeting
 	var targeting_abilities: Array[SpellAbility] = []
-	for ability in card.cardData.spell_abilities:
+	for ability in card_data.spell_abilities:
 		if ability.requires_target():
 			targeting_abilities.append(ability)
 	
@@ -1236,16 +1319,17 @@ func _getSpellTargetsIfRequired(card: Card, preselected_targets: Array[CardData]
 		"Any":
 			valid_card_data = cards_in_play_data
 		"Creature":
-			for card_data in cards_in_play_data:
-				if card_data.hasType(CardData.CardType.CREATURE):
-					valid_card_data.append(card_data)
+			for cd in cards_in_play_data:
+				if cd.hasType(CardData.CardType.CREATURE):
+					valid_card_data.append(cd)
 		_:
 			print("❌ Unknown target type: ", valid_targets)
 			return []
 	
 	if valid_card_data.is_empty():
-		print("⚠️ No valid targets for ", card.cardData.cardName)
-		return []
+		print("⚠️ No valid targets for ", card_data.cardName)
+		var empty_result: Array[CardData] = []
+		return empty_result
 	
 	# Start target selection with CardData
 	var requirement = {
@@ -1253,30 +1337,25 @@ func _getSpellTargetsIfRequired(card: Card, preselected_targets: Array[CardData]
 		"count": 1
 	}
 	
-	var selected_targets = await start_card_selection(requirement, valid_card_data, "spell_target_" + card.cardData.cardName, card)
+	var selected_targets = await start_card_selection(requirement, valid_card_data, "spell_target_" + card_data.cardName, card_data)
 	
 	if selected_targets.is_empty():
-		return null  # Selection was cancelled
+		var cancelled_result: Array[CardData] = []
+		return cancelled_result  # Selection was cancelled
 	
 	return selected_targets
 
-func tryPayAndSelectsForCardPlay(card_data: CardData, source_zone: GameZone.e, selection_data: SelectionManager.CardPlaySelections, pay_cost: bool = true):
+func tryPayAndSelectsForCardPlay(card_data: CardData, selection_data: SelectionManager.CardPlaySelections, pay_cost: bool = true):
 	"""Execute card play with all selections already collected"""
 	# Validate that the card data is valid
 	if not card_data:
 		print("❌ CardData is invalid")
 		return
 	
-	# Get the card node for execution
-	var card_node = card_data.get_card_object()
-	if not card_node or not is_instance_valid(card_node):
-		print("❌ Card node is invalid or freed")
-		return
-	
 	# Skip payment if pay_cost is false (e.g., casting from deck via effect)
 	if not pay_cost:
 		print("💫 Skipping payment for card (cast via effect)")
-		await _executeCardPlay(card_node, source_zone, [])
+		await _executeCardPlay(card_data, [])
 		return
 	
 	# Pay costs first - selection_data stores CardData
@@ -1320,27 +1399,21 @@ func tryPayAndSelectsForCardPlay(card_data: CardData, source_zone: GameZone.e, s
 	
 	# Execute payment: sacrifice cards (game.gd handles movement)
 	for sacrifice_card_data in payment_info.cards_to_sacrifice:
-		var sacrifice_card_node = sacrifice_card_data.get_card_object()
-		if sacrifice_card_node and is_instance_valid(sacrifice_card_node):
-			var dest_zone = GameZone.e.GRAVEYARD_PLAYER if sacrifice_card_data.playerOwned else GameZone.e.GRAVEYARD_OPPONENT
-			await execute_move_card(sacrifice_card_node, dest_zone)
-		else:
-			print("⚠️ Skipping invalid sacrifice target")
+		var dest_zone = GameZone.e.GRAVEYARD_PLAYER if sacrifice_card_data.playerOwned else GameZone.e.GRAVEYARD_OPPONENT
+		await execute_move_card(sacrifice_card_data, dest_zone)
 	
 	# Convert spell targets from CardData to Card nodes for execution
 	var spell_targets_data: Array[CardData] = selection_data.spell_targets
-	var valid_spell_targets: Array[Card] = []
+	var valid_spell_targets: Array[CardData] = []
 	for target_data in spell_targets_data:
 		if target_data:
-			var target_node = target_data.get_card_object()
-			if target_node and is_instance_valid(target_node):
-				valid_spell_targets.append(target_node)
-			else:
-				print("⚠️ Skipping invalid spell target")
+			valid_spell_targets.append(target_data)
+		else:
+			print("⚠️ Skipping invalid spell target")
 	
-	await _executeCardPlay(card_node, source_zone, valid_spell_targets)
+	await _executeCardPlay(card_data, valid_spell_targets)
 
-func _startAdditionalCostSelection(card: Card, additional_costs: Array[Dictionary], preselected_cards: Array[CardData] = []) -> Array[CardData]:
+func _startAdditionalCostSelection(card_data: CardData, additional_costs: Array[Dictionary], preselected_cards: Array[CardData] = []) -> Array[CardData]:
 	"""Start the selection process for paying additional costs and return selected cards"""
 	
 	# If pre-selected cards are provided, return them
@@ -1367,14 +1440,14 @@ func _startAdditionalCostSelection(card: Card, additional_costs: Array[Dictionar
 			
 			# Filter CardData based on requirement
 			var valid_card_data: Array[CardData] = []
-			for card_data in cards_in_play_data:
-				var card_node = card_data.get_card_object()
+			for cd in cards_in_play_data:
+				var card_node = cd.get_card_object()
 				if card_node and is_instance_valid(card_node) and _card_matches_requirement(card_node, requirement):
-					valid_card_data.append(card_data)
+					valid_card_data.append(cd)
 			
 			# Start the selection process with CardData
 			if valid_card_data.size() > 0:
-				var selected_cards = await start_card_selection(requirement, valid_card_data, "sacrifice_for_" + card.cardData.cardName, card)
+				var selected_cards = await start_card_selection(requirement, valid_card_data, "sacrifice_for_" + card_data.cardName, card_data)
 				return selected_cards
 			else:
 				print("❌ No valid cards found for selection: ", requirement)
@@ -1442,6 +1515,7 @@ func resolve_queue():
 		
 		# Execute the resolvable ability with event context
 		await AbilityManagerAL.executeAbilityEffect(queued_resolvable.source_card_data, queued_resolvable.ability, self)
+	is_resolving_triggers = false
 	print("✅ [RESOLVABLE QUEUE] Resolution complete")
 
 func emit_game_event(event_type: TriggeredAbility.GameEventType, card_data: CardData = null):

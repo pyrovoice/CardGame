@@ -1,4 +1,4 @@
-[gd_scene load_steps=20 format=3 uid="uid://bkqg746td2asx"]
+[gd_scene load_steps=21 format=3 uid="uid://bkqg746td2asx"]
 
 [ext_resource type="Script" uid="uid://bfo2jk26bbnjb" path="res://Game/scripts/GameView.gd" id="1_s4hdo"]
 [ext_resource type="PackedScene" uid="uid://daynfobgnbdrp" path="res://Game/scenes/combat_zone.tscn" id="2_lpwbj"]
@@ -28,6 +28,9 @@ size = Vector2(6, 1)
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_yieuc"]
 size = Vector3(5, 0.1, 1.5)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_s4hdo"]
+size = Vector3(1, 0.06323242, 1.8572998)
 
 [node name="GameView" type="Node3D"]
 script = ExtResource("1_s4hdo")
@@ -81,6 +84,17 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.69399214, 0, 0.4584682)
 mesh = SubResource("PlaneMesh_bqf56")
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="playerBase"]
+shape = SubResource("BoxShape3D_yieuc")
+
+[node name="opponentbase" type="StaticBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.59764, -0.001, -3.1685605)
+script = ExtResource("6_k71w3")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="opponentbase"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.69399214, 0, 0.4584682)
+mesh = SubResource("PlaneMesh_bqf56")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="opponentbase"]
 shape = SubResource("BoxShape3D_yieuc")
 
 [node name="UI" type="Control" parent="."]
@@ -235,3 +249,10 @@ visible = false
 
 [node name="OpponentHand" parent="." instance=ExtResource("15_4ovxi")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.97, -0.7)
+
+[node name="recycleArea" type="Area3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 3.8420663, 0.6343217, 0)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="recycleArea"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.13473535, -0.23394704, 0.42865002)
+shape = SubResource("BoxShape3D_s4hdo")
