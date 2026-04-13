@@ -10,6 +10,7 @@ signal attack_declared(combat_zone: CombatZone)
 signal spell_cast(card_data: CardData)
 signal beginning_of_turn(card_data: CardData)
 signal end_of_turn(card_data: CardData)
+signal end_of_turn_cleanup()  # Fires after end_of_turn for cleanup (remove temporary effects, orphaned abilities)
 signal card_drawn(cards: Array, is_player: bool)
 signal card_changed_zones(card_data: CardData, from_zone: GameZone.e, to_zone: GameZone.e)
 signal strike(card_data: CardData)
@@ -22,6 +23,10 @@ signal card_recycled(card_data: CardData)
 # Trigger queue for managing triggered abilities
 var trigger_queue: ResolvableQueue = ResolvableQueue.new()
 var is_resolving_triggers: bool = false  # Track if we're currently resolving the trigger queue
+
+# Orphaned abilities - triggered abilities not attached to any card (e.g., delayed effects)
+# These persist independently and clean up after resolution
+var orphaned_abilities: Array[TriggeredAbility] = []
 
 # MVC Architecture
 var game_data: GameData  # Model: Single source of truth for game state
@@ -691,8 +696,9 @@ func drawCard(howMany: int = 1, player = true):
 	# View: Create and animate card views
 	var card_views = await game_view.create_and_animate_drawn_cards(cards_to_draw, player, deck_position, game_view.create_card_view)
 	
-	# Emit card_drawn signal for triggered abilities
-	card_drawn.emit(card_views, player)
+	# Emit CARD_DRAWN game event for all drawn cards
+	await emit_game_event(TriggeredAbility.GameEventType.CARD_DRAWN, cards_to_draw)
+	
 	await resolveStateBasedAction()
 
 func resolveCombats():
@@ -1593,9 +1599,54 @@ func trigger_phase(phase_name: String):
 			await emit_game_event(TriggeredAbility.GameEventType.BEGINNING_OF_TURN, null)
 		"EndOfTurn":
 			await emit_game_event(TriggeredAbility.GameEventType.END_OF_TURN, null)
+			await emit_game_event(TriggeredAbility.GameEventType.END_OF_TURN_CLEANUP, null)
 			# Note: Cards no longer automatically return from combat at end of turn
 		"TurnStarted":
 			await emit_game_event(TriggeredAbility.GameEventType.TURN_STARTED, null)
+
+func register_orphaned_ability(ability: TriggeredAbility):
+	"""Register a triggered ability that's not attached to any card
+	
+	Used for delayed effects like 'Sacrifice at end of turn' created by spells.
+	The ability's owner should be the spell that created it (for tracking).
+	The ability will persist in play and trigger normally via signals.
+	"""
+	orphaned_abilities.append(ability)
+	ability.register_to_game(self)
+	
+	var owner = ability.get_owner()
+	var owner_name = owner.cardName if owner else "Unknown"
+	print("🔗 [ORPHANED ABILITY] Registered: ", ability.get_description(), " (from ", owner_name, ")")
+
+func unregister_orphaned_ability(ability: TriggeredAbility):
+	"""Remove an orphaned ability and disconnect from signals"""
+	if ability in orphaned_abilities:
+		ability.unregister_from_game(self)
+		orphaned_abilities.erase(ability)
+		
+		var owner = ability.get_owner()
+		var owner_name = owner.cardName if owner else "Unknown"
+		print("🗑️ [ORPHANED ABILITY] Unregistered: ", ability.get_description(), " (from ", owner_name, ")")
+
+func _cleanup_one_shot_orphaned_abilities():
+	"""Remove orphaned abilities marked for cleanup at end of turn
+	
+	This is called when END_OF_TURN_CLEANUP event fires.
+	It removes any orphaned abilities that have cleanup_at_end_of_turn = true
+	and haven't already been removed by one_shot.
+	"""
+	var to_remove: Array[TriggeredAbility] = []
+	
+	for ability in orphaned_abilities:
+		# Check if ability has cleanup_at_end_of_turn flag
+		if ability.cleanup_at_end_of_turn:
+			to_remove.append(ability)
+	
+	for ability in to_remove:
+		unregister_orphaned_ability(ability)
+	
+	if to_remove.size() > 0:
+		print("🗑️ [ORPHANED ABILITY] Cleaned up ", to_remove.size(), " end-of-turn abilities")
 
 func resolve_queue():
 	"""Resolve all resolvables in the queue one by one"""
@@ -1622,7 +1673,7 @@ func resolve_queue():
 	is_resolving_triggers = false
 	print("✅ [RESOLVABLE QUEUE] Resolution complete")
 
-func emit_game_event(event_type: TriggeredAbility.GameEventType, card_data: CardData = null):
+func emit_game_event(event_type: TriggeredAbility.GameEventType, card_data):
 	"""Emit a game event signal - abilities listening to this event will add themselves to the trigger queue"""
 	match event_type:
 		TriggeredAbility.GameEventType.CARD_ENTERED_PLAY:
@@ -1631,6 +1682,22 @@ func emit_game_event(event_type: TriggeredAbility.GameEventType, card_data: Card
 			card_died.emit(card_data)
 		TriggeredAbility.GameEventType.ATTACK_DECLARED:
 			attack_declared.emit(card_data)
+		TriggeredAbility.GameEventType.CARD_DRAWN:
+			# Handle both single card and array of cards
+			var cards_drawn_array: Array = []
+			var is_player = true
+			
+			if card_data is Array:
+				# Multiple cards drawn (e.g., from drawCard)
+				cards_drawn_array = card_data
+				if cards_drawn_array.size() > 0 and cards_drawn_array[0] is CardData:
+					is_player = cards_drawn_array[0].playerControlled
+			elif card_data is CardData:
+				# Single card drawn
+				cards_drawn_array = [card_data]
+				is_player = card_data.playerControlled
+			
+			card_drawn.emit(cards_drawn_array, is_player)
 		TriggeredAbility.GameEventType.DAMAGE_DEALT:
 			# Note: damage_dealt has different signature with target and amount
 			pass  # This event type should not be emitted through this function
@@ -1638,6 +1705,10 @@ func emit_game_event(event_type: TriggeredAbility.GameEventType, card_data: Card
 			spell_cast.emit(card_data)
 		TriggeredAbility.GameEventType.END_OF_TURN:
 			end_of_turn.emit(card_data)
+		TriggeredAbility.GameEventType.END_OF_TURN_CLEANUP:
+			end_of_turn_cleanup.emit()
+			# Perform cleanup of orphaned abilities after signal is emitted
+			_cleanup_one_shot_orphaned_abilities()
 		TriggeredAbility.GameEventType.BEGINNING_OF_TURN:
 			beginning_of_turn.emit(card_data)
 		TriggeredAbility.GameEventType.STRIKE:

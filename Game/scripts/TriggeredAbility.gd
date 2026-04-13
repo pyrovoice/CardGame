@@ -3,6 +3,29 @@ class_name TriggeredAbility
 
 ## Triggered ability that automatically responds to game events
 ## Registers itself to game signals when enabled
+##
+## ORPHANED ABILITIES (Delayed Effects):
+## For effects like "Sacrifice at end of turn" that persist after the spell resolves:
+##
+## # In a spell effect:
+## var returned_card: CardData = # ... card that was returned to play
+##
+## # Create orphaned ability
+## var sacrifice_ability = TriggeredAbility.new(
+##     source_card_data,  # The spell that created this
+##     TriggeredAbility.GameEventType.END_OF_TURN,
+##     EffectType.Type.SACRIFICE
+## )
+## sacrifice_ability.effect_parameters = {"TargetCard": returned_card}
+## sacrifice_ability.one_shot = true  # Remove after firing once
+## sacrifice_ability.cleanup_at_end_of_turn = true  # Backup cleanup
+## game_context.register_orphaned_ability(sacrifice_ability)
+##
+## The ability will:
+## - Register to end_of_turn signal
+## - Trigger when signal fires
+## - Add to queue and resolve (even if spell is in graveyard)
+## - Auto-remove after triggering (one_shot = true)
 
 enum GameEventType {
 	ATTACK_DECLARED,      # When this or another card attacks
@@ -15,6 +38,7 @@ enum GameEventType {
 	SPELL_CAST,           # When a spell is cast
 	END_OF_TURN,          # At end of turn
 	BEGINNING_OF_TURN,    # At beginning of turn
+	END_OF_TURN_CLEANUP,  # After end of turn, for cleanup (temporary effects, orphaned abilities)
 	STRIKE,               # Creature strikes
 	CARD_RECYCLED         # When a card is recycled from hand
 }
@@ -41,12 +65,17 @@ const EVENT_TO_SIGNAL = {
 	GameEventType.SPELL_CAST: "spell_cast",
 	GameEventType.END_OF_TURN: "end_of_turn",
 	GameEventType.BEGINNING_OF_TURN: "beginning_of_turn",
+	GameEventType.END_OF_TURN_CLEANUP: "end_of_turn_cleanup",
 	GameEventType.STRIKE: "strike"
 }
 
 var game_event_trigger: GameEventType
 var game_ref: WeakRef  # Reference to game node
 var trigger_conditions: Dictionary = {}  # Conditions that must be met (ValidCards, Self, etc.)
+
+# Orphaned ability flags (for abilities not attached to cards)
+var one_shot: bool = false  # If true, ability auto-removes after triggering once
+var cleanup_at_end_of_turn: bool = false  # If true, ability is removed at end of turn regardless
 
 func _init(p_owner: CardData, p_trigger: GameEventType, p_effect: EffectType.Type, game: Node = null):
 	super(p_owner)
@@ -134,6 +163,12 @@ func _on_game_event(event_card_data: CardData = null, from_zone = null, to_zone 
 		event_context["TriggeredCardData"] = event_card_data
 	
 	game.trigger_queue.add_resolvable(owner, self, event_context)
+	
+	# If this is a one-shot orphaned ability, unregister it after triggering
+	# (it will still resolve from the queue, but won't trigger again)
+	if one_shot and self in game.orphaned_abilities:
+		game.unregister_orphaned_ability(self)
+		print("  🔥 [ONE-SHOT] Ability auto-removed after triggering")
 
 func _check_trigger_conditions(cardData: CardData, event_card_data: CardData, game: Game, from_zone = null, to_zone = null) -> bool:
 	"""Check if the trigger conditions for this ability are met"""
@@ -210,6 +245,8 @@ static func event_to_string(event: GameEventType) -> String:
 			return "EndOfTurn"
 		GameEventType.BEGINNING_OF_TURN:
 			return "BeginningOfTurn"
+		GameEventType.END_OF_TURN_CLEANUP:
+			return "EndOfTurnCleanup"
 		GameEventType.STRIKE:
 			return "Strike"
 	return "Unknown"
@@ -235,4 +272,6 @@ static func string_to_event(event_str: String) -> GameEventType:
 			return GameEventType.END_OF_TURN
 		"BeginningOfTurn":
 			return GameEventType.BEGINNING_OF_TURN
+		"EndOfTurnCleanup":
+			return GameEventType.END_OF_TURN_CLEANUP
 	return GameEventType.CARD_ENTERED_PLAY  # Default

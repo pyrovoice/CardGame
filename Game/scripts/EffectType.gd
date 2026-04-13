@@ -12,6 +12,7 @@ enum Type {
 	CREATE_TOKEN,  # Create token creatures
 	CREATE_CARD,  # Create a card from a pool into hand
 	CAST,  # Cast/play a card from any zone
+	CREATE_DELAYED_EFFECT,  # Create a delayed/orphaned effect that triggers at a specific time
 	
 	# Modification effects
 	ADD_TYPE,  # Add types/subtypes to cards
@@ -20,6 +21,7 @@ enum Type {
 	# Card movement effects
 	MOVE_CARD,  # Move card from one zone to another
 	SWITCH_POSITIONS,  # Switch positions between two cards (Elusive)
+	SACRIFICE,  # Sacrifice permanents (move to owner's graveyard)
 	
 	# Future effects
 	DESTROY,  # Destroy permanents
@@ -47,6 +49,8 @@ static func type_to_string(effect_type: Type) -> String:
 			return "CreateCard"
 		Type.CAST:
 			return "Cast"
+		Type.CREATE_DELAYED_EFFECT:
+			return "CreateDelayedEffect"
 		Type.ADD_TYPE:
 			return "AddType"
 		Type.ADD_KEYWORD:
@@ -55,6 +59,8 @@ static func type_to_string(effect_type: Type) -> String:
 			return "MoveCard"
 		Type.SWITCH_POSITIONS:
 			return "SwitchPositions"
+		Type.SACRIFICE:
+			return "Sacrifice"
 		Type.DESTROY:
 			return "Destroy"
 		Type.BOUNCE:
@@ -90,6 +96,8 @@ static func string_to_type(effect_string: String) -> Type:
 			return Type.CREATE_CARD
 		"Cast":
 			return Type.CAST
+		"CreateDelayedEffect":
+			return Type.CREATE_DELAYED_EFFECT
 		"AddType":
 			return Type.ADD_TYPE
 		"AddKeyword", "PumpAll":  # PumpAll is alias for AddKeyword
@@ -98,6 +106,8 @@ static func string_to_type(effect_string: String) -> Type:
 			return Type.MOVE_CARD
 		"SwitchPositions":
 			return Type.SWITCH_POSITIONS
+		"Sacrifice":
+			return Type.SACRIFICE
 		"Destroy":
 			return Type.DESTROY
 		"Bounce":

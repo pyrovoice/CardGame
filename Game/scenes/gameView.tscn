@@ -40,7 +40,7 @@ script = ExtResource("1_s4hdo")
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -6.8445325, -0.001, 0)
 
 [node name="combatZone2" parent="." instance=ExtResource("2_lpwbj")]
-transform = Transform3D(1.95, 0, 0, 0, 1.95, 0, 0, 0, 1.95, -0.112, -0.001, -0.1543597)
+transform = Transform3D(1.95, 0, 0, 0, 1.95, 0, 0, 0, 1.95, -0.112, -0.001, 0.5769086)
 
 [node name="combatZone3" parent="." instance=ExtResource("2_lpwbj")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 6.4710474, -0.001, 0)

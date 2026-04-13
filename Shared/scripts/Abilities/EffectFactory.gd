@@ -24,6 +24,9 @@ static func create_effect(effect_type: EffectType.Type) -> Effect:
 		EffectType.Type.CAST:
 			return CastEffect.new()
 		
+		EffectType.Type.CREATE_DELAYED_EFFECT:
+			return CreateDelayedEffectEffect.new()
+		
 		EffectType.Type.DRAW:
 			return DrawCardEffect.new()
 		
@@ -35,6 +38,9 @@ static func create_effect(effect_type: EffectType.Type) -> Effect:
 		
 		EffectType.Type.SWITCH_POSITIONS:
 			return SwitchPositionsEffect.new()
+		
+		EffectType.Type.SACRIFICE:
+			return SacrificeEffect.new()
 		
 		_:
 			push_error("Unknown effect type: " + str(effect_type))

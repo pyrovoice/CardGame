@@ -144,7 +144,6 @@ func parse_spell_effects(properties: Dictionary, card_data: CardData) -> Array[S
 # Parse a single spell effect line
 func parse_single_spell_effect(effect_text: String, card_data: CardData) -> SpellAbility:
 	var effect_type_str: String = ""
-	var parameters: Dictionary = {}
 	
 	# Remove the initial "$ " if present
 	if effect_text.begins_with("$ "):
@@ -152,23 +151,28 @@ func parse_single_spell_effect(effect_text: String, card_data: CardData) -> Spel
 	
 	var parts = effect_text.split(" | ")
 	
+	# First pass: detect effect type
 	for part in parts:
 		part = part.strip_edges()
 		
 		# Parse different effect types
-		if part == "DealDamage":
+		if part == "CreateDelayedEffect":
+			effect_type_str = "CreateDelayedEffect"
+			break
+		elif part == "DealDamage":
 			effect_type_str = "DealDamage"
+			break
 		elif part == "Pump":
 			effect_type_str = "Pump"
-		elif part.begins_with("ValidTgts$"):
-			parameters["ValidTargets"] = part.substr(11)
-		elif part.begins_with("NumDmg$"):
-			parameters["NumDamage"] = int(part.substr(8))
-		elif part.begins_with("Pow$"):
-			parameters["PowerBonus"] = int(part.substr(5))
-		elif part.begins_with("Duration$"):
-			parameters["Duration"] = part.substr(10)
+			break
 		# Add more spell effect types as needed (Mill, Draw, Heal, etc.)
+	
+	# Special handling for CreateDelayedEffect - parse nested effect at load time
+	if effect_type_str == "CreateDelayedEffect":
+		return _parse_create_delayed_effect(parts, card_data)
+	
+	# Standard effect parsing - use shared parameter parser
+	var parameters = _parse_effect_parameters_from_parts(parts)
 	
 	if effect_type_str.is_empty():
 		return null
@@ -183,6 +187,80 @@ func parse_single_spell_effect(effect_text: String, card_data: CardData) -> Spel
 	var effect_type = EffectType.string_to_type(effect_type_str)
 	
 	# Create SpellAbility instance
+	var spell_ability = SpellAbility.new(card_data, effect_type)
+	spell_ability.effect_parameters = parameters
+	
+	return spell_ability
+
+# Shared helper to parse effect parameters from parts array
+func _parse_effect_parameters_from_parts(parts: Array) -> Dictionary:
+	"""Extract effect parameters from parts array (shared between spell effects and nested effects)"""
+	var parameters: Dictionary = {}
+	
+	for part in parts:
+		part = part.strip_edges()
+		
+		# Common parameters
+		if part.begins_with("ValidTgts$"):
+			parameters["ValidTargets"] = part.substr(11)
+		elif part.begins_with("ValidCards$"):
+			parameters["ValidCards"] = part.substr(12)
+		elif part.begins_with("Num$"):
+			parameters["Num"] = part.substr(5)
+		elif part.begins_with("NumDmg$"):
+			parameters["NumDamage"] = int(part.substr(8))
+		elif part.begins_with("Pow$"):
+			parameters["PowerBonus"] = int(part.substr(5))
+		elif part.begins_with("Defined$"):
+			parameters["Defined"] = part.substr(9)
+		elif part.begins_with("Duration$"):
+			parameters["Duration"] = part.substr(10)
+		# Add more parameter types as needed
+	
+	return parameters
+
+# Parse CreateDelayedEffect with nested effect
+func _parse_create_delayed_effect(parts: Array, card_data: CardData) -> SpellAbility:
+	"""Parse CreateDelayedEffect at card load time, including nested effect"""
+	var trigger_event_str: String = "EndOfTurn"  # Default
+	var nested_effect_str: String = ""
+	
+	# Parse CreateDelayedEffect-specific parameters
+	for part in parts:
+		part = part.strip_edges()
+		
+		if part.begins_with("TriggerEvent$"):
+			trigger_event_str = part.substr(14)
+		elif part.begins_with("Effect$"):
+			nested_effect_str = part.substr(8)
+	
+	# Parse nested effect parameters using shared parser (filters out TriggerEvent$ and Effect$)
+	var nested_parameters = _parse_effect_parameters_from_parts(parts)
+	
+	if nested_effect_str.is_empty():
+		push_error("❌ [CARD LOAD ERROR] CreateDelayedEffect requires Effect$ parameter for card: " + card_data.cardName)
+		return null
+	
+	# Validate nested effect type
+	if not _is_valid_effect_type(nested_effect_str):
+		push_error("❌ [CARD LOAD ERROR] Invalid nested effect type '" + nested_effect_str + "' in CreateDelayedEffect for card: " + card_data.cardName)
+		return null
+	
+	# Parse trigger event to GameEventType
+	var trigger_event = parse_game_event_from_string(trigger_event_str)
+	
+	# Convert nested effect string to EffectType
+	var nested_effect_type = EffectType.string_to_type(nested_effect_str)
+	
+	# Store pre-parsed data in parameters
+	var parameters: Dictionary = {
+		"TriggerEvent": trigger_event,  # GameEventType enum (pre-parsed)
+		"NestedEffectType": nested_effect_type,  # EffectType enum (pre-parsed)
+		"NestedParameters": nested_parameters  # Parameters for nested effect
+	}
+	
+	# Create SpellAbility for CreateDelayedEffect
+	var effect_type = EffectType.string_to_type("CreateDelayedEffect")
 	var spell_ability = SpellAbility.new(card_data, effect_type)
 	spell_ability.effect_parameters = parameters
 	
@@ -361,6 +439,24 @@ func parse_triggered_ability(trigger_text: String, svar_effects: Dictionary, car
 	
 	return ability
 
+# Helper to parse game event directly from string (for delayed effects)
+func parse_game_event_from_string(event_str: String) -> TriggeredAbility.GameEventType:
+	"""Convert trigger event string to GameEventType enum (e.g., 'EndOfTurn' -> END_OF_TURN)"""
+	match event_str:
+		"EndOfTurn":
+			return TriggeredAbility.GameEventType.END_OF_TURN
+		"BeginningOfTurn":
+			return TriggeredAbility.GameEventType.BEGINNING_OF_TURN
+		"CardDrawn":
+			return TriggeredAbility.GameEventType.CARD_DRAWN
+		"EndOfCombat":
+			# Note: No EndOfCombat event yet - fallback to EndOfTurn
+			push_warning("EndOfCombat not implemented, using EndOfTurn")
+			return TriggeredAbility.GameEventType.END_OF_TURN
+		_:
+			push_warning("Unknown trigger event: " + event_str + ", defaulting to EndOfTurn")
+			return TriggeredAbility.GameEventType.END_OF_TURN
+
 # Helper to convert TriggerType.Type to TriggeredAbility.GameEventType
 func _convert_trigger_type_to_game_event(trigger_type: TriggerType.Type, conditions: Dictionary) -> TriggeredAbility.GameEventType:
 	"""Convert TriggerType.Type enum to TriggeredAbility.GameEventType"""
@@ -376,14 +472,8 @@ func _convert_trigger_type_to_game_event(trigger_type: TriggerType.Type, conditi
 		TriggerType.Type.PHASE:
 			# For phase triggers, check the Phase condition
 			var phase = conditions.get(TriggeredAbility.TriggerCondition.PHASE, "")
-			match phase:
-				"BeginningOfTurn":
-					return TriggeredAbility.GameEventType.BEGINNING_OF_TURN
-				"EndOfTurn":
-					return TriggeredAbility.GameEventType.END_OF_TURN
-				_:
-					push_warning("Unknown phase trigger: " + phase)
-					return TriggeredAbility.GameEventType.BEGINNING_OF_TURN  # Default
+			# Use the new helper function
+			return parse_game_event_from_string(phase)
 		TriggerType.Type.STRIKE:
 			return TriggeredAbility.GameEventType.STRIKE
 		_:
@@ -467,7 +557,8 @@ func _is_valid_effect_type(effect_type_str: String) -> bool:
 	var valid_types = [
 		"DealDamage", "Pump", "Draw", "CreateToken", "CreateCard", "Cast",
 		"AddType", "AddKeyword", "PumpAll", "MoveCard", "SwitchPositions",
-		"Destroy", "Bounce", "Exile", "Mill", "Discard", "Search", "Shuffle"
+		"Destroy", "Bounce", "Exile", "Mill", "Discard", "Search", "Shuffle",
+		"Sacrifice", "CreateDelayedEffect"
 	]
 	return effect_type_str.strip_edges() in valid_types
 

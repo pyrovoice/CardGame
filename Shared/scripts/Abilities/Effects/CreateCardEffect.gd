@@ -21,6 +21,14 @@ func execute(parameters: Dictionary, source_card_data: CardData, game_context: G
 		print("⚠️ Archetype pool '", pool_string, "' is empty")
 		return
 	
+	# Filter out legendary cards unless explicitly included
+	var include_legendary = parameters.get("IncludeLegendary", false)
+	if not include_legendary:
+		card_pool = card_pool.filter(func(card: CardData): return not card.hasType(CardData.CardType.LEGENDARY))
+		if card_pool.is_empty():
+			print("⚠️ Archetype pool '", pool_string, "' has no non-legendary cards")
+			return
+	
 	# Get number of cards to create
 	var num_cards = int(parameters.get("Num", 1))
 	

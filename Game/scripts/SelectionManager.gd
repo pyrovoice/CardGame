@@ -99,20 +99,14 @@ func create_card_play_selections() -> CardPlaySelections:
 func handle_card_click(card_node: Card):
 	if not current_selection:
 		return
-	
-	# Get the CardData for this Card node
-	var card_data = card_node.card_data
+	var card_data = card_node.cardData
 	if not card_data:
 		return
 	
 	if current_selection.try_select_card(card_data):
-		# Update card visual state
 		card_node.set_selected(card_data in current_selection.selected_cards)
-		
-		# Update UI
 		_update_ui()
 
-# Update the selection UI
 func _update_ui():
 	if not current_selection or not selection_ui:
 		return
@@ -122,7 +116,6 @@ func _update_ui():
 	selection_ui.set_description(desc)
 	selection_ui.set_validate_enabled(current_selection.is_complete)
 
-# Show/hide selection UI
 func _show_selection_ui(visible: bool):
 	if selection_ui:
 		if visible:
@@ -130,31 +123,24 @@ func _show_selection_ui(visible: bool):
 		else:
 			selection_ui.hide()
 
-# Handle validate button press
 func _on_validate_pressed():
 	if current_selection and current_selection.is_complete:
 		var selection = current_selection
 		_end_selection()
 		selection_completed.emit(selection)
 
-# Handle cancel button press
 func _on_cancel_pressed():
 	selection_cancelled.emit()
 
-# Clean up current selection
 func _end_selection():
 	if current_selection:
-		# Clear all card highlights and selections
 		for card_data in current_selection.possible_cards:
 			var card_node = card_data.get_card_object()
 			if card_node:
 				card_node.set_selectable(false)
 				card_node.set_selected(false)
 	
-	# Reset casting card position if there was one
 	if casting_card:
-		# The card should naturally return to its proper position when the selection UI is closed
-		# We don't need to manually restore position since cards arrange themselves
 		pass
 	
 	current_selection = null

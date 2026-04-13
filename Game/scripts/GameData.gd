@@ -37,7 +37,7 @@ func _init():
 	player_gold = SignalInt.new(3)  # Starting gold
 	opponent_gold = SignalInt.new(0)
 	recycling_remaining = SignalInt.new(3)  # Recycling uses per turn
-	danger_level = SignalInt.new(5)
+	danger_level = SignalInt.new(3)
 	current_turn = SignalInt.new(1)
 	
 	# Initialize empty deck lists (will be populated in game.gd)

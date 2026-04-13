@@ -1581,3 +1581,163 @@ func test_fleeting_keyword() -> bool:
 	
 	print("✅ Fleeting keyword test passed!")
 	return true
+
+func test_delayed_effect_sacrifice() -> bool:
+	"""Test delayed sacrifice effect at end of turn - creature should be sacrificed"""
+	print("=== Testing Delayed Sacrifice at End of Turn ===")
+	
+	# Step 1: Create a creature in play
+	var target_creature = createCardFromName("Goblin", GameZone.e.BATTLEFIELD_PLAYER)
+	print("  📦 Created creature: ", target_creature.cardName)
+	
+	# Step 2: Create a spell with delayed sacrifice trigger at end of turn
+	var spell_card = CardData.new()
+	spell_card.cardName = "Test Delayed Sacrifice Spell"
+	spell_card.goldCost = 0
+	spell_card.addType(CardData.CardType.SPELL)
+	
+	# Create SpellAbility with pre-parsed CreateDelayedEffect parameters
+	var spell_ability = SpellAbility.new(spell_card, EffectType.Type.CREATE_DELAYED_EFFECT)
+	spell_ability.effect_parameters = {
+		"TriggerEvent": TriggeredAbility.GameEventType.END_OF_TURN,  # Trigger at end of turn
+		"NestedEffectType": EffectType.Type.SACRIFICE,  # Sacrifice effect
+		"NestedParameters": {
+			"TargetCard": target_creature  # Will be set when spell is cast with target
+		}
+	}
+	spell_card.add_ability(spell_ability)
+	
+	# Add spell to hand
+	spell_card = game.createCardData(spell_card, GameZone.e.HAND_PLAYER, true)
+	
+	# Step 3: Verify orphaned_abilities is empty initially
+	if not assert_test_equal(game.orphaned_abilities.size(), 0, "Should have no orphaned abilities initially"):
+		return false
+	
+	# Step 4: Verify creature is in battlefield
+	if not assertCardExists("Goblin", "play"):
+		return false
+	
+	# Step 5: Cast the spell with the creature as target
+	var selections = SelectionManager.CardPlaySelections.new()
+	selections.add_spell_target(target_creature)
+	
+	print("  🎯 Casting delayed sacrifice spell...")
+	await game.tryPlayCard(spell_card, GameZone.e.BATTLEFIELD_PLAYER, selections)
+	await test_runner.get_tree().process_frame
+	
+	# Step 6: Verify orphaned ability was created
+	if not assert_test_equal(game.orphaned_abilities.size(), 1, "Should have 1 orphaned ability after casting"):
+		return false
+	print("  ✅ Orphaned ability created")
+	
+	# Step 7: Verify creature is still in play (hasn't been sacrificed yet)
+	if not assertCardExists("Goblin", "play"):
+		return false
+	# Note: Spell card is now in graveyard, so we check that Goblin is NOT there
+	var graveyard_cards = game.game_data.get_cards_in_zone(GameZone.e.GRAVEYARD_PLAYER)
+	var goblin_in_graveyard = false
+	for card in graveyard_cards:
+		if card.cardName.to_lower() == "goblin":
+			goblin_in_graveyard = true
+			break
+	if not assert_test_false(goblin_in_graveyard, "Goblin should NOT be in graveyard yet"):
+		return false
+	print("  ✅ Creature still in play (not sacrificed yet)")
+	
+	# Step 8: End turn to trigger the delayed sacrifice
+	print("  🔄 Ending turn to trigger sacrifice...")
+	await game.onTurnStart()
+	await test_runner.get_tree().process_frame
+	await test_runner.get_tree().process_frame  # Extra frame for trigger resolution
+	
+	# Step 9: Verify creature was sacrificed (moved to graveyard)
+	if not assertCardExists("Goblin", "graveyard"):
+		return false
+	if not assertCardCount(0, "play"):
+		return false
+	print("  ✅ Creature sacrificed and moved to graveyard")
+	
+	# Step 10: Verify orphaned ability was removed (one-shot)
+	if not assert_test_equal(game.orphaned_abilities.size(), 0, "Orphaned ability should be removed after triggering"):
+		return false
+	print("  ✅ Orphaned ability cleaned up")
+	
+	print("✅ Delayed sacrifice at end of turn test passed!")
+	return true
+
+func test_delayed_effect_cleanup_on_turn_end() -> bool:
+	"""Test delayed sacrifice cleanup when target dies before trigger - ability should still be cleaned up"""
+	print("=== Testing Delayed Sacrifice Cleanup When Target Dies Early ===")
+	
+	# Step 1: Create a creature in play
+	var target_creature = createCardFromName("Goblin", GameZone.e.BATTLEFIELD_PLAYER)
+	print("  📦 Created creature: ", target_creature.cardName)
+	
+	# Step 2: Create a spell with delayed sacrifice trigger at end of turn
+	var spell_card = CardData.new()
+	spell_card.cardName = "Test Delayed Sacrifice Spell"
+	spell_card.goldCost = 0
+	spell_card.addType(CardData.CardType.SPELL)
+	
+	# Create SpellAbility with pre-parsed CreateDelayedEffect parameters
+	var spell_ability = SpellAbility.new(spell_card, EffectType.Type.CREATE_DELAYED_EFFECT)
+	spell_ability.effect_parameters = {
+		"TriggerEvent": TriggeredAbility.GameEventType.END_OF_TURN,  # Trigger at end of turn
+		"NestedEffectType": EffectType.Type.SACRIFICE,  # Sacrifice effect
+		"NestedParameters": {
+			"TargetCard": target_creature  # Will be set when spell is cast with target
+		}
+	}
+	spell_card.add_ability(spell_ability)
+	
+	# Add spell to hand
+	spell_card = game.createCardData(spell_card, GameZone.e.HAND_PLAYER, true)
+	
+	# Step 3: Verify orphaned_abilities is empty initially
+	if not assert_test_equal(game.orphaned_abilities.size(), 0, "Should have no orphaned abilities initially"):
+		return false
+	
+	# Step 4: Cast the spell with the creature as target
+	var selections = SelectionManager.CardPlaySelections.new()
+	selections.add_spell_target(target_creature)
+	
+	print("  🎯 Casting delayed sacrifice spell...")
+	await game.tryPlayCard(spell_card, GameZone.e.BATTLEFIELD_PLAYER, selections)
+	await test_runner.get_tree().process_frame
+	
+	# Step 5: Verify orphaned ability was created
+	if not assert_test_equal(game.orphaned_abilities.size(), 1, "Should have 1 orphaned ability after casting"):
+		return false
+	print("  ✅ Orphaned ability created")
+	
+	# Step 6: Manually move creature to graveyard BEFORE end of turn
+	print("  💀 Manually sacrificing creature before end of turn...")
+	var graveyard_zone = GameZone.e.GRAVEYARD_PLAYER
+	await game.execute_move_card(target_creature, graveyard_zone)
+	await test_runner.get_tree().process_frame
+	
+	# Step 7: Verify creature is in graveyard
+	if not assertCardExists("Goblin", "graveyard"):
+		return false
+	if not assertCardCount(0, "play"):
+		return false
+	print("  ✅ Creature moved to graveyard early")
+	
+	# Step 8: Verify orphaned ability is still registered (hasn't been manually cleaned up)
+	if not assert_test_equal(game.orphaned_abilities.size(), 1, "Orphaned ability should still exist"):
+		return false
+	
+	# Step 9: End turn - orphaned ability should be cleaned up via cleanup_at_end_of_turn
+	print("  🔄 Ending turn to trigger cleanup...")
+	await game.onTurnStart()
+	await test_runner.get_tree().process_frame
+	await test_runner.get_tree().process_frame  # Extra frame for cleanup
+	
+	# Step 10: Verify orphaned ability was removed by end-of-turn cleanup
+	if not assert_test_equal(game.orphaned_abilities.size(), 0, "Orphaned ability should be cleaned up at end of turn"):
+		return false
+	print("  ✅ Orphaned ability cleaned up at end of turn")
+	
+	print("✅ Delayed sacrifice cleanup test passed!")
+	return true

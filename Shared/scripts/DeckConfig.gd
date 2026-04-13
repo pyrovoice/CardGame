@@ -30,9 +30,12 @@ func setup_default_decks():
 	if bolt_card:
 		player_deck_cards.append(bolt_card)
 	
-	# Necromancer default decklist
+	# Opponent deck - hardcoded Necromancer cards
 	opponent_deck_cards = [
-		CardLoaderAL.getCardByName("Grave Whisperer")
+		CardLoaderAL.getCardByName("Grave Whisperer"),
+		CardLoaderAL.getCardByName("Opp1"),
+		CardLoaderAL.getCardByName("Opp2"),
+		CardLoaderAL.getCardByName("Opp3")
 	]
 	
 	print("📋 Player deck configured with Punglynd archetype:")
@@ -42,6 +45,11 @@ func setup_default_decks():
 	print("  Extra deck (", player_extra_deck_cards.size(), " legendary cards)")
 	for card in player_extra_deck_cards:
 		print("    - ", card.cardName, " (", card.goldCost, " gold)")
+	print("📋 Opponent deck:")
+	print("  Deck (", opponent_deck_cards.size(), " cards)")
+	for card in opponent_deck_cards:
+		if card:
+			print("    - ", card.cardName, " (", card.goldCost, " gold)")
 
 func clear_decks():
 	"""Clear all deck lists (for tests)"""

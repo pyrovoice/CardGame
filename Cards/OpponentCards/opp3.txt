@@ -1,4 +1,0 @@
-Name:Opp3
-Types:Creature
-Power:3
-ManaCost:3
