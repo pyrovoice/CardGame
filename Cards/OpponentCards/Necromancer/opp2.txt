@@ -1,0 +1,4 @@
+Name:Opp2
+Types:Creature
+Power:2
+ManaCost:2
