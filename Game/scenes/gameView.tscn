@@ -1,4 +1,4 @@
-[gd_scene load_steps=22 format=3 uid="uid://bkqg746td2asx"]
+[gd_scene load_steps=23 format=3 uid="uid://bkqg746td2asx"]
 
 [ext_resource type="Script" uid="uid://bfo2jk26bbnjb" path="res://Game/scripts/GameView.gd" id="1_s4hdo"]
 [ext_resource type="PackedScene" uid="uid://daynfobgnbdrp" path="res://Game/scenes/combat_zone.tscn" id="2_lpwbj"]
@@ -14,6 +14,7 @@
 [ext_resource type="PackedScene" uid="uid://c5pxc4w4crh11" path="res://Game/scenes/AdminConsole.tscn" id="11_3prlv"]
 [ext_resource type="PackedScene" uid="uid://yr6d1yj2coaa" path="res://Game/scenes/CastChoice.tscn" id="12_11jk7"]
 [ext_resource type="PackedScene" uid="uid://dq0b45a6txn6s" path="res://Game/scenes/extra_deck.tscn" id="13_sp61m"]
+[ext_resource type="PackedScene" uid="uid://dtajdc0mlayg0" path="res://Game/scenes/CardContainerVizualizer.tscn" id="14_76l0o"]
 [ext_resource type="Script" uid="uid://dhq14u8nrm6wt" path="res://Game/scripts/SelectionManager.gd" id="14_kkm63"]
 [ext_resource type="PackedScene" uid="uid://b23h2nqcsg3ha" path="res://Game/scenes/card_hand.tscn" id="15_4ovxi"]
 
@@ -102,10 +103,17 @@ shape = SubResource("BoxShape3D_yieuc")
 
 [node name="UI" type="Control" parent="."]
 layout_mode = 3
-anchors_preset = 0
-offset_right = 40.0
-offset_bottom = 40.0
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
 script = ExtResource("7_383ci")
+
+[node name="CardContainerVizualizer" parent="UI" instance=ExtResource("14_76l0o")]
+visible = false
+layout_mode = 1
 
 [node name="TextureRect" type="TextureRect" parent="UI"]
 layout_mode = 0
@@ -149,21 +157,21 @@ text = "0"
 horizontal_alignment = 1
 vertical_alignment = 1
 
-[node name="draw" type="Button" parent="UI"]
+[node name="mainActionButton" type="Button" parent="UI"]
 layout_mode = 0
 offset_left = 1072.0
 offset_top = 540.0
-offset_right = 1122.0
-offset_bottom = 571.0
+offset_right = 1188.0
+offset_bottom = 575.0
 text = "Draw"
 
-[node name="PlayerPoint" type="Label" parent="UI"]
+[node name="secondaryActionButton" type="Button" parent="UI"]
 layout_mode = 0
-offset_left = 1092.0
-offset_top = 521.0
-offset_right = 1132.0
-offset_bottom = 544.0
-text = "0"
+offset_left = 1073.0
+offset_top = 495.0
+offset_right = 1186.0
+offset_bottom = 530.0
+text = "Draw"
 
 [node name="PlayerLife" type="Label" parent="UI"]
 layout_mode = 0
@@ -215,12 +223,12 @@ offset_bottom = -6.10352e-05
 [node name="AdminButton" type="Button" parent="UI"]
 layout_mode = 1
 anchors_preset = -1
-anchor_right = 28.707
-anchor_bottom = 16.186
-offset_left = 1061.0
-offset_top = 280.0
-offset_right = -30.28003
-offset_bottom = -339.44006
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 1113.0
+offset_top = 276.0
+offset_right = -42.0
+offset_bottom = -385.0
 text = "Admin
 "
 
@@ -244,7 +252,7 @@ metadata/_custom_type_script = "uid://dhq14u8nrm6wt"
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4.165329, -0.001, -1.4649769)
 
 [node name="PlayerHand" parent="." instance=ExtResource("15_4ovxi")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.07212627, 1.720877, 2.1647723)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.07212627, 1.720877, 2.3721745)
 
 [node name="ExtraHand" parent="." instance=ExtResource("15_4ovxi")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.072, 1.721, 2.165)

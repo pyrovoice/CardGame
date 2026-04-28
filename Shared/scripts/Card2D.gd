@@ -12,10 +12,21 @@ class_name Card2D
 var cardData: CardData
 var scroll_tween: Tween  # For animated text scrolling
 
+# Base modulate controlled externally (HighlightManager for 3D cards,
+# or set_selectable/set_selected for 2D-only containers).
+# Hover brightens this temporarily; on exit it is restored.
+var base_modulate: Color = Color.WHITE
+
+# Selection state — used only by CardContainerVizualizer (2D-only path).
+# For 3D Card nodes, HighlightManager drives base_modulate directly.
+var is_selectable: bool = false
+var is_selected: bool = false
+
 signal card_clicked(card: Card2D)
 signal card_right_clicked(card_data: CardData)
 
 func _ready():
+	gui_input.connect(_on_gui_input)
 	update_display()
 
 func set_card(data: CardData):
@@ -83,10 +94,35 @@ func _on_gui_input(event: InputEvent):
 			card_right_clicked.emit(cardData)
 
 func _on_mouse_entered():
-	modulate = Color(1.1, 1.1, 1.1)
+	modulate = base_modulate.lightened(0.12)
 
 func _on_mouse_exited():
-	modulate = Color.WHITE
+	modulate = base_modulate
+
+func set_base_modulate(color: Color) -> void:
+	"""Set the base modulate color. HighlightManager calls this for 3D cards;
+	hover will always brighten/restore relative to this value."""
+	base_modulate = color
+	modulate = color
+
+func set_selectable(value: bool) -> void:
+	"""Used by CardContainerVizualizer (2D-only). Updates base_modulate."""
+	is_selectable = value
+	_update_modulation()
+
+func set_selected(value: bool) -> void:
+	"""Used by CardContainerVizualizer (2D-only). Updates base_modulate."""
+	is_selected = value
+	_update_modulation()
+
+func _update_modulation() -> void:
+	"""Recalculates base_modulate from is_selectable/is_selected (2D-only path)."""
+	if is_selected:
+		set_base_modulate(Color(0.7, 1.0, 0.7))  # Green tint
+	elif is_selectable:
+		set_base_modulate(Color.WHITE)
+	else:
+		set_base_modulate(Color(0.6, 0.6, 0.6))  # Dimmed
 
 func animate_text_scroll(direction: int, scroll_step: int = 50) -> bool:
 	"""Animate scrolling of the text label. Direction: -1 for up, 1 for down. Returns true if scrolling occurred."""

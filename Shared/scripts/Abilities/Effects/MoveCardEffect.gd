@@ -10,12 +10,8 @@ func execute(parameters: Dictionary, source_card_data: CardData, game_context: G
 	
 	var origin_zone_str: String = parameters.get("Origin", "Graveyard.Player")
 	var destination_zone_str: String = parameters.get("Destination", "Graveyard.Opponent")
-	var choice_type: String = parameters.get("Choice", "Random")
-	var valid_card: String = parameters.get("ValidCard", "Creature")
 	var defined: String = parameters.get("Defined", "")
 	var condition: String = parameters.get("Condition", "")
-	var if_not_found: String = parameters.get("IfNotFound", "")
-	var num_cards: int = parameters.get("NumCard", 1)
 	
 	print("  Defined parameter: '", defined, "' (length: ", defined.length(), ")")
 	print("  Origin: ", origin_zone_str)
@@ -58,34 +54,15 @@ func execute(parameters: Dictionary, source_card_data: CardData, game_context: G
 	# Get cards from origin zone using GameData
 	var origin_cards: Array[CardData] = game_context.game_data.get_cards_in_zone(origin_zone_enum)
 	
-	# Filter cards by ValidCard criteria using GameUtility's filtering
-	var criteria = GameUtility.parseCriteria(valid_card)
-	var filtered_cards: Array[CardData] = []
-	for card_data in origin_cards:
-		if GameUtility.matchesCardDataCriteria(card_data, criteria):
-			filtered_cards.append(card_data)
-	
-	if filtered_cards.is_empty():
-		print("⚠️ No valid cards found in ", origin_zone_str, " matching ", valid_card)
-		# Try alternative if specified
-		if if_not_found:
-			await execute_alternative(if_not_found, parameters, source_card_data, game_context)
-		return
-	
-	# Limit number of cards to available cards
-	var cards_to_move = min(num_cards, filtered_cards.size())
-	
-	# Select cards based on choice type
-	var selected_cards: Array[CardData] = []
-	if choice_type == "Random":
-		# Shuffle and take first N cards
-		filtered_cards.shuffle()
-		for i in range(cards_to_move):
-			selected_cards.append(filtered_cards[i])
-	else:
-		# TODO: Implement player choice for multiple cards
-		for i in range(cards_to_move):
-			selected_cards.append(filtered_cards[i])
+	# Filter and select cards using base class method
+	var selected_cards = await filter_and_select_cards(
+		origin_cards,
+		parameters,
+		origin_zone_str,
+		"Move Card",
+		source_card_data,
+		game_context
+	)
 	
 	if selected_cards.is_empty():
 		print("⚠️ No cards selected from ", origin_zone_str)

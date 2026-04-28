@@ -12,10 +12,6 @@ class_name Card
 
 # Card size state
 var is_small: bool = false
-var is_highlighted: bool = false
-var is_selectable: bool = false
-var is_selected: bool = false
-var is_drag_outside_hand: bool = false
 
 var cardData: CardData
 var objectID
@@ -124,29 +120,7 @@ func _on_card_data_changed():
 	if card_2d:
 		card_2d.update_display()
 
-func update_highlight_display():
-	"""Update the visual highlight based on selection states only"""
-	var should_show_highlight = is_selectable or is_selected or is_drag_outside_hand
-	
-	if highlight_mesh:
-		is_highlighted = should_show_highlight
-		highlight_mesh.visible = should_show_highlight
-		
-		if should_show_highlight:
-			# Set outline color based on priority: selected > drag outside hand > selectable
-			var outline_color: Color
-			if is_selected:
-				outline_color = Color.GREEN
-			elif is_drag_outside_hand:
-				outline_color = Color.RED
-			elif is_selectable:
-				outline_color = Color.BLUE
-			else:
-				outline_color = Color.WHITE
-			
-			set_outline_color(outline_color)
-	else:
-		print("[Card ", objectID, "] ERROR: highlight_mesh is null!")
+
 
 func set_outline_color(color: Color):
 	"""Set the color of the outline mesh"""
@@ -166,20 +140,7 @@ func set_outline_color(color: Color):
 	# Set the outline color
 	material.albedo_color = color
 
-func set_selectable(selectable: bool):
-	"""Mark this card as selectable during player selection"""
-	is_selectable = selectable
-	update_highlight_display()
 
-func set_selected(selected: bool):
-	"""Mark this card as selected during player selection"""
-	is_selected = selected
-	update_highlight_display()
-
-func set_drag_outside_hand(drag_outside: bool):
-	"""Mark this card as being dragged outside the hand area"""
-	is_drag_outside_hand = drag_outside
-	update_highlight_display()
 
 # Update highlight mesh to match card dimensions
 func update_highlight_mesh_size(card_height: float):

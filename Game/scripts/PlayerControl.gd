@@ -10,7 +10,7 @@ var activeHand: CardHand
 @onready var camera: Camera3D = $"../Camera3D"
 
 signal tryMoveCard(card_data: CardData, target: Node3D)
-signal rightClick(card: Card)
+signal rightClick(target: Node3D)  # Can be Card or CardContainer
 signal leftClick(objectUnderMouse: Node3D)
 # Removed drag signals - now handled directly by CardAnimator
 
@@ -61,7 +61,7 @@ func clearTargetHighlight():
 
 var dragged_card: Card = null
 var mouseDownButtonPos: Vector2 = Vector2.INF
-func _input(event):
+func _unhandled_input(event):
 	""" LEFT MOUSE BUTTON"""
 	if event is InputEventMouseButton && event.button_index == MOUSE_BUTTON_LEFT:
 		""" CLICK """
@@ -96,15 +96,21 @@ func _input(event):
 	""" RIGHT MOUSE BUTTON"""
 	if event is InputEventMouseButton && event.button_index == MOUSE_BUTTON_RIGHT:
 		if event.pressed:
-			var target_card: Card = null
+			var target: Node3D = null
 			
 			# First check if there's a card under mouse in hand
 			if cardInHandUnderMouse:
-				target_card = cardInHandUnderMouse
+				target = cardInHandUnderMouse
 			else:
-				# Check for cards in play (combat zones)
-				target_card = getCardUnderMouse()
-			rightClick.emit(target_card)
+				# Check for CardContainer first (graveyard, deck, etc.)
+				var container = getObjectUnderMouse(CardContainer)
+				if container:
+					target = container
+				else:
+					# Then check for cards in play (combat zones)
+					target = getCardUnderMouse()
+			
+			rightClick.emit(target)
 	if event is InputEventMouseMotion:
 		if !dragged_card && mouseDownButtonPos != Vector2.INF:
 			if isMousePointerInHandZone():

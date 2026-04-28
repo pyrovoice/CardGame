@@ -1,6 +1,6 @@
 [gd_scene load_steps=3 format=3 uid="uid://dtajdc0mlayg0"]
 
-[ext_resource type="Script" uid="uid://brcltadk31col" path="res://CardContainerListing.gd" id="1_v6c06"]
+[ext_resource type="Script" uid="uid://bpxwwenmbc88j" path="res://CardContainerListing.gd" id="1_v6c06"]
 [ext_resource type="PackedScene" uid="uid://d3lfyqqnp8p75" path="res://Shared/scenes/Card2D.tscn" id="2_gh4lt"]
 
 [node name="Control" type="Control"]
@@ -12,12 +12,28 @@ grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("1_v6c06")
 
+[node name="ColorRect" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0.17254902, 0.17254902, 0.17254902, 0.5176471)
+
 [node name="scrollContainer" type="ScrollContainer" parent="."]
-layout_mode = 0
-offset_left = 13.0
-offset_top = 18.0
-offset_right = 759.0
-offset_bottom = 298.0
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -445.0
+offset_top = -140.0
+offset_right = 469.0
+offset_bottom = 140.0
+grow_horizontal = 2
+grow_vertical = 2
 vertical_scroll_mode = 3
 
 [node name="HBoxContainer" type="HBoxContainer" parent="scrollContainer"]

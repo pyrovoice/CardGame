@@ -94,7 +94,7 @@ func _ready() -> void:
 	game_view.setup()
 	
 	# Setup UI connections
-	game_view.setup_ui_connections(game_data, onTurnStart, func(): game_view.show_admin_console())
+	game_view.setup_ui_connections(game_data, _on_main_action_button_pressed, _on_secondary_action_button_pressed, func(): game_view.show_admin_console())
 	
 	# Set zone names for GameData
 	game_view.set_zone_names()
@@ -126,6 +126,7 @@ func _ready() -> void:
 	CardPaymentManagerAL.set_game_context(self)
 	
 	# Initialize selection manager
+	selection_manager.setup_buttons(game_view.main_action_button, game_view.secondary_action_button, game_view.container_visualizer)
 	selection_manager.selection_cancelled.connect(cancelSelection)
 	
 	player_control.tryMoveCard.connect(tryMoveCard)
@@ -139,6 +140,7 @@ func _ready() -> void:
 func setupGame():
 	# Populate decks and draw hands
 	populate_decks()
+	
 	await drawCard(5, true)
 	await drawCard(3, false)
 	
@@ -153,6 +155,26 @@ func populate_decks():
 	replenish_deck_zone(GameZone.e.DECK_PLAYER, 2)
 	replenish_deck_zone(GameZone.e.EXTRA_DECK_PLAYER)
 	replenish_deck_zone(GameZone.e.DECK_OPPONENT)
+
+func _populate_test_graveyard(count: int):
+	"""Add random cards to player's graveyard for testing purposes"""
+	if game_data.playerDeckList.deck_cards.is_empty():
+		print("⚠️ No cards available for test graveyard population")
+		return
+	
+	# Get card templates and shuffle
+	var card_templates = game_data.playerDeckList.deck_cards.duplicate()
+	card_templates.shuffle()
+	
+	# Take first N cards (or all if less than N available)
+	var cards_to_add = min(count, card_templates.size())
+	
+	print("🧪 [TEST] Adding ", cards_to_add, " random cards to player's graveyard")
+	
+	for i in range(cards_to_add):
+		var template = card_templates[i]
+		createCardData(template, GameZone.e.GRAVEYARD_PLAYER, true)
+		print("  📦 Added: ", template.cardName)
 
 func onTurnStart(skipFirstTurn = false):
 	# Start a new turn (increases danger level via SignalInt)
@@ -616,34 +638,36 @@ func _executeSpellWithTargets(cardData: CardData, targets: Array[CardData]):
 	
 	print("✨ Casting spell: ", cardData.cardName)
 	
-	# Get spell abilities from the card
-	var spell_abilities = cardData.spell_abilities
+	# Get spell effects from the card
+	var spell_effects = cardData.spell_effects
 	
-	if spell_abilities.is_empty():
+	if spell_effects.is_empty():
 		print("⚠️ Spell has no effects to execute: ", cardData.cardName)
 		return
 	
 	# Execute each spell effect with targets
 	var target_index = 0
-	for spell_ability in spell_abilities:
+	for spell_effect in spell_effects:
+		var effect_type = spell_effect.get("effect_type")
+		var effect_parameters = spell_effect.get("effect_parameters", {})
 		var effect_targets = []
 		
 		# Assign targets to effects that need them
-		if spell_ability.requires_target() and target_index < targets.size():
+		if Effect.requires_target(effect_parameters) and target_index < targets.size():
 			effect_targets = [targets[target_index]]
 			target_index += 1
 		
-		await _executeSpellEffectWithTargets(cardData, spell_ability, effect_targets)
+		await _executeSpellEffectWithTargets(cardData, effect_type, effect_parameters, effect_targets)
 	
 	print("✨ Finished casting spell: ", cardData.cardName)
 
-func _executeSpellEffectWithTargets(cardData: CardData, spell_ability: SpellAbility, targets: Array):
+func _executeSpellEffectWithTargets(cardData: CardData, effect_type: EffectType.Type, effect_parameters: Dictionary, targets: Array):
 	# For targeting effects, add targets to parameters
 	if targets.size() > 0:
-		spell_ability.effect_parameters["Targets"] = targets
+		effect_parameters["Targets"] = targets
 	
-	# Use the unified ability execution system (pass CardData instead of Card)
-	await AbilityManagerAL.executeAbilityEffect(cardData, spell_ability, self)
+	# Execute the effect directly using EffectFactory
+	await EffectFactory.execute_effect(effect_type, effect_parameters, cardData, self)
 
 func _executeSpellDamageWithTargets(card: Card, parameters: Dictionary, targets: Array):
 	var damage_amount = parameters.get("NumDamage", 1)
@@ -674,11 +698,7 @@ func _executeSpellDamageWithTargets(card: Card, parameters: Dictionary, targets:
 func drawCard(howMany: int = 1, player = true):
 	# MVC Pattern: Update Model → Update Views → Trigger Events
 	
-	var _deck = game_view.deck if player else game_view.deck_opponent
 	var zone_name = GameZone.e.HAND_PLAYER if player else GameZone.e.HAND_OPPONENT
-	
-	# Store deck position for animations
-	var deck_position = _deck.global_position
 	
 	# Model: Get top N cards from GameData deck zone
 	var deck_zone = GameZone.e.DECK_PLAYER if player else GameZone.e.DECK_OPPONENT
@@ -694,7 +714,7 @@ func drawCard(howMany: int = 1, player = true):
 		game_data.move_card(card_data, zone_name)
 	
 	# View: Create and animate card views
-	var card_views = await game_view.create_and_animate_drawn_cards(cards_to_draw, player, deck_position, game_view.create_card_view)
+	await game_view.create_and_animate_drawn_cards(cards_to_draw, player)
 	
 	# Emit CARD_DRAWN game event for all drawn cards
 	await emit_game_event(TriggeredAbility.GameEventType.CARD_DRAWN, cards_to_draw)
@@ -1056,7 +1076,7 @@ func _toggleExtraDeckView():
 			if CardPaymentManagerAL.isCardDataCastable(card_data):
 				castable_cards.append(card_data)
 		# View handles arrangement and headless check
-		await game_view.arrange_extra_deck_hand(castable_cards, game_view.create_card_view)
+		await game_view.arrange_extra_deck_hand(castable_cards)
 	else:
 		setActiveHand(game_view.player_hand)
 
@@ -1079,8 +1099,8 @@ func cancelSelection():
 	# Restore the casting card using shared logic
 	_restore_cancelled_card()
 
-func _on_right_click(card: Card):
-	"""Handle right-click on a card"""
+func _on_right_click(target: Node3D):
+	"""Handle right-click on a card or container"""
 	# Check if we're in a selection process
 	if selection_manager.is_selecting():
 		var casting_card = selection_manager.get_casting_card()
@@ -1090,8 +1110,15 @@ func _on_right_click(card: Card):
 			cancelSelection()
 			return
 	
-	# Normal right-click behavior (show popup)
-	showCardPopup(card)
+	# Check if target is a CardContainer
+	if target is CardContainer:
+		game_view.show_container_visualizer(target as CardContainer)
+	elif target is Card:
+		# Normal right-click behavior (show popup)
+		showCardPopup(target as Card)
+	elif target == null:
+		# Clicked on nothing - hide popups
+		game_view.hide_container_visualizer()
 
 func tryActivateAbility(card: Card) -> bool:
 	"""Try to activate an activated ability on the card"""
@@ -1137,6 +1164,18 @@ func _on_left_click(objectUnderMouse):
 			resolve_combat_for_zone(combat_zone_enum)
 	elif objectUnderMouse == game_view.extra_deck:
 		_toggleExtraDeckView()
+
+func _on_main_action_button_pressed():
+	"""Handle main action button press - delegates based on state"""
+	if selection_manager.is_selecting():
+		selection_manager.validate_selection()
+	else:
+		onTurnStart()
+
+func _on_secondary_action_button_pressed():
+	"""Handle secondary action button press - cancel selection"""
+	if selection_manager.is_selecting():
+		selection_manager.cancel_selection()
 
 func showCardPopup(card: Card):
 	"""Show popup for a card"""
@@ -1360,8 +1399,9 @@ func _collectAllPlayerSelections(card_data: CardData, pre_selections: SelectionM
 
 func _spellRequiresTargeting(card_data: CardData) -> bool:
 	"""Check if a spell has any effects that require targeting"""
-	for ability in card_data.spell_abilities:
-		if ability.requires_target():
+	for spell_effect in card_data.spell_effects:
+		var effect_parameters = spell_effect.get("effect_parameters", {})
+		if Effect.requires_target(effect_parameters):
 			return true
 	return false
 
@@ -1373,19 +1413,20 @@ func _getSpellTargetsIfRequired(card_data: CardData, preselected_targets: Array[
 		print("🎯 Using pre-selected spell targets: ", preselected_targets.map(func(c): return c.cardName))
 		return preselected_targets
 	
-	# Get spell abilities that require targeting
-	var targeting_abilities: Array[SpellAbility] = []
-	for ability in card_data.spell_abilities:
-		if ability.requires_target():
-			targeting_abilities.append(ability)
+	# Get spell effects that require targeting
+	var targeting_effects: Array[Dictionary] = []
+	for spell_effect in card_data.spell_effects:
+		var effect_parameters = spell_effect.get("effect_parameters", {})
+		if Effect.requires_target(effect_parameters):
+			targeting_effects.append(spell_effect)
 	
-	if targeting_abilities.is_empty():
+	if targeting_effects.is_empty():
 		return []  # No targeting required
 	
 	# For now, handle the first targeting effect
 	# TODO: Handle multiple targeting effects
-	var spell_ability = targeting_abilities[0]
-	var valid_targets = spell_ability.effect_parameters.get("ValidTargets", "Any")
+	var first_targeting_effect = targeting_effects[0]
+	var valid_targets = first_targeting_effect.get("effect_parameters", {}).get("ValidTargets", "Any")
 	
 	# Query GameData for cards in play (MVC pattern)
 	var cards_in_play_data = game_data.get_cards_in_play()

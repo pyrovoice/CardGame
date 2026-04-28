@@ -9,12 +9,14 @@ func arrange_card_fan(card: Card):
 	return arrange_cards_fan([card])
 	
 func arrange_cards_fan(addedCards: Array[Card] = []):
+	print("🃏 [HAND] arrange_cards_fan called on ", name, " with addedCards=", addedCards.map(func(c): return c.name if c else 'null'))
 	# Add new cards to hand if any were provided
 	for c in addedCards:
 		GameUtility.reparentWithoutMoving(c, self)
 	# Get current cards and count after any reparenting
 	var cards = get_children()
 	var count = cards.size()
+	print("🃏 [HAND] ", name, " count after reparenting: ", count, " cards=", cards.map(func(c): return c.name if c else 'null'))
 	if count == 0:
 		return
 	

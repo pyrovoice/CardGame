@@ -1596,16 +1596,18 @@ func test_delayed_effect_sacrifice() -> bool:
 	spell_card.goldCost = 0
 	spell_card.addType(CardData.CardType.SPELL)
 	
-	# Create SpellAbility with pre-parsed CreateDelayedEffect parameters
-	var spell_ability = SpellAbility.new(spell_card, EffectType.Type.CREATE_DELAYED_EFFECT)
-	spell_ability.effect_parameters = {
-		"TriggerEvent": TriggeredAbility.GameEventType.END_OF_TURN,  # Trigger at end of turn
-		"NestedEffectType": EffectType.Type.SACRIFICE,  # Sacrifice effect
-		"NestedParameters": {
-			"TargetCard": target_creature  # Will be set when spell is cast with target
+	# Create spell effect with pre-parsed CreateDelayedEffect parameters
+	var spell_effect = {
+		"effect_type": EffectType.Type.CREATE_DELAYED_EFFECT,
+		"effect_parameters": {
+			"TriggerEvent": TriggeredAbility.GameEventType.END_OF_TURN,  # Trigger at end of turn
+			"NestedEffectType": EffectType.Type.SACRIFICE,  # Sacrifice effect
+			"NestedParameters": {
+				"TargetCard": target_creature  # Will be set when spell is cast with target
+			}
 		}
 	}
-	spell_card.add_ability(spell_ability)
+	spell_card.spell_effects.append(spell_effect)
 	
 	# Add spell to hand
 	spell_card = game.createCardData(spell_card, GameZone.e.HAND_PLAYER, true)
@@ -1680,16 +1682,18 @@ func test_delayed_effect_cleanup_on_turn_end() -> bool:
 	spell_card.goldCost = 0
 	spell_card.addType(CardData.CardType.SPELL)
 	
-	# Create SpellAbility with pre-parsed CreateDelayedEffect parameters
-	var spell_ability = SpellAbility.new(spell_card, EffectType.Type.CREATE_DELAYED_EFFECT)
-	spell_ability.effect_parameters = {
-		"TriggerEvent": TriggeredAbility.GameEventType.END_OF_TURN,  # Trigger at end of turn
-		"NestedEffectType": EffectType.Type.SACRIFICE,  # Sacrifice effect
-		"NestedParameters": {
-			"TargetCard": target_creature  # Will be set when spell is cast with target
+	# Create spell effect with pre-parsed CreateDelayedEffect parameters
+	var spell_effect = {
+		"effect_type": EffectType.Type.CREATE_DELAYED_EFFECT,
+		"effect_parameters": {
+			"TriggerEvent": TriggeredAbility.GameEventType.END_OF_TURN,  # Trigger at end of turn
+			"NestedEffectType": EffectType.Type.SACRIFICE,  # Sacrifice effect
+			"NestedParameters": {
+				"TargetCard": target_creature  # Will be set when spell is cast with target
+			}
 		}
 	}
-	spell_card.add_ability(spell_ability)
+	spell_card.spell_effects.append(spell_effect)
 	
 	# Add spell to hand
 	spell_card = game.createCardData(spell_card, GameZone.e.HAND_PLAYER, true)

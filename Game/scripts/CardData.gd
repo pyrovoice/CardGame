@@ -20,7 +20,9 @@ var triggered_abilities: Array[TriggeredAbility] = []
 var activated_abilities: Array[ActivatedAbility] = []
 var static_abilities: Array[StaticAbility] = []  # S: effects - continuous effects like "Goblins get +1 power"
 var replacement_abilities: Array[ReplacementAbility] = []  # R: effects - replacement effects like "create one more token"
-var spell_abilities: Array[SpellAbility] = []
+# Spell effects - stored as simple dictionaries with effect_type and effect_parameters
+# Format: [{effect_type: EffectType.Type, effect_parameters: Dictionary}]
+var spell_effects: Array[Dictionary] = []
 # Keyword abilities (separate from complex abilities)
 var _keywords: Array[String] = []  # Simple keywords like "Flying", "Spellshield"
 # Additional costs beyond gold cost (sacrifice, replace, etc.)
@@ -130,7 +132,7 @@ func describe() -> String:
 		subtypes_str = ", subtypes: [" + ", ".join(self.subtypes) + "]"
 	
 	var abilities_str = ""
-	var total_abilities = triggered_abilities.size() + activated_abilities.size() + static_abilities.size() + replacement_abilities.size() + spell_abilities.size()
+	var total_abilities = triggered_abilities.size() + activated_abilities.size() + static_abilities.size() + replacement_abilities.size() + spell_effects.size()
 	if total_abilities > 0:
 		abilities_str = ", abilities: " + str(total_abilities)
 	
@@ -430,20 +432,18 @@ func add_ability(ability: CardAbility):
 		replacement_abilities.append(ability)
 	elif ability is StaticAbility:
 		static_abilities.append(ability)
-	elif ability is SpellAbility:
-		spell_abilities.append(ability)
 	else:
 		push_warning("Unknown ability type: " + str(ability))
 	dirty_data.emit()
 
 func get_all_abilities() -> Array[CardAbility]:
-	"""Get all abilities combined (for backward compatibility)"""
+	"""Get all abilities combined (for backward compatibility)
+	Note: Does not include spell_effects, which are stored as dictionaries"""
 	var all_abilities: Array[CardAbility] = []
 	all_abilities.append_array(triggered_abilities)
 	all_abilities.append_array(activated_abilities)
 	all_abilities.append_array(static_abilities)
 	all_abilities.append_array(replacement_abilities)
-	all_abilities.append_array(spell_abilities)
 	return all_abilities
 
 func add_keyword(keyword: String):

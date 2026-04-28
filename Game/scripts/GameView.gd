@@ -33,15 +33,20 @@ var combat_zones: Array[CombatZone] = []
 
 # UI references
 @onready var game_ui: GameUI = $UI
-@onready var draw_button: Button = $UI/draw
 @onready var admin_button: Button = $UI/AdminButton
 @onready var alternative_cast_choice: Control = $UI/AlternativeCastChoice
 @onready var admin_scene: AdminConsole = $UI/AdminScene
+@onready var container_visualizer: CardContainerVizualizer = $UI/CardContainerVizualizer
+@onready var main_action_button: Button = $UI/mainActionButton
+@onready var secondary_action_button: Button = $UI/secondaryActionButton
 
 # Headless mode - skips all animations and visual updates
 var headless: bool = false
 
 const CARD_SCENE = preload("res://Game/scenes/Card.tscn")
+
+# Container visualizer instance (created on demand)
+var current_viewing_container: CardContainer = null
 
 func _init():
 	pass
@@ -60,6 +65,10 @@ func setup(is_headless: bool = false) -> void:
 func create_card_view(card_data: CardData, zone: GameZone.e = GameZone.e.UNKNOWN) -> Card:
 	if headless:
 		return card_data.get_card_object() if card_data else null
+	
+	# Container zones (deck, graveyard) don't need Card 3D nodes - only 2D visualizer
+	if _is_container_zone(zone):
+		return null
 
 	var card: Card = CARD_SCENE.instantiate()
 	if not card:
@@ -120,19 +129,12 @@ func _get_or_create_card_for_zone_move(card_data: CardData) -> Card:
 		push_error("GameView._get_or_create_card_for_zone_move: card_data is null")
 		return null
 
-	var source_zone: GameZone.e = card_data.current_zone
-	var source_container = get_target_node_for_zone(source_zone)
-
-	if source_container and _is_container_zone(source_zone):
-		card = create_card_view(card_data)
-		if card:
-			source_container.add_child(card)
-			return card
-	else:
-		push_error("GameView._get_or_create_card_for_zone_move: Missing card view for non-container zone " + str(GameZone.e.keys()[source_zone]) + ". Creating fallback card view.")
-
-	card = create_card_view(card_data)
+	# No existing card view - create a temporary one for animation.
+	# (Card was in a container zone like graveyard/deck, so no persistent view existed.)
+	card = CARD_SCENE.instantiate()
 	if card:
+		card.setData(card_data)
+		card.name = card_data.cardName + "_temp_" + str(Game.getObjectCountAndIncrement())
 		add_child(card)
 	return card
 
@@ -154,11 +156,20 @@ func move_card_to_zone(card_data: CardData, target_zone: GameZone.e, duration: f
 	if final_local_target == Vector3.INF:
 		if target_zone == GameZone.e.BATTLEFIELD_PLAYER or target_zone == GameZone.e.BATTLEFIELD_OPPONENT:
 			var base = player_base if target_zone == GameZone.e.BATTLEFIELD_PLAYER else opponentbase
-			var battlefield_pos = base.getNextEmptyLocation()
-			if battlefield_pos == Vector3.INF:
-				push_error("GameView.move_card_to_zone: No space on battlefield")
-				return
-			final_local_target = battlefield_pos + Vector3(0, 0.2, 0)
+
+			if turn_face_up:
+				card.setFlip(true)
+			if make_small_before_move:
+				card.getAnimator().make_small()
+
+			var visual_start = card.card_representation.global_position
+			base.set_card(card)
+			card.card_representation.global_position = visual_start
+
+			var tween = card.getAnimator().go_to_rest(duration)
+			if tween:
+				await tween.finished
+			return
 		else:
 			final_local_target = Vector3.ZERO
 
@@ -171,6 +182,11 @@ func move_card_to_zone(card_data: CardData, target_zone: GameZone.e, duration: f
 	var tween = card.getAnimator().move_to_position(final_local_target, duration, target_node)
 	if tween:
 		await tween.finished
+	
+	# If moving to a container zone, destroy the temporary Card 3D object after animation
+	if _is_container_zone(target_zone) and is_instance_valid(card):
+		print("📦 [VIEW] Destroying temporary Card 3D after animation to container zone: ", GameZone.e.keys()[target_zone])
+		card.queue_free()
 
 func get_zone_container(zone: GameZone.e) -> Node:
 	match zone:
@@ -299,14 +315,19 @@ func animate_card_to_combat(card_data: CardData, combat_spot: GameZone.e, target
 	var ally_team: bool = card_data.playerControlled
 	var target_container = combat_zone.ally_side if ally_team else combat_zone.opponent_side
 	
-	# Animate movement to the container, then reparent
-	# Use Vector3.ZERO for local position since GridContainer3D will handle positioning
-	var tween = card.getAnimator().move_to_position(Vector3.ZERO, 0.5, target_container)
+	# Save visual position before reparenting
+	var visual_start = card.card_representation.global_position
+	
+	# Reparent to correct slot (reorganize sets card.position = slot)
+	combat_zone.set_card(card, targetPosition)
+	
+	# Restore visual position (reorganize's go_to_rest may have partially moved it)
+	card.card_representation.global_position = visual_start
+	
+	# Animate representation to slot with a visible duration
+	var tween = card.getAnimator().go_to_rest()
 	if tween:
 		await tween.finished
-	
-	# After animation, let CombatZone handle the reparenting
-	combat_zone.set_card(card, targetPosition)
 
 ## Animate card back to base from combat
 func animate_card_to_base(card_data: CardData, targetZone: GameZone.e) -> void:
@@ -378,12 +399,13 @@ func arrange_hand(hand_zone: CardHand, cards: Array[Card] = []) -> void:
 		hand_zone.arrange_cards_fan(cards)
 
 ## Setup UI connections and bindings
-func setup_ui_connections(game_data: GameData, on_draw_callback: Callable, on_admin_callback: Callable) -> void:
+func setup_ui_connections(game_data: GameData, on_main_action_callback: Callable, on_secondary_action_callback: Callable, on_admin_callback: Callable) -> void:
 	# Setup UI to follow game data signals
 	game_ui.setup_game_data(game_data)
 	
 	# Connect button press signals
-	draw_button.pressed.connect(on_draw_callback)
+	main_action_button.pressed.connect(on_main_action_callback)
+	secondary_action_button.pressed.connect(on_secondary_action_callback)
 	admin_button.pressed.connect(on_admin_callback)
 
 ## Set zone names for GameData queries
@@ -408,12 +430,19 @@ func get_graveyard(is_player: bool) -> Graveyard:
 	return graveyard if is_player else graveyard_opponent
 
 ## Show extra hand and hide player hand
+const HAND_OFFSCREEN_Y := -1000.0
+const HAND_DEFAULT_POSITION := Vector3(-0.072, 1.721, 2.165)
+
 func show_extra_hand() -> void:
+	player_hand.position.y = HAND_OFFSCREEN_Y
+	extra_hand.position = HAND_DEFAULT_POSITION
 	player_hand.hide()
 	extra_hand.show()
 
 ## Hide extra hand and show player hand
 func hide_extra_hand() -> void:
+	extra_hand.position.y = HAND_OFFSCREEN_Y
+	player_hand.position = HAND_DEFAULT_POSITION
 	extra_hand.hide()
 	player_hand.show()
 
@@ -429,7 +458,7 @@ func toggle_extra_deck_view() -> bool:
 	return false
 
 ## Arrange extra deck cards in hand (for display only)
-func arrange_extra_deck_hand(castable_cards: Array[CardData], create_card_callback: Callable) -> void:
+func arrange_extra_deck_hand(castable_cards: Array[CardData]) -> void:
 	if headless:
 		return
 	
@@ -444,8 +473,8 @@ func arrange_extra_deck_hand(castable_cards: Array[CardData], create_card_callba
 	
 	# Create card views for castable cards
 	for card_data in castable_cards:
-		var card = create_card_callback.call(card_data, true)
-		GameUtility.reparentCardWithoutMovingRepresentation(card, extra_hand)
+		var card = create_card_view(card_data, GameZone.e.UNKNOWN)
+		extra_hand.add_child(card)
 		card.setFlip(true)
 		
 		# Position the card
@@ -493,44 +522,47 @@ func animate_combat_strike(attacker: Card, defender: Card) -> void:
 
 ## Create and animate card views for drawing cards from deck
 ## Returns array of created Card views (empty in headless mode)
-func create_and_animate_drawn_cards(cards_to_draw: Array[CardData], is_player: bool, deck_position: Vector3, create_card_callback: Callable) -> Array[Card]:
+func create_and_animate_drawn_cards(cards_to_draw: Array[CardData], is_player: bool) -> Array[Card]:
 	if headless:
 		return []
 	
 	var hand = player_hand if is_player else opponent_hand
 	var _deck = deck if is_player else deck_opponent
+	var deck_position = _deck.global_position
 	var card_views: Array[Card] = []
 	
-	# Create Card views
+	# Create Card views without adding to hand yet - zone UNKNOWN skips parenting and arrangement
 	for card_data in cards_to_draw:
-		var card_view = create_card_callback.call(card_data, is_player)
+		var card_view = create_card_view(card_data, GameZone.e.UNKNOWN)
+		add_child(card_view)
 		card_view.global_position = deck_position
 		card_views.append(card_view)
-		hand.add_child(card_view)
+	
+	# Arrange into hand: reparents cards to hand at correct fan positions,
+	# preserves card_representation at deck_position (via setPositionWithoutMovingRepresentation)
+	hand.arrange_cards_fan(card_views)
+	
+	# Record the final world positions (hand.global + fan offset per card)
+	var final_positions: Array[Vector3] = []
+	for card in card_views:
+		final_positions.append(card.global_position)
 	
 	# Update deck visual size
 	_deck.update_size()
 	
-	# Arrange hand layout
-	hand.arrange_cards_fan(card_views)
-	
-	# Keep all newly added cards' representations at deck position
-	for card in card_views:
-		card.card_representation.global_position = deck_position
-	
-	# Animate each card with offset positions for multiple draws
+	# Animate each card — draw_card sets card_representation.global_position = from_pos itself,
+	# then tweens to final_position. go_to_rest() (priority 0) is killed by draw_card (priority 1).
 	var draw_position_base = Vector3(0, 2, 1)
 	var last_tween: Tween = null
 	for i in range(card_views.size()):
 		var card_view = card_views[i]
-		# Offset each card's draw position to show them side by side
-		var offset_x = (i - (card_views.size() - 1) / 2.0) * 0.5  # Center the spread around base position
+		var offset_x = (i - (card_views.size() - 1) / 2.0) * 0.6
 		var draw_position = draw_position_base + Vector3(offset_x, 0, 0)
 		
 		var tween = card_view.getAnimator().draw_card(
 			deck_position,
 			draw_position,
-			card_view.global_position,
+			final_positions[i],
 			i * 0.1,
 			is_player and card_view.cardData.is_facedown
 		)
@@ -569,3 +601,36 @@ func get_alternative_cast_choice() -> Control:
 ## Get game UI
 func get_game_ui() -> GameUI:
 	return game_ui
+
+## Show container visualizer for a CardContainer
+func show_container_visualizer(container: CardContainer) -> void:
+	if headless or not container:
+		return
+	
+	# Get game instance to access GameData
+	var game = get_parent() as Game
+	if not game:
+		push_error("GameView.show_container_visualizer: Could not get Game instance")
+		return
+	
+	# Hide any card popup that's currently showing
+	if game.player_control and game.player_control.card_popup_manager:
+		game.player_control.card_popup_manager.hide_popup()
+	
+	# Get cards from GameData for this container's zone
+	var cards_in_zone = game.game_data.get_cards_in_zone(container.zone_name)
+	
+	# Setup the visualizer with the card list
+	container_visualizer.setContainer(cards_in_zone)
+	container_visualizer.show()
+	current_viewing_container = container
+
+## Hide container visualizer
+func hide_container_visualizer() -> void:
+	if container_visualizer and is_instance_valid(container_visualizer):
+		container_visualizer.hide()
+	current_viewing_container = null
+
+## Check if container visualizer is currently showing
+func is_container_visualizer_showing() -> bool:
+	return container_visualizer != null and container_visualizer.visible

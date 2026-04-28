@@ -73,7 +73,7 @@ func test_goblin_boss_extra_deck_casting():
 	var castable_cards: Array[CardData] = []
 	for card_data: CardData in game.game_data.get_cards_in_zone(GameZone.e.EXTRA_DECK_PLAYER):
 		castable_cards.append(card_data)
-	await game.game_view.arrange_extra_deck_hand(castable_cards, game.game_view.create_card_view)
+	await game.game_view.arrange_extra_deck_hand(castable_cards)
 
 	# Step 3: Assert that Goblin Boss appears in extra hand display
 	var extra_hand_cards = game.game_view.extra_hand.get_children().filter(func(child): return child is Card)
@@ -204,4 +204,168 @@ func test_replace_ui_optional_selection() -> bool:
 		return false
 	
 	print("✅ Replace UI optional selection test passed!")
+	return true
+
+func test_container_visualizer_graveyard_selection() -> bool:
+	"""Test that selecting cards from graveyard opens the container visualizer UI"""
+	
+	# Step 1: Create a creature in graveyard
+	var graveyard_creature = CardData.new()
+	graveyard_creature.cardName = "GraveyardCreature"
+	graveyard_creature.goldCost = 0
+	graveyard_creature._power = 2
+	graveyard_creature.addType(CardData.CardType.CREATURE)
+	graveyard_creature.playerControlled = true
+	graveyard_creature.playerOwned = true
+	# Use createCardData to properly create both data and view
+	graveyard_creature = game.createCardData(graveyard_creature, GameZone.e.GRAVEYARD_PLAYER, true)
+	
+	if not assert_test_equal(game.game_data.get_cards_in_zone(GameZone.e.GRAVEYARD_PLAYER).size(), 1, "Graveyard should have 1 creature"):
+		return false
+	
+	# Step 2: Create a test spell that asks to select a creature from graveyard
+	var test_spell = CardData.new()
+	test_spell.cardName = "TestGraveyardSpell"
+	test_spell.goldCost = 0
+	test_spell.addType(CardData.CardType.SPELL)
+	test_spell.playerControlled = true
+	test_spell.playerOwned = true
+	
+	# Add spell effect: MoveCard from graveyard to battlefield
+	var spell_effect = {
+		"effect_type": EffectType.Type.MOVE_CARD,
+		"effect_parameters": {
+			"Origin": "Graveyard.Player",
+			"Destination": "Battlefield.Player",
+			"ValidCard": "Creature",
+			"NumCard": 1,
+			"Choice": "Player"
+		}
+	}
+	test_spell.spell_effects.append(spell_effect)
+	
+	# Use createCardData to properly create both data and view
+	test_spell = game.createCardData(test_spell, GameZone.e.HAND_PLAYER, true)
+	setPlayerGold(99)
+	
+	# Step 3: Start casting the spell (this should trigger selection)
+	# We need to intercept the selection process to test UI state
+	# Use a dictionary to avoid GDScript closure variable capture issues
+	var test_state = {
+		"visualizer_shown": false,
+		"cancel_button_visible": false,
+		"validate_button_disabled_initially": false,
+		"validate_button_enabled_after_selection": false
+	}
+	
+	# Connect to selection_started signal to check UI state
+	game.selection_manager.selection_started.connect(
+		func():
+			# Debug: Check what's actually visible
+			print("🔍 [TEST DEBUG] selection_started fired")
+			print("  Visualizer visible: ", game.game_view.container_visualizer.visible)
+			print("  Cancel button visible: ", game.game_view.secondary_action_button.visible)
+			print("  Main button disabled: ", game.game_view.main_action_button.disabled)
+			
+			# Check that visualizer is shown (synchronous check)
+			test_state["visualizer_shown"] = game.game_view.container_visualizer.visible
+			
+			# Check that cancel button is visible (synchronous check)
+			test_state["cancel_button_visible"] = game.game_view.secondary_action_button.visible
+			
+			# Check that validate button is disabled initially (synchronous check)
+			test_state["validate_button_disabled_initially"] = game.game_view.main_action_button.disabled
+			
+			print("🔍 [TEST DEBUG] Variables set:")
+			print("  visualizer_shown: ", test_state["visualizer_shown"])
+			print("  cancel_button_visible: ", test_state["cancel_button_visible"])
+			print("  validate_button_disabled_initially: ", test_state["validate_button_disabled_initially"])
+			
+			# Defer the async card click simulation to avoid blocking the signal handler
+			var async_handler = func():
+				# Wait a frame for visualizer cards to be fully initialized
+				await test_runner.get_tree().process_frame
+				
+				# Simulate clicking the card in the visualizer
+				var h_box = game.game_view.container_visualizer.h_box_container
+				print("🔍 [TEST DEBUG] h_box child count: ", h_box.get_child_count())
+				
+				if h_box.get_child_count() > 0:
+					var card2d = h_box.get_child(0)
+					print("🔍 [TEST DEBUG] card2d type: ", card2d.get_class() if card2d else "null")
+					
+					if card2d is Card2D:
+						# Use the CardData from the visualizer, not our test variable
+						# (ensures we select the actual instance in the game)
+						var card_from_visualizer = card2d.cardData
+						print("🔍 [TEST DEBUG] card_from_visualizer: ", card_from_visualizer.cardName if card_from_visualizer else "null")
+						
+						if not card_from_visualizer:
+							print("❌ [TEST DEBUG] Card2D has no cardData!")
+							return
+						
+						# Simulate card click
+						game.selection_manager._on_visualizer_card_clicked(card_from_visualizer)
+						
+						# Wait a frame for UI update
+						await test_runner.get_tree().process_frame
+						
+						# Check that validate button is now enabled
+						test_state["validate_button_enabled_after_selection"] = not game.game_view.main_action_button.disabled
+						print("🔍 [TEST DEBUG] Button enabled after selection: ", test_state["validate_button_enabled_after_selection"])
+						
+						# Click the validate button
+						game.selection_manager.validate_selection()
+						print("🔍 [TEST DEBUG] Validate clicked")
+			
+			# Run the async handler deferred
+			async_handler.call()
+	,
+	CONNECT_ONE_SHOT
+)	
+	# Cast the spell - this should trigger the selection
+	await game.tryPlayCard(test_spell, GameZone.e.BATTLEFIELD_PLAYER)
+	
+	# Wait for async handler to complete (give it a few frames)
+	for i in range(5):
+		await test_runner.get_tree().process_frame
+	
+	# Step 4: Assert UI was displayed correctly
+	if not assert_test_true(test_state["visualizer_shown"], "Container visualizer should be shown during selection"):
+		return false
+	
+	if not assert_test_true(test_state["cancel_button_visible"], "Cancel button should be visible during selection"):
+		return false
+	
+	if not assert_test_true(test_state["validate_button_disabled_initially"], "Validate button should be disabled initially"):
+		return false
+	
+	if not assert_test_true(test_state["validate_button_enabled_after_selection"], "Validate button should be enabled after selecting a card"):
+		return false
+	
+	# Step 5: Assert the selected card was correctly used (moved from graveyard to battlefield)
+	var graveyard_cards = game.game_data.get_cards_in_zone(GameZone.e.GRAVEYARD_PLAYER)
+	var battlefield_size = game.game_data.get_cards_in_zone(GameZone.e.BATTLEFIELD_PLAYER).size()
+	
+	var creature_still_in_graveyard = false
+	for card in graveyard_cards:
+		if card.cardName == "GraveyardCreature":
+			creature_still_in_graveyard = true
+			break
+	if not assert_test_false(creature_still_in_graveyard, "GraveyardCreature should be moved out of graveyard"):
+		return false
+	
+	if not assert_test_equal(battlefield_size, 1, "Battlefield should have 1 creature after move"):
+		return false
+	
+	# Verify the creature on battlefield is the one from graveyard
+	var battlefield_cards = game.game_data.get_cards_in_zone(GameZone.e.BATTLEFIELD_PLAYER)
+	if not assert_test_equal(battlefield_cards[0].cardName, "GraveyardCreature", "Moved creature should be the one from graveyard"):
+		return false
+	
+	# Step 6: Assert visualizer is closed after selection
+	if not assert_test_false(game.game_view.container_visualizer.visible, "Visualizer should be hidden after selection completes"):
+		return false
+	
+	print("✅ Container visualizer graveyard selection test passed!")
 	return true

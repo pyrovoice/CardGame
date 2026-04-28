@@ -116,16 +116,13 @@ func parse_card_data(card_text: String) -> CardData:
 	
 	# Parse spell effects (for spell cards)
 	if card_data.hasType(CardData.CardType.SPELL):
-		var spell_abilities = parse_spell_effects(properties, card_data)
-		for spell_ability in spell_abilities:
-			if spell_ability:
-				card_data.add_ability(spell_ability)
+		card_data.spell_effects = parse_spell_effects(properties, card_data)
 	
 	return card_data
 
 # Parse spell effects from card properties
-func parse_spell_effects(properties: Dictionary, card_data: CardData) -> Array[SpellAbility]:
-	var spell_effects: Array[SpellAbility] = []
+func parse_spell_effects(properties: Dictionary, card_data: CardData) -> Array[Dictionary]:
+	var spell_effects: Array[Dictionary] = []
 	
 	# Look for E: lines (Effect lines for spells)
 	if properties.has("E"):
@@ -135,14 +132,14 @@ func parse_spell_effects(properties: Dictionary, card_data: CardData) -> Array[S
 			effect_lines = [effect_lines]
 		
 		for effect_line in effect_lines:
-			var spell_ability = parse_single_spell_effect(effect_line, card_data)
-			if spell_ability:
-				spell_effects.append(spell_ability)
+			var effect_dict = parse_single_spell_effect(effect_line, card_data)
+			if effect_dict:
+				spell_effects.append(effect_dict)
 	
 	return spell_effects
 
-# Parse a single spell effect line
-func parse_single_spell_effect(effect_text: String, card_data: CardData) -> SpellAbility:
+# Parse a single spell effect line (same parsing as triggered abilities)
+func parse_single_spell_effect(effect_text: String, card_data: CardData) -> Dictionary:
 	var effect_type_str: String = ""
 	
 	# Remove the initial "$ " if present
@@ -155,42 +152,38 @@ func parse_single_spell_effect(effect_text: String, card_data: CardData) -> Spel
 	for part in parts:
 		part = part.strip_edges()
 		
-		# Parse different effect types
-		if part == "CreateDelayedEffect":
-			effect_type_str = "CreateDelayedEffect"
+		# Check if this part matches any valid effect type
+		if part in ["CreateDelayedEffect", "DealDamage", "Pump", "Draw", "CreateToken", 
+					"CreateCard", "Cast", "AddType", "AddKeyword", "PumpAll", "MoveCard", 
+					"SwitchPositions", "Destroy", "Bounce", "Exile", "Mill", "Discard", 
+					"Search", "Shuffle", "Sacrifice"]:
+			effect_type_str = part
 			break
-		elif part == "DealDamage":
-			effect_type_str = "DealDamage"
-			break
-		elif part == "Pump":
-			effect_type_str = "Pump"
-			break
-		# Add more spell effect types as needed (Mill, Draw, Heal, etc.)
 	
 	# Special handling for CreateDelayedEffect - parse nested effect at load time
 	if effect_type_str == "CreateDelayedEffect":
-		return _parse_create_delayed_effect(parts, card_data)
+		return _parse_create_delayed_effect_dict(parts, card_data)
 	
 	# Standard effect parsing - use shared parameter parser
 	var parameters = _parse_effect_parameters_from_parts(parts)
 	
 	if effect_type_str.is_empty():
-		return null
+		return {}
 	
 	# Validate effect type before converting
 	if not _is_valid_effect_type(effect_type_str):
-		push_error("❌ [CARD LOAD ERROR] Invalid effect type '" + effect_type_str + "' in spell ability for card: " + card_data.cardName)
+		push_error("❌ [CARD LOAD ERROR] Invalid effect type '" + effect_type_str + "' in spell effect for card: " + card_data.cardName)
 		push_error("   Valid types: DealDamage, Pump, Draw, CreateToken, CreateCard, Cast, AddType, AddKeyword, MoveCard, SwitchPositions, etc.")
-		return null
+		return {}
 	
 	# Convert to EffectType enum
 	var effect_type = EffectType.string_to_type(effect_type_str)
 	
-	# Create SpellAbility instance
-	var spell_ability = SpellAbility.new(card_data, effect_type)
-	spell_ability.effect_parameters = parameters
-	
-	return spell_ability
+	# Return simple dictionary with effect type and parameters
+	return {
+		"effect_type": effect_type,
+		"effect_parameters": parameters
+	}
 
 # Shared helper to parse effect parameters from parts array
 func _parse_effect_parameters_from_parts(parts: Array) -> Dictionary:
@@ -205,8 +198,12 @@ func _parse_effect_parameters_from_parts(parts: Array) -> Dictionary:
 			parameters["ValidTargets"] = part.substr(11)
 		elif part.begins_with("ValidCards$"):
 			parameters["ValidCards"] = part.substr(12)
+		elif part.begins_with("ValidCard$"):
+			parameters["ValidCard"] = part.substr(11)
 		elif part.begins_with("Num$"):
 			parameters["Num"] = part.substr(5)
+		elif part.begins_with("NumCard$"):
+			parameters["NumCard"] = int(part.substr(8))
 		elif part.begins_with("NumDmg$"):
 			parameters["NumDamage"] = int(part.substr(8))
 		elif part.begins_with("Pow$"):
@@ -215,14 +212,23 @@ func _parse_effect_parameters_from_parts(parts: Array) -> Dictionary:
 			parameters["Defined"] = part.substr(9)
 		elif part.begins_with("Duration$"):
 			parameters["Duration"] = part.substr(10)
+		elif part.begins_with("Origin$"):
+			parameters["Origin"] = part.substr(8)
+		elif part.begins_with("Destination$"):
+			parameters["Destination"] = part.substr(13)
+		elif part.begins_with("Choice$"):
+			parameters["Choice"] = part.substr(8)
+		elif part.begins_with("Condition$"):
+			parameters["Condition"] = part.substr(11)
+		elif part.begins_with("IfNotFound$"):
+			parameters["IfNotFound"] = part.substr(12)
 		# Add more parameter types as needed
 	
 	return parameters
 
-# Parse CreateDelayedEffect with nested effect
-func _parse_create_delayed_effect(parts: Array, card_data: CardData) -> SpellAbility:
-	"""Parse CreateDelayedEffect at card load time, including nested effect"""
-	var trigger_event_str: String = "EndOfTurn"  # Default
+# Helper to parse CreateDelayedEffect for spell effects (returns Dictionary)
+func _parse_create_delayed_effect_dict(parts: Array, card_data: CardData) -> Dictionary:
+	var trigger_event_str: String = ""
 	var nested_effect_str: String = ""
 	
 	# Parse CreateDelayedEffect-specific parameters
@@ -239,12 +245,12 @@ func _parse_create_delayed_effect(parts: Array, card_data: CardData) -> SpellAbi
 	
 	if nested_effect_str.is_empty():
 		push_error("❌ [CARD LOAD ERROR] CreateDelayedEffect requires Effect$ parameter for card: " + card_data.cardName)
-		return null
+		return {}
 	
 	# Validate nested effect type
 	if not _is_valid_effect_type(nested_effect_str):
 		push_error("❌ [CARD LOAD ERROR] Invalid nested effect type '" + nested_effect_str + "' in CreateDelayedEffect for card: " + card_data.cardName)
-		return null
+		return {}
 	
 	# Parse trigger event to GameEventType
 	var trigger_event = parse_game_event_from_string(trigger_event_str)
@@ -259,12 +265,12 @@ func _parse_create_delayed_effect(parts: Array, card_data: CardData) -> SpellAbi
 		"NestedParameters": nested_parameters  # Parameters for nested effect
 	}
 	
-	# Create SpellAbility for CreateDelayedEffect
+	# Return dictionary with effect type and parameters
 	var effect_type = EffectType.string_to_type("CreateDelayedEffect")
-	var spell_ability = SpellAbility.new(card_data, effect_type)
-	spell_ability.effect_parameters = parameters
-	
-	return spell_ability
+	return {
+		"effect_type": effect_type,
+		"effect_parameters": parameters
+	}
 
 # Parse abilities from card properties
 func parse_abilities(properties: Dictionary, card_data: CardData) -> Array[CardAbility]:
@@ -1247,12 +1253,6 @@ func _duplicate_replacement_ability(original: ReplacementAbility, new_owner: Car
 	copy.targeting_requirements = original.targeting_requirements.duplicate()
 	return copy
 
-func _duplicate_spell_ability(original: SpellAbility, new_owner: CardData) -> SpellAbility:
-	var copy = SpellAbility.new(new_owner, original.effect_type)
-	copy.effect_parameters = original.effect_parameters.duplicate()
-	copy.targeting_requirements = original.targeting_requirements.duplicate()
-	return copy
-
 # Custom deep copy method for CardData objects to replace broken duplicate() method
 func duplicateCardScript(original: CardData) -> CardData:
 	if not original:
@@ -1298,8 +1298,9 @@ func duplicateCardScript(original: CardData) -> CardData:
 	for ability in original.replacement_abilities:
 		copy.replacement_abilities.append(_duplicate_replacement_ability(ability, copy))
 	
-	for ability in original.spell_abilities:
-		copy.spell_abilities.append(_duplicate_spell_ability(ability, copy))
+	# Deep copy spell_effects (simple dictionaries)
+	for spell_effect in original.spell_effects:
+		copy.spell_effects.append(spell_effect.duplicate(true))  # deep duplicate
 	
 	# Copy card art reference (texture resources are shared, not duplicated)
 	copy.cardArt = original.cardArt

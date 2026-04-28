@@ -6,6 +6,7 @@ var current_tween: Tween
 var size_tween: Tween  # Dedicated tween for make_big/make_small operations
 var current_state: AnimationState = AnimationState.IDLE
 var current_animation_priority: int = -1  # Track current animation priority (-1 = no animation)
+var _current_animation_name: String = ""
 
 # Drag state tracking
 var is_outside_hand_zone: bool = false
@@ -34,6 +35,15 @@ func _ready():
 
 func get_tween(is_blocking: bool = true, priority: int = 1, animation_name: String = "") -> Tween:
 	"""Create and configure a tween with common settings. Priority: 0=lowest, 1=normal, 2=highest"""
+	var card_name = card.name if card else "unknown"
+	if current_tween and current_tween.is_valid() and is_blocking:
+		if priority >= current_animation_priority:
+			print("[CardAnimator] %s: '%s' (p%d) kills '%s' (p%d)" % [card_name, animation_name, priority, _current_animation_name, current_animation_priority])
+		else:
+			print("[CardAnimator] %s: '%s' (p%d) blocked by '%s' (p%d)" % [card_name, animation_name, priority, _current_animation_name, current_animation_priority])
+	else:
+		print("[CardAnimator] %s: '%s' (p%d)" % [card_name, animation_name, priority])
+	
 	var tween = create_tween()
 	tween.set_speed_scale(ANIMATION_SPEED)
 
@@ -47,9 +57,11 @@ func get_tween(is_blocking: bool = true, priority: int = 1, animation_name: Stri
 		
 		current_tween = tween
 		current_animation_priority = priority
+		_current_animation_name = animation_name
 		tween.finished.connect(func(): 
 			current_tween = null
 			current_animation_priority = -1
+			_current_animation_name = ""
 		)
 	
 	return tween
@@ -103,7 +115,7 @@ func _animate_return_to_hand(tween: Tween, data: Dictionary) -> Tween:
 
 func _animate_to_rest(tween: Tween, data: Dictionary) -> Tween:
 	# Always animate smoothly to rest position
-	var duration = 0.15
+	var duration = data.get("duration", 0.15)
 	
 	# Animate position back to local zero (legacy behavior)
 	tween.tween_property(card.card_representation, "position", Vector3.ZERO, duration)
@@ -181,14 +193,14 @@ func cast_position(should_turn_over: bool = false) -> Tween:
 		})
 	return null
 
-func go_to_rest() -> Tween:
+func go_to_rest(duration: float = 0.15) -> Tween:
 	# Only allow rest if card is in idle state
 	if current_state != AnimationState.IDLE:
 		return null
 	
 	var tween = get_tween(true, 0, "go_to_rest")  # Lowest priority
 	if tween:
-		return _animate_to_rest(tween, {})
+		return _animate_to_rest(tween, {"duration": duration})
 	return null
 
 func go_to_logical_position() -> Tween:
@@ -353,7 +365,7 @@ func lift_and_scale() -> Tween:
 		return _animate_lift_and_scale(tween, {})
 	return null
 
-const makeSmallTime = 0.02
+const makeSmallTime = 0.15
 func _animate_make_small(tween: Tween, _data: Dictionary) -> Tween:
 	"""Animate card to small size"""
 	if card.is_small:
@@ -457,6 +469,9 @@ func _animate_draw_card(tween: Tween, data: Dictionary) -> Tween:
 	# Set initial position
 	card.card_representation.global_position = from_pos
 	
+	# Make card big at the start of the draw animation
+	make_big()
+	
 	# Add delay for staggered effect
 	if delay > 0:
 		tween.tween_interval(delay)
@@ -473,8 +488,8 @@ func _animate_draw_card(tween: Tween, data: Dictionary) -> Tween:
 		tween.tween_callback(func(): make_small())
 		tween.tween_property(card.card_representation, "global_position", final_position, 0.15)
 	else:
-		# Direct move to hand with small size
-		make_small()
+		# Make small as the card starts moving to hand
+		tween.tween_callback(func(): make_small())
 		tween.tween_property(card.card_representation, "global_position", final_position, 0.3)
 	
 	return tween

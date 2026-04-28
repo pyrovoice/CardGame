@@ -40,9 +40,6 @@ static func apply_replacement_effects(effect_type: String, effect_parameters: Di
 	var modified_params = effect_parameters.duplicate()
 	var applied_count = 0
 	
-	# Clean up invalid effects
-	_cleanup_invalid_effects()
-	
 	# Apply each applicable replacement effect
 	for effect in _replacement_effects:
 		if effect.applies_to(effect_type, modified_params, game_context):

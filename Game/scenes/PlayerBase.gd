@@ -2,6 +2,7 @@ extends CardLocation
 class_name PlayerBase
 
 @onready var mesh_instance: MeshInstance3D = $MeshInstance3D
+var grid_container: GridContainer3D = null
 var original_material: Material
 var highlight_material: StandardMaterial3D
 var is_highlighted: bool = false
@@ -10,6 +11,8 @@ var lastCardCount = 0
 const CARD_SPACING_X: float = 0.7  # Horizontal spacing between cards
 
 func _ready():
+	if has_node("GridContainer3D"):
+		grid_container = $GridContainer3D
 	# Store the original material and create highlight material
 	if mesh_instance:
 		original_material = mesh_instance.get_surface_override_material(0)
@@ -25,6 +28,16 @@ func _ready():
 
 func organize():
 	pass
+
+func set_card(card: Card) -> void:
+	"""Add a card to the grid container (if present) and reorganize all positions"""
+	var container = grid_container if grid_container else self
+	if card.get_parent():
+		card.reparent(container, true)
+	else:
+		container.add_child(card)
+	if grid_container:
+		grid_container.reorganize(card)
 
 func getNextEmptyLocation() -> Vector3:
 	"""Returns the next empty location in local coordinates, or Vector3.INF if no space"""
@@ -44,7 +57,8 @@ func getNextEmptyLocation() -> Vector3:
 func getCards() -> Array[Card]:
 	"""Returns all Card nodes that are children of this PlayerBase"""
 	var cards: Array[Card] = []
-	for child in get_children():
+	var container = grid_container if grid_container else self
+	for child in container.get_children():
 		if child is Card:
 			cards.append(child)
 	return cards

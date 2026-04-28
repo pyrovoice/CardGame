@@ -39,17 +39,41 @@ class CardPlaySelections:
 				sacrifice_targets.size() > 0 or
 				spell_targets.size() > 0)
 
-var selection_ui: Control
 var current_selection: RefCounted = null  # PlayerSelection
 var game_reference: Node = null
 var casting_card: CardData = null  # Track the card being cast
 
+# References to shared UI buttons
+var main_action_button: Button = null
+var secondary_action_button: Button = null
+
+# Reference to container visualizer
+var container_visualizer: CardContainerVizualizer = null
+
+# Store original button text to restore later
+var original_main_button_text: String = ""
+var original_secondary_button_text: String = ""
+
+# Track if using visualizer for current selection
+var using_visualizer: bool = false
+
 func _ready():
-	# Load and create the selection UI
-	selection_ui = get_node("../UI/SelectionUI")  # Assign to class-level variable
-	selection_ui.validate_pressed.connect(_on_validate_pressed)
-	selection_ui.cancel_pressed.connect(_on_cancel_pressed)
-	selection_ui.hide()
+	# References to buttons are set by game.gd via setup_buttons()
+	pass
+
+func setup_buttons(main_btn: Button, secondary_btn: Button, visualizer: CardContainerVizualizer = null):
+	"""Setup references to shared UI buttons and visualizer - called by game.gd"""
+	main_action_button = main_btn
+	secondary_action_button = secondary_btn
+	container_visualizer = visualizer
+	
+	# Store original button text
+	if main_action_button:
+		original_main_button_text = main_action_button.text
+	if secondary_action_button:
+		original_secondary_button_text = secondary_action_button.text
+		# Hide secondary button by default
+		secondary_action_button.visible = false
 
 # Start a new card selection process and wait for completion
 func start_selection_and_wait(requirement: Dictionary, possible_cards: Array[CardData], selection_type: String, game_ref: Node, casting_card_param: CardData = null, preselected_cards: Array[CardData] = []) -> Array[CardData]:
@@ -68,13 +92,36 @@ func start_selection_and_wait(requirement: Dictionary, possible_cards: Array[Car
 	current_selection = player_selection_script.new(requirement, possible_cards, selection_type)
 	game_reference = game_ref
 	
-	# Show UI and highlight cards
-	_show_selection_ui(true)
-	print("🔍 [SELECTION] UI shown, highlighting ", possible_cards.size(), " possible cards")
-	for card_data in possible_cards:
-		var card_node = card_data.get_card_object()
-		if card_node:
-			card_node.set_selectable(true)
+	# Check if all possible cards are in the same container zone
+	var container_zone = _get_container_zone_if_all_same(possible_cards)
+	
+	if container_zone != null and container_visualizer:
+		# Use visualizer for container selection
+		using_visualizer = true
+		print("🗂️ [SELECTION] Using container visualizer for zone: ", GameZone.e.keys()[container_zone])
+		
+		# Get all cards in the container zone from GameData
+		var game = game_reference as Game
+		if game and game.game_data:
+			var all_cards_in_zone = game.game_data.get_cards_in_zone(container_zone)
+			
+			# Setup visualizer with all cards and selectable cards
+			container_visualizer.setContainer(all_cards_in_zone, possible_cards)
+			container_visualizer.set_selection_callback(_on_visualizer_card_clicked)
+			container_visualizer.show()
+	else:
+		# Use 3D world highlighting for non-container selections
+		using_visualizer = false
+		print("🔍 [SELECTION] Highlighting ", possible_cards.size(), " possible cards in 3D world")
+		var hm := _get_highlight_manager()
+		if hm:
+			hm.clear_all()
+			for card_data in possible_cards:
+				var card_node = card_data.get_card_object()
+				if card_node:
+					hm.set_card_highlight(card_node, HighlightManager.CardHighlightState.CASTABLE)
+	
+	# Update button UI for selection mode
 	_update_ui()
 	
 	# Emit signal that selection has started
@@ -90,6 +137,38 @@ func start_selection_and_wait(requirement: Dictionary, possible_cards: Array[Car
 		print("Selection was cancelled or failed")
 		return []
 
+func _is_container_zone(zone: GameZone.e) -> bool:
+	"""Check if a zone is a container zone (deck, graveyard, extra deck)"""
+	return zone == GameZone.e.DECK_PLAYER or \
+		zone == GameZone.e.DECK_OPPONENT or \
+		zone == GameZone.e.GRAVEYARD_PLAYER or \
+		zone == GameZone.e.GRAVEYARD_OPPONENT or \
+		zone == GameZone.e.EXTRA_DECK_PLAYER
+
+func _get_container_zone_if_all_same(cards: Array[CardData]) -> Variant:
+	"""Check if all cards are in the same container zone. Returns zone enum or null."""
+	if cards.is_empty():
+		return null
+	
+	var first_zone = cards[0].current_zone
+	if not _is_container_zone(first_zone):
+		return null
+	
+	# Check if all cards are in the same zone
+	for card_data in cards:
+		if card_data.current_zone != first_zone:
+			return null  # Cards are in different zones
+	
+	return first_zone
+
+func _on_visualizer_card_clicked(card_data: CardData):
+	"""Handle card click from visualizer during selection"""
+	if not current_selection:
+		return
+	
+	if current_selection.try_select_card(card_data):
+		_update_ui()
+
 # Create a new empty selection set
 func create_card_play_selections() -> CardPlaySelections:
 	"""Factory method to create a new CardPlaySelections instance"""
@@ -104,49 +183,84 @@ func handle_card_click(card_node: Card):
 		return
 	
 	if current_selection.try_select_card(card_data):
-		card_node.set_selected(card_data in current_selection.selected_cards)
+		var hm := _get_highlight_manager()
+		if hm and not using_visualizer:
+			var state = HighlightManager.CardHighlightState.SELECTED if card_data in current_selection.selected_cards else HighlightManager.CardHighlightState.CASTABLE
+			hm.set_card_highlight(card_node, state)
 		_update_ui()
 
 func _update_ui():
-	if not current_selection or not selection_ui:
+	if not current_selection:
 		return
 	
+	# Build description text with count
 	var desc = current_selection.get_requirement_description()
 	desc += " (" + str(current_selection.selected_cards.size()) + "/" + str(current_selection.requirement.get("count", 1)) + ")"
-	selection_ui.set_description(desc)
-	selection_ui.set_validate_enabled(current_selection.is_complete)
+	
+	# Update main button text and enable state
+	if main_action_button:
+		main_action_button.text = desc
+		main_action_button.disabled = not current_selection.is_complete
+	
+	# Show secondary button for cancellation
+	if secondary_action_button:
+		secondary_action_button.text = "Cancel"
+		secondary_action_button.visible = true
+		secondary_action_button.disabled = false
+	
+	# Update visualizer selection states if using it
+	if using_visualizer and container_visualizer:
+		container_visualizer.update_card_selection_states(current_selection.selected_cards)
 
-func _show_selection_ui(visible: bool):
-	if selection_ui:
-		if visible:
-			selection_ui.show()
-		else:
-			selection_ui.hide()
-
-func _on_validate_pressed():
+func validate_selection():
+	"""Public method for controller to validate selection"""
 	if current_selection and current_selection.is_complete:
 		var selection = current_selection
 		_end_selection()
 		selection_completed.emit(selection)
 
-func _on_cancel_pressed():
+func cancel_selection():
+	"""Public method for controller to cancel selection"""
+	_end_selection()
 	selection_cancelled.emit()
 
 func _end_selection():
+	# Restore card states
 	if current_selection:
-		for card_data in current_selection.possible_cards:
-			var card_node = card_data.get_card_object()
-			if card_node:
-				card_node.set_selectable(false)
-				card_node.set_selected(false)
+		if using_visualizer:
+			# Clear visualizer selection states
+			if container_visualizer:
+				container_visualizer.update_card_selection_states([])
+				container_visualizer.hide()
+		# Always refresh highlights - visualizer selections leave hand cards in a stale state
+		var hm := _get_highlight_manager()
+		if hm:
+			hm.onHighlight()
 	
+	# Restore button states
+	if main_action_button:
+		main_action_button.text = original_main_button_text
+		main_action_button.disabled = false
+	
+	if secondary_action_button:
+		secondary_action_button.visible = false
+		secondary_action_button.text = original_secondary_button_text
+	
+	# Clear selection state
 	if casting_card:
 		pass
 	
 	current_selection = null
 	game_reference = null
 	casting_card = null
-	_show_selection_ui(false)
+	using_visualizer = false
+
+# Helper to get the HighlightManager from game_reference
+func _get_highlight_manager() -> HighlightManager:
+	var game := game_reference as Game
+	if game:
+		return game.highlightManager
+	return null
 
 # Check if we're currently in a selection process
 func is_selecting() -> bool:

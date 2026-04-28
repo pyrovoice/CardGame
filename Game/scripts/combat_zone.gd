@@ -61,11 +61,14 @@ func set_card(card: Card, target_position: int = -1) -> void:
 		push_error("CombatZone.set_card: Target container is invalid")
 		return
 	
-	# Reparent the card to the appropriate side container
+	# Reparent without triggering auto-reorganize (child_entered_tree not connected)
 	if card.get_parent():
-		card.get_parent().remove_child(card)
+		card.reparent(target_container, true)
+	else:
+		target_container.add_child(card)
 	
-	target_container.add_child(card)
+	# Reorganize explicitly: sets all card positions without moving representations
+	target_container.reorganize(card)
 
 func update_resolve_fight_display(is_resolved: bool):
 	"""Update the appearance of the resolve fight label based on resolution status"""

@@ -51,25 +51,25 @@ func activateAbility(source_card_data: CardData, activated_ability: ActivatedAbi
 
 func executeAbilityEffect(source_card_data: CardData, ability, game_context: Game):
 	"""
-	Unified method to execute ability effects - used for both triggered and activated abilities.
+	Unified method to execute ability effects - used for triggered and activated abilities.
 	After an ability is triggered or activated, this handles the actual effect execution.
 	Uses enum-based effect types for type safety and consistency.
 	Uses CardData instead of Card object, so effects work even if the Card has been destroyed.
 	
-	Accepts TriggeredAbility, ActivatedAbility, StaticAbility, ReplacementAbility, SpellAbility, or Dictionary (legacy)
+	Accepts TriggeredAbility, ActivatedAbility, StaticAbility, ReplacementAbility, or Dictionary (legacy)
 	"""
 	var effect_type_str: String
 	var effect_parameters: Dictionary
 	var target_conditions: Dictionary
 	
 	# Check ability type and extract data
-	if ability is TriggeredAbility or ability is ActivatedAbility or ability is StaticAbility or ability is ReplacementAbility or ability is SpellAbility:
+	if ability is TriggeredAbility or ability is ActivatedAbility or ability is StaticAbility or ability is ReplacementAbility:
 		effect_type_str = EffectType.type_to_string(ability.effect_type)
 		effect_parameters = ability.effect_parameters
-		# TriggeredAbility uses trigger_conditions, ActivatedAbility/SpellAbility use targeting_requirements
+		# TriggeredAbility uses trigger_conditions, ActivatedAbility uses targeting_requirements
 		if ability is TriggeredAbility:
 			target_conditions = ability.trigger_conditions
-		elif ability is ActivatedAbility or ability is SpellAbility:
+		elif ability is ActivatedAbility:
 			target_conditions = ability.targeting_requirements
 		else:
 			target_conditions = {}
@@ -302,8 +302,8 @@ func executeSpellEffects(card_data: CardData, game_context: Game):
 	
 	print("✨ Casting spell: ", card_data.cardName)
 	
-	# Get spell effects from the card's abilities
-	var spell_effects = card_data.spell_abilities
+	# Get spell effects from the card
+	var spell_effects = card_data.spell_effects
 	
 	if spell_effects.is_empty():
 		print("⚠️ Spell has no effects to execute: ", card_data.cardName)
@@ -327,7 +327,7 @@ func executeSpellEffect(card_data: CardData, effect: Dictionary, game_context: G
 	var ability = {
 		"type": "SpellEffect",
 		"effect_type": effect_type_str,
-		"effect_parameters": effect.get("parameters", {}),
+			"effect_parameters": effect.get("effect_parameters", {}),
 		"target_conditions": {}
 	}
 	

@@ -1,6 +1,6 @@
 Name:Furious Last Stand
 Types:Spell
 ManaCost:0
-E:$ CreateDelayedEffect | TriggerEvent$ EndOfTurn | Effect$ Sacrifice | ValidTgts$ Creature
-CardText: Return a creature you own that died this turn to any location. Sacrifice it at the end of the round. If it is a Punglynd, it gains "When I die, create a Punglynd Child" this turn.
-HightlightCondition: TODO write here a condition that fits "A creature is in the player's graveyard that died this turn"
+E:$ MoveCard | Origin$ Graveyard.Player | Destination$ Battlefield.Player | ValidCard$ Creature | NumCard$ 1 | Choice$ Player
+CardText: Return a creature from your graveyard to the battlefield.
+HightlightCondition: TODO
