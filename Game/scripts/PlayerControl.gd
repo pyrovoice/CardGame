@@ -12,6 +12,7 @@ var activeHand: CardHand
 signal tryMoveCard(card_data: CardData, target: Node3D)
 signal rightClick(target: Node3D)  # Can be Card or CardContainer
 signal leftClick(objectUnderMouse: Node3D)
+signal focus_battlefield(index: int)  # -1 = wide view, 0-2 = focus zone
 # Removed drag signals - now handled directly by CardAnimator
 
 const HAND_ZONE_CUTTOFF = 600
@@ -62,6 +63,14 @@ func clearTargetHighlight():
 var dragged_card: Card = null
 var mouseDownButtonPos: Vector2 = Vector2.INF
 func _unhandled_input(event):
+	# Battlefield focus shortcuts
+	if event is InputEventKey and event.pressed and not event.echo:
+		match event.keycode:
+			KEY_1: focus_battlefield.emit(0)
+			KEY_2: focus_battlefield.emit(1)
+			KEY_3: focus_battlefield.emit(2)
+			KEY_4: focus_battlefield.emit(-1)
+
 	""" LEFT MOUSE BUTTON"""
 	if event is InputEventMouseButton && event.button_index == MOUSE_BUTTON_LEFT:
 		""" CLICK """

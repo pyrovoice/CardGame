@@ -132,6 +132,7 @@ func _ready() -> void:
 	player_control.tryMoveCard.connect(tryMoveCard)
 	player_control.rightClick.connect(_on_right_click)
 	player_control.leftClick.connect(_on_left_click)
+	player_control.focus_battlefield.connect(_on_focus_battlefield)
 	# Drag handling now done directly by PlayerControl -> CardAnimator
 	
 	if doStartGame:
@@ -1098,6 +1099,11 @@ func cancelSelection():
 	
 	# Restore the casting card using shared logic
 	_restore_cancelled_card()
+
+func _on_focus_battlefield(index: int):
+	if playerControlLock.isLocked():
+		return
+	game_view.set_battlefield_focus(index)
 
 func _on_right_click(target: Node3D):
 	"""Handle right-click on a card or container"""
