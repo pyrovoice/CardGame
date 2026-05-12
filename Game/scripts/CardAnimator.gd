@@ -35,7 +35,7 @@ func _ready():
 
 func get_tween(is_blocking: bool = true, priority: int = 1, animation_name: String = "") -> Tween:
 	"""Create and configure a tween with common settings. Priority: 0=lowest, 1=normal, 2=highest"""
-	var card_name = card.name if card else "unknown"
+	var card_name = card.cardData.cardName if card else "unknown"
 	if current_tween and current_tween.is_valid() and is_blocking:
 		if priority >= current_animation_priority:
 			print("[CardAnimator] %s: '%s' (p%d) kills '%s' (p%d)" % [card_name, animation_name, priority, _current_animation_name, current_animation_priority])
@@ -211,7 +211,6 @@ func go_to_logical_position() -> Tween:
 			"duration": 0.3
 		})
 	return null
-	return null
 
 func _animate_representation_to_logical_position(tween: Tween, data: Dictionary) -> Tween:
 	"""Animate card representation to match the card's logical position"""
@@ -319,8 +318,6 @@ func _animate_combat_strike(tween: Tween, data: Dictionary) -> Tween:
 	print("✅ Combat strike tween configured - total duration: ", (duration + 0.1 + return_duration))
 	
 	return tween
-	
-	return tween
 
 func animate_combat_strike(target_card: Card, callback: Callable = Callable()) -> Tween:
 	"""Animate card striking another card in combat - returns awaitable tween"""
@@ -340,7 +337,7 @@ func make_small() -> Tween:
 	if card.is_small:
 		return null
 	
-	return _animate_make_small(null, {})
+	return _animate_make_small()
 
 func _setup_size_tween() -> Tween:
 	"""Helper to create and setup size tween, killing any existing one"""
@@ -356,7 +353,7 @@ func make_big() -> Tween:
 	if not card.is_small:
 		return null
 	
-	return _animate_make_big(null, {})
+	return _animate_make_big()
 
 func lift_and_scale() -> Tween:
 	"""Lift card upward and make it big - used for hover/highlight effects"""
@@ -366,7 +363,7 @@ func lift_and_scale() -> Tween:
 	return null
 
 const makeSmallTime = 0.15
-func _animate_make_small(tween: Tween, _data: Dictionary) -> Tween:
+func _animate_make_small() -> Tween:
 	"""Animate card to small size"""
 	if card.is_small:
 		return null
@@ -386,7 +383,7 @@ func _animate_make_small(tween: Tween, _data: Dictionary) -> Tween:
 	return size_animation
 
 const makeBigTime = 0.1
-func _animate_make_big(tween: Tween, _data: Dictionary) -> Tween:
+func _animate_make_big() -> Tween:
 	"""Animate card to big size"""
 	if not card.is_small:
 		return null
