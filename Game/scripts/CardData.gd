@@ -42,6 +42,8 @@ var isToken = false
 var current_zone: GameZone.e = GameZone.e.UNKNOWN  # Current zone this card is in (set by GameData)
 var damage: int = 0  # Damage dealt to this card this turn
 var is_facedown: bool = true  # Whether the card is face-down
+var isPrepared: bool = false  # Whether this card has a prepared spell ready to cast
+var prepared_card: CardData = null  # The prepared spell CardData (null when not prepared)
 
 func receiveDamage(v: int):
 	damage += v
@@ -461,3 +463,20 @@ func remove_keyword(keyword: String):
 func has_keyword(keyword: String) -> bool:
 	"""Check if this card has a specific keyword (including temporary ones)"""
 	return keyword in self.keywords  # Property accessor automatically includes temp effects
+
+# Prepared state methods
+func prepare(card: CardData):
+	"""Mark this card as prepared with the given spell"""
+	isPrepared = true
+	prepared_card = card
+	dirty_data.emit()
+
+func unprepare():
+	"""Clear the prepared state after casting the prepared spell"""
+	isPrepared = false
+	prepared_card = null
+	dirty_data.emit()
+
+func get_prepared_card() -> CardData:
+	"""Return the prepared spell CardData, or null if not prepared"""
+	return prepared_card

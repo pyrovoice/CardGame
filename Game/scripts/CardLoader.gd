@@ -16,6 +16,14 @@ var opponentCards: Array[CardData] = []
 # Dictionary mapping Archetype enum to Array[CardData]
 var archetype_pools: Dictionary = {}
 
+# Second-pass cross-reference resolution
+enum ResolutionReason {
+	PREPARED_SPELL,
+	# TRANSFORM_INTO,
+	# CREATES_NAMED_CARD,
+}
+var pending_resolutions: Array[Dictionary] = []
+
 func _ready():
 	# Initialize archetype pools with properly typed arrays
 	for archetype in Archetype.values():
@@ -117,6 +125,14 @@ func parse_card_data(card_text: String) -> CardData:
 	# Parse spell effects (for spell cards)
 	if card_data.hasType(CardData.CardType.SPELL):
 		card_data.spell_effects = parse_spell_effects(properties, card_data)
+	
+	# Register cross-references that need a second pass
+	if "PreparedSpell" in properties:
+		pending_resolutions.append({
+			"card": card_data,
+			"reason": ResolutionReason.PREPARED_SPELL,
+			"ref_name": properties["PreparedSpell"]
+		})
 	
 	return card_data
 
@@ -1052,6 +1068,7 @@ func load_all_cards():
 		extraDeckCardData = []
 		tokensData = []
 		opponentCards = []
+		pending_resolutions = []
 	# Load regular cards (recursively supports subdirectories)
 	var dir = DirAccess.open("res://Cards/Cards/")
 	
@@ -1101,6 +1118,9 @@ func load_all_cards():
 	else:
 		_load_cards_from_directory_recursive("res://Cards/OpponentCards/", opponent_dir, true, "res://Cards/OpponentCards")
 		print("Loaded ", opponentCards.size(), " opponent cards")
+	
+	# Second pass: resolve cross-references between cards
+	_resolve_pending_references()
 	
 	# Print archetype pool summary
 	for archetype in Archetype.values():
@@ -1212,6 +1232,53 @@ func getRandomOpponentCard() -> CardData:
 func getRandomCard() -> CardData:
 	return cardData[randi_range(0, cardData.size() - 1)]
 
+# ─── Second-pass reference resolution ────────────────────────────────────────
+
+func _resolve_pending_references():
+	"""Second pass: resolve all queued cross-references between cards"""
+	if pending_resolutions.is_empty():
+		return
+	print("[CARD LOAD] Resolving ", pending_resolutions.size(), " cross-reference(s)...")
+	for entry in pending_resolutions:
+		match entry["reason"]:
+			ResolutionReason.PREPARED_SPELL:
+				_resolve_prepared_spell(entry)
+			_:
+				push_warning("⚠️ [CARD LOAD] No resolver for reason: " + str(entry["reason"]))
+	pending_resolutions.clear()
+
+func _resolve_prepared_spell(entry: Dictionary):
+	"""Resolve a PreparedSpell cross-reference.
+	Calls prepare() on the holder with the found CardData, or removes the holder from all pools on failure."""
+	var holder: CardData = entry["card"]
+	var spell_name: String = entry["ref_name"]
+	
+	# Search all pools for the named spell
+	var found: CardData = null
+	for pool in [cardData, extraDeckCardData, tokensData, opponentCards]:
+		for card in pool:
+			if card.cardName.to_lower() == spell_name.to_lower():
+				found = card
+				break
+		if found:
+			break
+	
+	if found:
+		holder.prepare(found)
+		print("[CARD LOAD] ✅ '", holder.cardName, "' prepared with '", found.cardName, "'")
+	else:
+		push_error("❌ [CARD LOAD ERROR] PreparedSpell '" + spell_name + "' not found for card '" + holder.cardName + "' — removing card from all pools")
+		_remove_card_from_all_pools(holder)
+
+func _remove_card_from_all_pools(card: CardData):
+	"""Remove a card from every pool it appears in"""
+	cardData.erase(card)
+	extraDeckCardData.erase(card)
+	tokensData.erase(card)
+	opponentCards.erase(card)
+	for archetype in archetype_pools.keys():
+		archetype_pools[archetype].erase(card)
+
 # Helper functions to duplicate abilities with new owner reference
 func _duplicate_triggered_ability(original: TriggeredAbility, new_owner: CardData) -> TriggeredAbility:
 	# Debug logging for Grave Whisperer
@@ -1308,6 +1375,10 @@ func duplicateCardScript(original: CardData) -> CardData:
 	# Copy controller/ownership properties
 	copy.playerControlled = original.playerControlled
 	copy.playerOwned = original.playerOwned
+	
+	# Preserve prepared-spell definition (set at load time via PreparedSpell:)
+	copy.isPrepared = original.isPrepared
+	copy.prepared_card = original.prepared_card  # shared reference to template
 	
 	# Don't copy runtime state (these should be fresh for new cards)
 	copy.hasAttackedThisTurn = false

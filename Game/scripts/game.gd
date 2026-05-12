@@ -47,6 +47,10 @@ var activeHand: CardHand
 # Casting state tracking
 var current_casting_card: Card = null
 var casting_card_original_parent: Node = null
+var current_cast_entry: CastableEntry = null  # registry entry for the card currently being cast
+
+# Castable card registry — reactive, push-based, no polling
+var castable_registry: CastableRegistry
 
 # Card library loaded from files
 var loaded_card_data: Array[CardData] = []
@@ -83,6 +87,9 @@ func createCardData(card_data_template: CardData, destination_zone: GameZone.e, 
 	# For battlefield zones, this will properly register all abilities
 	new_card_data.subscribe_to_game_signals(self)
 	
+	# Register with the castable registry based on destination zone
+	_update_castable_registry(new_card_data, GameZone.e.UNKNOWN, destination_zone)
+	
 	return new_card_data
 
 func _ready() -> void:
@@ -114,6 +121,8 @@ func _ready() -> void:
 		print("⚠️ No deck configuration found - decks will be empty")
 	
 	highlightManager = HighlightManager.new(self)
+	castable_registry = CastableRegistry.new()
+	castable_registry.castable_list_changed.connect(_on_castable_list_changed)
 	
 	for cz in game_view.get_combat_zones():
 		var data = CombatLocationData.new(cz)
@@ -224,6 +233,9 @@ func execute_move_card(cardData: CardData, destination_zone: GameZone.e, origin_
 	
 	# MVC Pattern: Update Model first (add to zone array), then animate View
 	game_data.move_card(cardData, destination_zone, index)
+	
+	# Reactively update the castable registry
+	_update_castable_registry(cardData, origin_zone, destination_zone)
 	
 	# Get origin zone node for signal emissions
 	var origin_zone_node = game_view.get_zone_container(origin_zone)
@@ -529,9 +541,13 @@ func _try_move_from_combat(card_data: CardData, target_location: Node3D) -> void
 	else:
 		print("❌ Cannot move card from combat to that location")
 
-func _canPlayCard(source_zone: GameZone.e) -> bool:
-	"""Check if cards can be played from this zone"""
-	return source_zone in [GameZone.e.HAND_PLAYER, GameZone.e.HAND_OPPONENT, GameZone.e.EXTRA_DECK_PLAYER]
+func _canPlayCard(source_zone: GameZone.e, card_data: CardData = null) -> bool:
+	"""Check if cards can be played from this zone, or via a castable registry entry"""
+	if source_zone in [GameZone.e.HAND_PLAYER, GameZone.e.HAND_OPPONENT, GameZone.e.EXTRA_DECK_PLAYER]:
+		return true
+	if card_data and castable_registry.has_proxy(card_data):
+		return true
+	return false
 
 func tryPlayCard(card_data: CardData, destination_zone: GameZone.e = GameZone.e.UNKNOWN, pre_selections: SelectionManager.CardPlaySelections = null, pay_cost = true) -> void:
 	"""Play a card from hand/extra deck to battlefield or combat
@@ -550,9 +566,12 @@ func tryPlayCard(card_data: CardData, destination_zone: GameZone.e = GameZone.e.
 	print("🎮 [TRYPLAYCARD] Source zone: ", GameZone.e.keys()[source_zone] + ", Dest: ", GameZone.e.keys()[destination_zone])
 	
 	# Validate source zone
-	if not _canPlayCard(source_zone):
+	if not _canPlayCard(source_zone, card_data):
 		print("❌ [TRYPLAYCARD] Cannot play from this zone")
 		return
+	
+	# Store registry entry for this cast (null for normal hand/extra deck cards)
+	current_cast_entry = castable_registry.get_entry_for_proxy(card_data)
 	
 	# Determine destination zone if not specified
 	if destination_zone == GameZone.e.UNKNOWN:
@@ -710,8 +729,10 @@ func drawCard(howMany: int = 1, player = true):
 		return
 	
 	# Model: Move cards to hand zone
+	var deck_zone_for_registry = GameZone.e.DECK_PLAYER if player else GameZone.e.DECK_OPPONENT
 	for card_data in cards_to_draw:
 		game_data.move_card(card_data, zone_name)
+		_update_castable_registry(card_data, deck_zone_for_registry, zone_name)
 	
 	# View: Create and animate card views
 	await game_view.create_and_animate_drawn_cards(cards_to_draw, player)
@@ -1086,6 +1107,11 @@ func _restore_cancelled_card():
 		# Reset visual properties before reparenting
 		game_view.restore_cancelled_card(current_casting_card, casting_card_original_parent)
 	
+	# Notify registry of cancellation (entry stays registered — card remains castable)
+	if current_cast_entry and current_cast_entry.on_cast_cancel.is_valid():
+		current_cast_entry.on_cast_cancel.call()
+	current_cast_entry = null
+	
 	# Clear casting state
 	current_casting_card = null
 	casting_card_original_parent = null
@@ -1098,6 +1124,86 @@ func cancelSelection():
 	
 	# Restore the casting card using shared logic
 	_restore_cancelled_card()
+
+# ─── Castable Registry ────────────────────────────────────────────────────────
+
+func _on_castable_list_changed() -> void:
+	"""Called whenever the definitive castable-card list changes. Refreshes highlights."""
+	highlightCastableCards()
+
+func _update_castable_registry(card_data: CardData, from_zone: GameZone.e, to_zone: GameZone.e) -> void:
+	"""Push-based registry update called on every zone change (and initial placement).
+
+	Step 1 — If leaving play, unregister any proxies this card was SOURCE for
+	         (e.g., creature with prepared spell leaving the battlefield).
+	Step 2 — If leaving a castable zone, unregister this card as a proxy.
+	Step 3 — If entering a castable zone, register this card.
+	Step 4 — If entering play with a prepared spell, register its proxy.
+	"""
+	# Step 1: source leaving play → remove its dependent proxies
+	if GameZone.is_in_play(from_zone):
+		castable_registry.unregister_by_source(card_data)
+
+	# Step 2: proxy leaving a castable zone → unregister
+	if from_zone in [GameZone.e.HAND_PLAYER, GameZone.e.EXTRA_DECK_PLAYER]:
+		castable_registry.unregister_by_proxy(card_data)
+	# Also unregister if a proxy card (e.g., prepared spell duplicate) enters any real zone
+	elif castable_registry.has_proxy(card_data) and to_zone != GameZone.e.UNKNOWN:
+		castable_registry.unregister_by_proxy(card_data)
+
+	# Step 3: entering a castable zone → register as own proxy
+	if to_zone == GameZone.e.HAND_PLAYER:
+		_register_zone_castable(card_data, CastableEntry.Reason.HAND)
+	elif to_zone == GameZone.e.EXTRA_DECK_PLAYER:
+		_register_zone_castable(card_data, CastableEntry.Reason.EXTRA_DECK)
+
+	# Step 4: entering play with a prepared spell → register its spell proxy
+	if GameZone.is_in_play(to_zone) and card_data.isPrepared:
+		_register_prepared_spell(card_data)
+
+func _register_zone_castable(card_data: CardData, reason: CastableEntry.Reason) -> void:
+	"""Register a hand or extra-deck card as its own castable proxy."""
+	if not card_data.playerOwned:
+		return  # only track player-owned cards
+	var entry = CastableEntry.new(card_data, null, reason)
+	castable_registry.register(entry)
+
+func _register_prepared_spell(source_card: CardData) -> void:
+	"""Create a spell duplicate and register it as a castable proxy for source_card."""
+	if not source_card.isPrepared or not source_card.prepared_card:
+		return
+	if not source_card.playerOwned:
+		return
+
+	# Build a fresh runtime duplicate of the spell template
+	var proxy: CardData = CardLoaderAL.duplicateCardScript(source_card.prepared_card)
+	proxy.playerOwned = source_card.playerOwned
+	proxy.playerControlled = source_card.playerControlled
+	# Proxy should not itself appear prepared (it IS the spell, not the holder)
+	proxy.isPrepared = false
+	proxy.prepared_card = null
+
+	var entry = CastableEntry.new(proxy, source_card, CastableEntry.Reason.PREPARED_SPELL)
+	# On success: proxy zone-change will auto-unregister it; also clear prepared state on source
+	entry.on_cast_success = func(): source_card.unprepare()
+	# On cancel: no-op — proxy stays registered and remains castable
+	castable_registry.register(entry)
+
+func set_card_prepared(source_card: CardData, spell_card: CardData) -> void:
+	"""Controller method: mark a card as prepared with a spell and update the registry."""
+	castable_registry.unregister_by_source(source_card)  # remove stale entry if any
+	source_card.prepare(spell_card)
+	if GameZone.is_in_play(game_data.get_card_zone(source_card)):
+		_register_prepared_spell(source_card)
+
+func set_card_unprepared(source_card: CardData) -> void:
+	"""Controller method: clear a card's prepared state and remove the registry proxy."""
+	castable_registry.unregister_by_source(source_card)
+	source_card.unprepare()
+
+func get_castable_entries() -> Array[CastableEntry]:
+	"""Return all currently registered castable entries (affordability not filtered)."""
+	return castable_registry.get_all()
 
 func _on_right_click(target: Node3D):
 	"""Handle right-click on a card or container"""
@@ -1530,6 +1636,11 @@ func tryPayAndSelectsForCardPlay(card_data: CardData, selection_data: SelectionM
 			print("⚠️ Skipping invalid spell target")
 	
 	await _executeCardPlay(card_data, valid_spell_targets)
+	
+	# Notify registry of successful cast
+	if current_cast_entry and current_cast_entry.on_cast_success.is_valid():
+		current_cast_entry.on_cast_success.call()
+	current_cast_entry = null
 
 func _startAdditionalCostSelection(card_data: CardData, additional_costs: Array[Dictionary], preselected_cards: Array[CardData] = []) -> Array[CardData]:
 	"""Start the selection process for paying additional costs and return selected cards"""
