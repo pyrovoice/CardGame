@@ -1,0 +1,5 @@
+Name:Bolt Caster
+Types:Creature Goblin
+Power:1
+PreparedSpell: Bolt
+CardText: When a goblin enters play, if Eyepatch the Pirate is in your deck, play it for free.
