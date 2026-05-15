@@ -95,6 +95,7 @@ func _ready() -> void:
 	
 	# Setup UI connections
 	game_view.setup_ui_connections(game_data, _on_main_action_button_pressed, _on_secondary_action_button_pressed, func(): game_view.show_admin_console())
+	game_view.admin_scene.game = self
 	
 	# Set zone names for GameData
 	game_view.set_zone_names()

@@ -29,7 +29,7 @@ material = SubResource("StandardMaterial3D_2jiha")
 size = Vector2(6, 1)
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_yieuc"]
-size = Vector3(5, 0.1, 1.5)
+size = Vector3(5.8588867, 0.1, 0.8916931)
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_s4hdo"]
 size = Vector3(1, 0.06323242, 1.8572998)
@@ -41,7 +41,7 @@ script = ExtResource("1_s4hdo")
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -6.8445325, -0.001, 0)
 
 [node name="combatZone2" parent="." instance=ExtResource("2_lpwbj")]
-transform = Transform3D(1.95, 0, 0, 0, 1.95, 0, 0, 0, 1.95, -0.112, -0.001, 0.5769086)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.112, -0.001, 0.5769086)
 
 [node name="combatZone3" parent="." instance=ExtResource("2_lpwbj")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 6.4710474, -0.001, 0)
@@ -85,6 +85,7 @@ script = ExtResource("6_k71w3")
 mesh = SubResource("PlaneMesh_bqf56")
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="playerBase"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.025146484, 0, -0.00044250488)
 shape = SubResource("BoxShape3D_yieuc")
 
 [node name="GridContainer3D" parent="playerBase" instance=ExtResource("7_lpwbj")]

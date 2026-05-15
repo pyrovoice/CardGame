@@ -48,6 +48,21 @@ const CARD_SCENE = preload("res://Game/scenes/Card.tscn")
 # Container visualizer instance (created on demand)
 var current_viewing_container: CardContainer = null
 
+# --- Battlefield focus ---
+const _WIDE_POSITIONS: Array = [
+	Vector3(-6.8445325, -0.001, 0.0),
+	Vector3(-0.112, -0.001, 0.5769086),
+	Vector3(6.4710474, -0.001, 0.0),
+]
+const _FOCUSED_POSITION := Vector3(-0.112, -0.001, 0.5769086)
+const _FOCUSED_SCALE := Vector3(1.0, 1.0, 1.0)
+const _MINI_POSITIONS: Array = [
+	Vector3(-4.5, -0.001, 0.0),
+	Vector3(4.5, -0.001, 0.0),
+]
+const _MINI_SCALE := Vector3(0.65, 0.65, 0.65)
+const _FOCUS_TWEEN_DURATION := 0.35
+
 func _init():
 	pass
 
@@ -590,26 +605,6 @@ func show_admin_console() -> void:
 func get_combat_zones() -> Array[CombatZone]:
 	return combat_zones
 
-# --- Battlefield focus ---
-const _WIDE_POSITIONS: Array = [
-	Vector3(-6.8445325, -0.001, 0.0),
-	Vector3(-0.112, -0.001, 0.5769086),
-	Vector3(6.4710474, -0.001, 0.0),
-]
-const _WIDE_SCALES: Array = [
-	Vector3(1.0, 1.0, 1.0),
-	Vector3(1.95, 1.95, 1.95),
-	Vector3(1.0, 1.0, 1.0),
-]
-const _FOCUSED_POSITION := Vector3(-0.112, -0.001, 0.5769086)
-const _FOCUSED_SCALE := Vector3(1.95, 1.95, 1.95)
-const _MINI_POSITIONS: Array = [
-	Vector3(-4.5, -0.001, 0.0),
-	Vector3(4.5, -0.001, 0.0),
-]
-const _MINI_SCALE := Vector3(1.0, 1.0, 1.0)
-const _FOCUS_TWEEN_DURATION := 0.35
-
 func set_battlefield_focus(index: int) -> void:
 	"""Move combat zones to focused or wide layout.
 	index: 0-2 = focus that zone; -1 = wide view showing all three.
@@ -623,7 +618,7 @@ func set_battlefield_focus(index: int) -> void:
 		# Wide view: restore all zones to original layout
 		for i in range(combat_zones.size()):
 			tween.tween_property(combat_zones[i], "position", _WIDE_POSITIONS[i], _FOCUS_TWEEN_DURATION)
-			tween.tween_property(combat_zones[i], "scale", _WIDE_SCALES[i], _FOCUS_TWEEN_DURATION)
+			tween.tween_property(combat_zones[i], "scale", _MINI_SCALE, _FOCUS_TWEEN_DURATION)
 	else:
 		# Focus one zone; place the other two as minis on the sides
 		var mini_slot := 0

@@ -62,8 +62,10 @@ func set_card(card: Card, target_position: int = -1) -> void:
 		return
 	
 	# Reparent without triggering auto-reorganize (child_entered_tree not connected)
+	# false = don't preserve global transform, so no compensating local scale is baked in.
+	# Cards inherit the zone's scale naturally (Option A sizing).
 	if card.get_parent():
-		card.reparent(target_container, true)
+		card.reparent(target_container, false)
 	else:
 		target_container.add_child(card)
 	

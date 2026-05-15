@@ -362,6 +362,19 @@ func lift_and_scale() -> Tween:
 		return _animate_lift_and_scale(tween, {})
 	return null
 
+# Card visual dimensions — card.scale is never changed; sizes are baked in world space.
+# To swap states, update the BIG constants (SMALL is always the baseline).
+const CARD_MESH_SIZE_SMALL        := Vector2(0.55, 0.55)
+const CARD_MESH_SIZE_BIG          := Vector2(0.825, 1.335)  # 0.55*1.5, 0.89*1.5
+const CARD_VIEWPORT_SIZE_SMALL    := Vector2i(150, 150)
+const CARD_VIEWPORT_SIZE_BIG      := Vector2i(198, 267)
+const CARD_2D_POS_SMALL           := Vector2(-25, 0)
+const CARD_2D_POS_BIG             := Vector2(0, 0)
+const CARD_COLLISION_Z_SMALL      := 0.55
+const CARD_COLLISION_Y_BIG        := 1.335  # 0.89*1.5
+const CARD_HIGHLIGHT_SCALE_SMALL  := Vector3(1.05, 1, 0.65)
+const CARD_HIGHLIGHT_SCALE_BIG    := Vector3(1.03, 1, 1.02)
+
 const makeSmallTime = 0.15
 func _animate_make_small() -> Tween:
 	"""Animate card to small size"""
@@ -369,17 +382,16 @@ func _animate_make_small() -> Tween:
 		return null
 	
 	card.is_small = true
-	card.highlight_mesh.scale = Vector3(1.05, 1, 0.65)  # Adjust Y scale to match card ratio
+	card.highlight_mesh.scale = CARD_HIGHLIGHT_SCALE_SMALL
 	
 	# Use helper to setup size tween
 	var size_animation = _setup_size_tween()
-	size_animation.tween_property(card.card_representation.mesh, "size", Vector2(0.55, 0.55), makeSmallTime)
-	size_animation.tween_property(card.sub_viewport, "size", Vector2i(150, 150), makeSmallTime)
-	size_animation.tween_property(card, "scale", Vector3(1, 1, 1), makeSmallTime)
-	size_animation.tween_property(card.card_2d, "position", Vector2(-25, 0), makeSmallTime)
+	size_animation.tween_property(card.card_representation.mesh, "size", CARD_MESH_SIZE_SMALL, makeSmallTime)
+	size_animation.tween_property(card.sub_viewport, "size", CARD_VIEWPORT_SIZE_SMALL, makeSmallTime)
+	size_animation.tween_property(card.card_2d, "position", CARD_2D_POS_SMALL, makeSmallTime)
 	
 	# Adjust collision shape
-	size_animation.tween_callback(func(): (card.collision_shape_3d.shape as BoxShape3D).size.z = 0.55)
+	size_animation.tween_callback(func(): (card.collision_shape_3d.shape as BoxShape3D).size.z = CARD_COLLISION_Z_SMALL)
 	return size_animation
 
 const makeBigTime = 0.1
@@ -392,15 +404,14 @@ func _animate_make_big() -> Tween:
 	
 	# Use helper to setup size tween
 	var size_animation = _setup_size_tween()
-	size_animation.tween_property(card.card_representation.mesh, "size", Vector2(0.55, 0.89),makeBigTime)
-	size_animation.tween_property(card.sub_viewport, "size", Vector2i(198, 267), makeBigTime)
-	size_animation.tween_property(card, "scale", Vector3(1.5, 1.5, 1.5), makeBigTime)
-	size_animation.tween_property(card.card_2d, "position", Vector2(0, 0), makeBigTime)
+	size_animation.tween_property(card.card_representation.mesh, "size", CARD_MESH_SIZE_BIG, makeBigTime)
+	size_animation.tween_property(card.sub_viewport, "size", CARD_VIEWPORT_SIZE_BIG, makeBigTime)
+	size_animation.tween_property(card.card_2d, "position", CARD_2D_POS_BIG, makeBigTime)
 	
 	# Connect to finished signal to execute cleanup after parallel animations complete
 	size_animation.finished.connect(func():
-		(card.collision_shape_3d.shape as BoxShape3D).size.y = 0.89
-		card.highlight_mesh.scale = Vector3(1.03, 1, 1.02)  # Back to normal scale
+		(card.collision_shape_3d.shape as BoxShape3D).size.y = CARD_COLLISION_Y_BIG
+		card.highlight_mesh.scale = CARD_HIGHLIGHT_SCALE_BIG
 	)
 	return size_animation
 
@@ -495,6 +506,7 @@ func _perform_flip_animation():
 	"""Helper method to perform card flip animation during draw sequence"""
 	var flip_tween = create_tween()
 	flip_tween.set_speed_scale(ANIMATION_SPEED)
+	flip_tween.set_ease(Tween.EASE_OUT_IN)
 	flip_tween.tween_property(card.card_representation, "rotation_degrees:z", -90, 0.2)
 	flip_tween.tween_callback(func(): card.setFlip(true))
 	flip_tween.tween_callback(func(): card.card_representation.rotation_degrees.z = 90)
