@@ -1,4 +1,6 @@
 Name:For those who come after
+Color:Red
+Rarity:Common
 Types:Spell
 ManaCost:1
 CardText: Creatures with cost 1 or less you control are indestructible this turn. 

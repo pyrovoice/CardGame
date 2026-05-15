@@ -1,4 +1,6 @@
 Name:Punglynd Warcamp
+Color:Red Black
+Rarity:Rare
 Types:Legendary Relic
 AC:$ SacrificePermanent | ValidCard$ Card.YouCtrl+Creature+NonToken/Card.YouCtrl+Creature+Grown-up | Count 3
 T:Mode$ Phase | Phase$ BeginningOfTurn | Execute$ TrigToken | TriggerDescription$ On turn start, create a Punglynd Child at base.

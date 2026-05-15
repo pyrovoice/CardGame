@@ -1,4 +1,6 @@
 Name:Punglynd Childbearer
+Color:Red
+Rarity:Uncommon
 ManaCost:2
 Types:Creature Punglynd
 Power:2

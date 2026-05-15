@@ -5,9 +5,14 @@ signal dirty_data
 
 # Define the card types
 enum CardType { CREATURE, SPELL, RELIC, LEGENDARY, TOKEN }
-	
+
+enum CardColor { NONE, BLUE, BLACK, GREEN, WHITE, RED }
+enum Rarity { COMMON, UNCOMMON, RARE, MYTHIC }
+
 var cardName: String
 var goldCost: int
+var colors: Array[CardColor] = []  # Colors this card belongs to (empty = colorless)
+var rarity: Rarity = Rarity.COMMON
 
 # Core properties with _ prefix are modified through _get() interception
 var _types: Array[CardType] = []

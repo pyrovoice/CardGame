@@ -1,4 +1,6 @@
 Name:Furious Last Stand
+Color:Red
+Rarity:Common
 Types:Spell
 ManaCost:0
 E:$ MoveCard | Origin$ Graveyard.Player | Destination$ Battlefield.Player | ValidCard$ Creature | NumCard$ 1 | Choice$ Player

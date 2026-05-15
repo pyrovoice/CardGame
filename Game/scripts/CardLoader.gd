@@ -78,6 +78,16 @@ func parse_card_data(card_text: String) -> CardData:
 	if "Power" in properties:
 		card_data.power = int(properties["Power"])
 	
+	if "Color" in properties:
+		var color_parts = properties["Color"].split(",")
+		for color_str in color_parts:
+			var color = _parse_color(color_str.strip_edges())
+			if color != CardData.CardColor.NONE:
+				card_data.colors.append(color)
+	
+	if "Rarity" in properties:
+		card_data.rarity = _parse_rarity(properties["Rarity"])
+	
 	# Set CardText from collected content
 	if card_text_content.size() > 0:
 		card_data.text_box = "\n".join(card_text_content).strip_edges()
@@ -568,6 +578,24 @@ func _is_valid_effect_type(effect_type_str: String) -> bool:
 	]
 	return effect_type_str.strip_edges() in valid_types
 
+func _parse_color(color_str: String) -> CardData.CardColor:
+	"""Convert a color string to CardData.CardColor enum"""
+	match color_str.to_lower():
+		"blue":   return CardData.CardColor.BLUE
+		"black":  return CardData.CardColor.BLACK
+		"green":  return CardData.CardColor.GREEN
+		"white":  return CardData.CardColor.WHITE
+		"red":    return CardData.CardColor.RED
+		_:        return CardData.CardColor.NONE
+
+func _parse_rarity(rarity_str: String) -> CardData.Rarity:
+	"""Convert a rarity string to CardData.Rarity enum"""
+	match rarity_str.to_lower():
+		"uncommon": return CardData.Rarity.UNCOMMON
+		"rare":     return CardData.Rarity.RARE
+		"mythic":   return CardData.Rarity.MYTHIC
+		_:          return CardData.Rarity.COMMON
+
 # Helper to parse SVar definition into effect type and parameters
 func _parse_svar_definition(definition: String) -> Dictionary:
 	"""Parse SVar definition like 'ReplaceToken | Type$ AddToken | Amount$ 1' into effect type and parameters"""
@@ -758,7 +786,6 @@ func parse_activated_ability(activated_text: String, _svar_effects: Dictionary, 
 	
 	if not _is_valid_effect_type(effect_type_str):
 		push_error("❌ [CARD LOAD ERROR] Invalid effect type '" + effect_type_str + "' in activated ability for card: " + card_data.cardName)
-		push_error("   Valid types: DealDamage, Pump, Draw, CreateToken, CreateCard, Cast, AddType, AddKeyword, MoveCard, SwitchPositions, etc.")
 		return null
 	
 	# Convert effect name to EffectType
@@ -1266,6 +1293,8 @@ func duplicateCardScript(original: CardData) -> CardData:
 	copy.goldCost = original.goldCost
 	copy.power = original.power
 	copy.text_box = original.text_box
+	copy.colors = original.colors.duplicate()
+	copy.rarity = original.rarity
 	
 	# Deep copy types array
 	copy._types = original._types.duplicate()

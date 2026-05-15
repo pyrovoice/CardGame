@@ -1,4 +1,6 @@
 Name:They grow up so fast
+Color:Red
+Rarity:Common
 Types:Legendary Spell 
 ManaCost:1
 CC:$ YouCtrl+Grown-up

@@ -1745,3 +1745,109 @@ func test_delayed_effect_cleanup_on_turn_end() -> bool:
 	
 	print("✅ Delayed sacrifice cleanup test passed!")
 	return true
+
+func test_player_deck_building_data() -> bool:
+	"""Test that PlayerDeckBuildingData builds a DeckList according to color/rarity limits and player overrides"""
+	
+	# --- Create test cards ---
+	var red_common_a      = _make_raw_card("TestRedCommonA",      [CardData.CardColor.RED],                           CardData.Rarity.COMMON,   [CardData.CardType.CREATURE])
+	var red_common_b      = _make_raw_card("TestRedCommonB",      [CardData.CardColor.RED],                           CardData.Rarity.COMMON,   [CardData.CardType.CREATURE])
+	var red_uncommon      = _make_raw_card("TestRedUncommon",     [CardData.CardColor.RED],                           CardData.Rarity.UNCOMMON, [CardData.CardType.CREATURE])
+	var red_rare          = _make_raw_card("TestRedRare",         [CardData.CardColor.RED],                           CardData.Rarity.RARE,     [CardData.CardType.CREATURE])
+	var red_leg_mythic_1  = _make_raw_card("TestRedLegMythic1",  [CardData.CardColor.RED],                           CardData.Rarity.MYTHIC,   [CardData.CardType.CREATURE])
+	var red_leg_mythic_2  = _make_raw_card("TestRedLegMythic2",  [CardData.CardColor.RED],                           CardData.Rarity.COMMON,   [CardData.CardType.LEGENDARY, CardData.CardType.CREATURE])
+	var red_blue_common   = _make_raw_card("TestRedBlueCommon",  [CardData.CardColor.RED, CardData.CardColor.BLUE],  CardData.Rarity.COMMON,   [CardData.CardType.CREATURE])
+	var blue_common       = _make_raw_card("TestBlueCommon",     [CardData.CardColor.BLUE],                          CardData.Rarity.COMMON,   [CardData.CardType.CREATURE])
+	var black_blue_common = _make_raw_card("TestBlackBlueCommon",[CardData.CardColor.BLACK, CardData.CardColor.BLUE],CardData.Rarity.COMMON,   [CardData.CardType.CREATURE])
+	
+	# --- Register in CardLoader so getCardByName can resolve them by name ---
+	var regular_cards: Array[CardData]  = [red_common_a, red_common_b, red_uncommon, red_rare,
+											red_blue_common, blue_common, black_blue_common, red_leg_mythic_1]
+	var legendary_cards: Array[CardData] = [red_leg_mythic_2]
+	
+	for card in regular_cards:
+		CardLoaderAL.cardData.push_back(card)
+	for card in legendary_cards:
+		CardLoaderAL.extraDeckCardData.push_back(card)
+	
+	# --- Build PlayerDeckBuildingData ---
+	var builder = PlayerDeckBuildingData.new()
+	
+	# Limits: Red at each rarity, Black Common, everything else stays 0
+	builder.set_limit(CardData.CardColor.RED,   CardData.Rarity.COMMON,   4)
+	builder.set_limit(CardData.CardColor.RED,   CardData.Rarity.UNCOMMON, 3)
+	builder.set_limit(CardData.CardColor.RED,   CardData.Rarity.RARE,     2)
+	builder.set_limit(CardData.CardColor.RED,   CardData.Rarity.MYTHIC,   1)
+	builder.set_limit(CardData.CardColor.BLACK, CardData.Rarity.COMMON,   1)
+	
+	# Own all test cards
+	for card in regular_cards + legendary_cards:
+		builder.add_owned_card(card.cardName)
+	
+	# TestRedCommonB: player wants only 1 copy instead of the limit of 4
+	builder.set_card_count_override("TestRedCommonB", 1)
+	
+	# --- Build the DeckList ---
+	var deck_list = builder.build_deck_list()
+	
+	# --- Assertions: deck_cards (non-legendary) ---
+	# Expected total: 4 + 1 + 3 + 2 + 1 + 4 + 0 + 1 = 16 (includes TestRedLegMythic1 as non-legendary mythic)
+	assert_test_equal(deck_list.deck_cards.size(), 16,
+		"deck_cards should have 16 total (4+1+3+2+1+4+0+1)")
+	
+	assert_test_equal(_count_cards_by_name(deck_list.deck_cards, "TestRedCommonA"), 4,
+		"TestRedCommonA: Red Common limit=4 → 4 copies")
+	
+	assert_test_equal(_count_cards_by_name(deck_list.deck_cards, "TestRedCommonB"), 1,
+		"TestRedCommonB: player override=1 → 1 copy")
+	
+	assert_test_equal(_count_cards_by_name(deck_list.deck_cards, "TestRedUncommon"), 3,
+		"TestRedUncommon: Red Uncommon limit=3 → 3 copies")
+	
+	assert_test_equal(_count_cards_by_name(deck_list.deck_cards, "TestRedRare"), 2,
+		"TestRedRare: Red Rare limit=2 → 2 copies")
+	
+	assert_test_equal(_count_cards_by_name(deck_list.deck_cards, "TestRedLegMythic1"), 1,
+		"TestRedLegMythic1: Red Mythic limit=1 → 1 copy in deck (non-legendary)")
+	
+	assert_test_equal(_count_cards_by_name(deck_list.deck_cards, "TestRedBlueCommon"), 4,
+		"TestRedBlueCommon: max(Red Common=4, Blue Common=0) → 4 copies")
+	
+	assert_test_equal(_count_cards_by_name(deck_list.deck_cards, "TestBlueCommon"), 0,
+		"TestBlueCommon: Blue Common limit=0 → 0 copies (absent from deck)")
+	
+	assert_test_equal(_count_cards_by_name(deck_list.deck_cards, "TestBlackBlueCommon"), 1,
+		"TestBlackBlueCommon: max(Black Common=1, Blue Common=0) → 1 copy")
+	
+	# --- Assertions: extra_deck_cards (legendary) ---
+	# Expected total: 4 (TestRedLegMythic2 is Red/Common/Legendary → limit=4)
+	assert_test_equal(deck_list.extra_deck_cards.size(), 4,
+		"extra_deck_cards should have 4 total")
+	
+	assert_test_equal(_count_cards_by_name(deck_list.extra_deck_cards, "TestRedLegMythic2"), 4,
+		"TestRedLegMythic2: Red Common limit=4 → 4 copies in extra deck")
+	
+	# --- Cleanup: reload CardLoader to remove test cards ---
+	CardLoaderAL.load_all_cards()
+	
+	return not current_test_failed
+
+func _count_cards_by_name(cards: Array[CardData], name: String) -> int:
+	var count = 0
+	for card in cards:
+		if card.cardName == name:
+			count += 1
+	return count
+
+func _make_raw_card(card_name: String, colors: Array, rarity: CardData.Rarity, types: Array) -> CardData:
+	"""Create a raw CardData with color/rarity set, not registered in any game zone.
+	Use this when you need a template for CardLoader injection (e.g. deck builder tests).
+	For cards that participate in game logic, use createTestCard or createCardFromName instead."""
+	var c = CardData.new()
+	c.cardName = card_name
+	c.rarity = rarity
+	for col in colors:
+		c.colors.append(col)
+	for t in types:
+		c._types.append(t)
+	return c

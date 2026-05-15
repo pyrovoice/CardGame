@@ -21,6 +21,11 @@ Between runs
 - The player should have deckbuilding options and be able to customize their deck
 - The player should have limited deckbuilding options and be forced to select one or two archetype starting a run
 
+deckbuilding rules:
+- Cards can have a rarity and a color. 
+- Any color can be put into any deck, but a decklist will have a certain amount of copies for each color and rarity. For example, 3 blue common and 1 blue mythic and 1 red common. This can go up to 5
+- Inbetween combats and certain events will allow the player to increase the maximum limit, and they can also adjust how many cards they want in their decklist inbetween runs.
+- Ennemy cards do not have rarity or color and cannot be added to the player's decklist in any way.
 
 Card idea:
 	

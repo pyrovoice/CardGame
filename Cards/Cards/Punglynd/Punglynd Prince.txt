@@ -1,4 +1,6 @@
 Name:Punglynd Prince
+Color:Red
+Rarity:Mythic
 ManaCost:1
 Types:Creature Punglynd Child
 Power:0

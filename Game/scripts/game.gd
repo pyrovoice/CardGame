@@ -107,9 +107,10 @@ func _ready() -> void:
 	
 	# Load deck configuration from DeckConfig (set by MainMenu or tests)
 	if DeckConfigAL.has_deck_configuration():
-		game_data.playerDeckList.deck_cards = DeckConfigAL.player_deck_cards.duplicate()
-		game_data.playerDeckList.extra_deck_cards = DeckConfigAL.player_extra_deck_cards.duplicate()
-		game_data.opponentDeckList.deck_cards = DeckConfigAL.opponent_deck_cards.duplicate()
+		var deck_list = DeckConfigAL.player_deck_building_data.build_deck_list()
+		game_data.playerDeckList.deck_cards = deck_list.deck_cards
+		game_data.playerDeckList.extra_deck_cards = deck_list.extra_deck_cards
+		game_data.opponentDeckList.deck_cards = _build_default_opponent_deck()
 	else:
 		# No deck configuration - leave empty (for tests)
 		print("⚠️ No deck configuration found - decks will be empty")
@@ -157,6 +158,15 @@ func populate_decks():
 	replenish_deck_zone(GameZone.e.DECK_PLAYER, 2)
 	replenish_deck_zone(GameZone.e.EXTRA_DECK_PLAYER)
 	replenish_deck_zone(GameZone.e.DECK_OPPONENT)
+
+func _build_default_opponent_deck() -> Array[CardData]:
+	# TODO: Replace with OpponentData system
+	var cards: Array[CardData] = []
+	for card_name in ["Grave Whisperer", "Opp1", "Opp2", "Opp3"]:
+		var card = CardLoaderAL.getCardByName(card_name)
+		if card:
+			cards.append(card)
+	return cards
 
 func _populate_test_graveyard(count: int):
 	"""Add random cards to player's graveyard for testing purposes"""

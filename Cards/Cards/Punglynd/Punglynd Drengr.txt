@@ -1,4 +1,6 @@
 Name:Punglynd Drengr
+Color:Red
+Rarity:Common
 ManaCost:3
 Types:Creature Punglynd
 Power:3

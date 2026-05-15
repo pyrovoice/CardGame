@@ -2,61 +2,27 @@ extends Node
 ## Global deck configuration that persists between scenes
 ## MainMenu sets this up before transitioning to game
 
-var player_deck_cards: Array[CardData] = []
-var player_extra_deck_cards: Array[CardData] = []
-var opponent_deck_cards: Array[CardData] = []
+var player_deck_building_data: PlayerDeckBuildingData = null
 
-func setup_default_decks():
-	"""Setup default deck lists - Punglynd archetype + Bolt"""
-	# Get all Punglynd archetype cards (non-legendary)
+func setup_default_decks() -> void:
+	player_deck_building_data = PlayerDeckBuildingData.new()
+
+	# Starting limits: 1 copy per Red card at each rarity
+	player_deck_building_data.set_limit(CardData.CardColor.RED, CardData.Rarity.COMMON, 4)
+	player_deck_building_data.set_limit(CardData.CardColor.RED, CardData.Rarity.UNCOMMON, 1)
+	player_deck_building_data.set_limit(CardData.CardColor.RED, CardData.Rarity.RARE, 1)
+	player_deck_building_data.set_limit(CardData.CardColor.RED, CardData.Rarity.MYTHIC, 1)
+
+	# Own all Punglynd archetype cards
 	var punglynd_pool = CardLoaderAL.get_archetype_pool(CardLoader.Archetype.PUNGLYND)
-	print("🔍 [DECK] Punglynd archetype pool has ", punglynd_pool.size(), " cards")
 	for card in punglynd_pool:
-		print("    - ", card.cardName, " (", card.goldCost, " gold, legendary: ", card.hasType(CardData.CardType.LEGENDARY), ")")
-	
-	player_deck_cards = []
-	player_extra_deck_cards = []
-	
-	for card in punglynd_pool:
-		if card.hasType(CardData.CardType.LEGENDARY):
-			# Legendary cards go to extra deck
-			player_extra_deck_cards.append(card)
-		else:
-			# Non-legendary cards go to main deck
-			player_deck_cards.append(card)
-	
-	# Add Bolt spell
-	var bolt_card = CardLoaderAL.getCardByName("Bolt")
-	if bolt_card:
-		player_deck_cards.append(bolt_card)
-	
-	# Opponent deck - hardcoded Necromancer cards
-	opponent_deck_cards = [
-		CardLoaderAL.getCardByName("Grave Whisperer"),
-		CardLoaderAL.getCardByName("Opp1"),
-		CardLoaderAL.getCardByName("Opp2"),
-		CardLoaderAL.getCardByName("Opp3")
-	]
-	
-	print("📋 Player deck configured with Punglynd archetype:")
-	print("  Main deck (", player_deck_cards.size(), " cards):")
-	for card in player_deck_cards:
-		print("    - ", card.cardName, " (", card.goldCost, " gold)")
-	print("  Extra deck (", player_extra_deck_cards.size(), " legendary cards)")
-	for card in player_extra_deck_cards:
-		print("    - ", card.cardName, " (", card.goldCost, " gold)")
-	print("📋 Opponent deck:")
-	print("  Deck (", opponent_deck_cards.size(), " cards)")
-	for card in opponent_deck_cards:
-		if card:
-			print("    - ", card.cardName, " (", card.goldCost, " gold)")
+		player_deck_building_data.add_owned_card(card.cardName)
 
-func clear_decks():
-	"""Clear all deck lists (for tests)"""
-	player_deck_cards.clear()
-	player_extra_deck_cards.clear()
-	opponent_deck_cards.clear()
+	# Own Bolt
+	player_deck_building_data.add_owned_card("Bolt")
+
+func clear_decks() -> void:
+	player_deck_building_data = null
 
 func has_deck_configuration() -> bool:
-	"""Check if any decks are configured"""
-	return player_deck_cards.size() > 0 or player_extra_deck_cards.size() > 0 or opponent_deck_cards.size() > 0
+	return player_deck_building_data != null
