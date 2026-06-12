@@ -1,8 +1,8 @@
 Name:Punglynd Prince
 Color:Red
-Rarity:Mythic
+Rarity:Mythic 
 ManaCost:1
-Types:Creature Punglynd Child
+Types:Legendary Creature Punglynd Child
 Power:0
 T:Mode$ CardEnters | Origin$ Any | Destination$ Battlefield | ValidCard$ Card.Self | Execute$ TrigCreateCard | TriggerDescription$ Whenever CARDNAME enters or attack, a Punglynd Child is born.
 SVar:TrigCreateCard$ CreateCard | Num$ 1 | Pool$ Archetype.Punglynd | Modif$ fleeting

@@ -6,7 +6,7 @@
 [ext_resource type="Script" uid="uid://crvy3nprwr6aw" path="res://Game/scripts/CardAnimator.gd" id="4_wt28i"]
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_card"]
-size = Vector3(0.66, 2.015, 0.27)
+size = Vector3(0.54, 0.01, 0.915)
 
 [sub_resource type="PlaneMesh" id="PlaneMesh_020dk"]
 resource_local_to_scene = true

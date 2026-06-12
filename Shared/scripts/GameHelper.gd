@@ -34,16 +34,18 @@ static func filterCardsByParameters(cards: Array[Card], filter: String, game: Ga
 static func parseCriteria(filter_str: String) -> Dictionary:
 	"""Parse a filter string with AND logic (+) into structured criteria"""
 	var criteria = {
-		"controller": "",  # "YouCtrl", "OppCtrl", or ""
-		"card_types": [],  # Array of card types: ["Creature", "Spell", etc.]
-		"subtypes": [],    # Array of subtypes: ["Goblin", "Human", etc.]
-		"cost": -1,        # Exact cost, -1 = any
-		"cost_min": -1,    # Minimum cost, -1 = no min
-		"cost_max": -1,    # Maximum cost, -1 = no max
-		"power": -1,       # Exact power, -1 = any
-		"power_min": -1,   # Minimum power, -1 = no min
-		"power_max": -1,   # Maximum power, -1 = no max
-		"token": ""        # "Token", "NonToken", or ""
+		"controller": "",   # "YouCtrl", "OppCtrl", or ""
+		"card_types": [],   # Array of card types: ["Creature", "Spell", etc.]
+		"subtypes": [],     # Array of required subtypes
+		"exclusions": [],   # Array of filter-part strings that must NOT match (! prefix)
+		"cost": -1,         # Exact cost, -1 = any
+		"cost_min": -1,     # Minimum cost, -1 = no min
+		"cost_max": -1,     # Maximum cost, -1 = no max
+		"power": -1,        # Exact power, -1 = any
+		"power_min": -1,    # Minimum power, -1 = no min
+		"power_max": -1,    # Maximum power, -1 = no max
+		"token": "",        # "Token", "NonToken", or ""
+		"name": ""          # Exact card name match (case-insensitive), or "" for any
 	}
 	
 	# Split by '+' for AND logic
@@ -81,6 +83,10 @@ static func process_filter_part(part: String, criteria: Dictionary) -> void:
 		criteria.power_max = int(part.substr(9))
 	elif part in ["Creature", "Spell", "Land", "Artifact", "Enchantment"]:
 		criteria.card_types.append(part)
+	elif part.begins_with("Name<") and part.ends_with(">"):
+		criteria.name = part.substr(5, part.length() - 6)
+	elif part.begins_with("!"):
+		criteria.exclusions.append(part.substr(1))
 	else:
 		# Treat as subtype (Goblin, Grown-up, etc.)
 		criteria.subtypes.append(part)
@@ -123,7 +129,17 @@ static func matchesAllCriteria(card: Card, criteria: Dictionary, game: Game) -> 
 				break
 		if not has_required_subtype:
 			return false
-	
+
+	# Check card name
+	if not criteria.get("name", "").is_empty() and card_data.cardName.to_lower() != criteria.name.to_lower():
+		return false
+
+	# Check exclusions — each entry is a single filter part that must NOT match
+	for excl_part in criteria.get("exclusions", []):
+		var excl_criteria = parseCriteria(excl_part)
+		if matchesAllCriteria(card, excl_criteria, game):
+			return false
+
 	# Check exact cost
 	if criteria.cost >= 0 and card_data.goldCost != criteria.cost:
 		return false

@@ -30,6 +30,7 @@ class_name GameView
 var combat_zones: Array[CombatZone] = []
 @onready var opponentbase: PlayerBase = $opponentbase
 @onready var recycle_area: Area3D = $recycleArea
+@onready var card_choice_picker: CardChoicePicker = $UI/CardChoicePicker
 
 # UI references
 @onready var game_ui: GameUI = $UI
@@ -39,6 +40,10 @@ var combat_zones: Array[CombatZone] = []
 @onready var container_visualizer: CardContainerVizualizer = $UI/CardContainerVizualizer
 @onready var main_action_button: Button = $UI/mainActionButton
 @onready var secondary_action_button: Button = $UI/secondaryActionButton
+
+# Action button stack — each entry is {main: {text, callback} or null, secondary: {text, callback} or null}.
+# null config = hidden. Bottom entry = defaults (set by setup_ui_connections).
+var _btn_stack: Array[Dictionary] = []
 
 # Headless mode - skips all animations and visual updates
 var headless: bool = false
@@ -417,11 +422,61 @@ func arrange_hand(hand_zone: CardHand, cards: Array[Card] = []) -> void:
 func setup_ui_connections(game_data: GameData, on_main_action_callback: Callable, on_secondary_action_callback: Callable, on_admin_callback: Callable) -> void:
 	# Setup UI to follow game data signals
 	game_ui.setup_game_data(game_data)
-	
-	# Connect button press signals
-	main_action_button.pressed.connect(on_main_action_callback)
-	secondary_action_button.pressed.connect(on_secondary_action_callback)
+
+	# Route through dispatchers so the stack can override behavior
+	main_action_button.pressed.connect(_dispatch_main_action)
+	secondary_action_button.pressed.connect(_dispatch_secondary_action)
 	admin_button.pressed.connect(on_admin_callback)
+
+	# Push defaults — text from scene, callbacks from game
+	_btn_stack = [{
+		"main": {"text": main_action_button.text, "callback": on_main_action_callback},
+		"secondary": {"text": secondary_action_button.text, "callback": on_secondary_action_callback}
+	}]
+	_apply_buttons_top()
+
+func _dispatch_main_action() -> void:
+	if not _btn_stack.is_empty():
+		var cfg = _btn_stack.back().get("main", null)
+		if cfg and cfg.get("callback", Callable()).is_valid():
+			cfg["callback"].call()
+
+func _dispatch_secondary_action() -> void:
+	if not _btn_stack.is_empty():
+		var cfg = _btn_stack.back().get("secondary", null)
+		if cfg and cfg.get("callback", Callable()).is_valid():
+			cfg["callback"].call()
+
+## Push a temporary button state for both buttons.
+## Pass null for a button config to hide it. When owner_node hides, the state is automatically popped.
+func push_action_buttons(main_config, secondary_config, owner_node: Node = null) -> void:
+	_btn_stack.push_back({"main": main_config, "secondary": secondary_config})
+	_apply_buttons_top()
+	if owner_node:
+		owner_node.visibility_changed.connect(
+			func(): if not owner_node.visible: pop_action_buttons(),
+			CONNECT_ONE_SHOT
+		)
+
+## Pop the top button state, restoring the previous one.
+func pop_action_buttons() -> void:
+	if _btn_stack.size() > 1:  # Never pop the default
+		_btn_stack.pop_back()
+	_apply_buttons_top()
+
+func _apply_buttons_top() -> void:
+	if _btn_stack.is_empty():
+		return
+	var entry = _btn_stack.back()
+	_configure_button(main_action_button, entry.get("main", null))
+	_configure_button(secondary_action_button, entry.get("secondary", null))
+
+func _configure_button(btn: Button, config) -> void:
+	if config == null:
+		btn.visible = false
+	else:
+		btn.visible = true
+		btn.text = config.get("text", btn.text)
 
 ## Set zone names for GameData queries
 func set_zone_names() -> void:

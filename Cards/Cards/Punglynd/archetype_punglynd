@@ -1,0 +1,23 @@
+Punglynd: Life and death cycle, the old dies in battle to protect the young that grow up to fight in turn
+Aggro, token-matter, 1-cost matter, attack-matter
+Punglynd children 0-might 1-cost, grow-up directly on attack
+Punglynd creatures all have replace Punglynd grown-up
+
+MD:
+- Weak starter, C -> Punglynd Elder
+- Child protector creature, C -> Punglynd Childbearer
+- Child generator, C -> Punglynd Childbearer
+- Random archetype generator (+ child), U -> Punglynd Merchant
+- Protector spell, U -> For those who come after
+- Relic rewarding and helping attacks, R -> Warflag
+
+Finds:
+- Attacker stronger with other creatures
+- +Strength and indestructible spell
+- Sacrifice Grown-up for card advantage spell
+
+ED:
+- Weak starter (1 free child?) automatically cast for free on game start, 1-cost create a child -> A Happy event
+- Spell casting only if N children are attacking, upgrading them all 
+
+Graveyard consumption?

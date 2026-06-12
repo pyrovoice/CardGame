@@ -117,6 +117,18 @@ func executeAbilityEffect(source_card_data: CardData, ability, game_context: Gam
 		print("⚠️ No valid targets resolved for required effect ", EffectType.type_to_string(effect_type_enum), " on ", source_card_data.cardName, " - cancelling effect")
 		return
 	
+	# Check if the primary effect can execute (valid targets exist, conditions met).
+	# If it cannot and an alternativeResolve is set, run that instead.
+	var effect_for_check = EffectFactory.create_effect(effect_type_enum)
+	if effect_for_check and not effect_for_check.can_execute(resolved_parameters, source_card_data, game_context):
+		var alt_type_str: String = resolved_parameters.get("alternativeResolve_effect_type", "")
+		if not alt_type_str.is_empty():
+			var alt_type = EffectType.string_to_type(alt_type_str)
+			var alt_params: Dictionary = resolved_parameters.get("alternativeResolve_parameters", {}).duplicate()
+			print("🔄 [ALTERNATIVE RESOLVE] '", EffectType.type_to_string(effect_type_enum), "' cannot execute, running '", alt_type_str, "'")
+			await EffectFactory.execute_effect(alt_type, alt_params, source_card_data, game_context)
+		return
+
 	# Apply replacement effects from the registry
 	# This happens before the effect executes
 	resolved_parameters = ReplacementEffectRegistry.apply_replacement_effects(
@@ -390,6 +402,17 @@ func evaluateCondition(condition: String, triggeringCard_data: CardData) -> bool
 			else:
 				push_warning("Unsupported timing for Attacked: " + timing)
 				return false
+		"IsType":
+			# timing holds the type name, e.g. "Self.IsType+Relic"
+			match timing:
+				"Creature":  return target_card_data.hasType(CardData.CardType.CREATURE)
+				"Relic":     return target_card_data.hasType(CardData.CardType.RELIC)
+				"Spell":     return target_card_data.hasType(CardData.CardType.SPELL)
+				"Legendary": return target_card_data.hasType(CardData.CardType.LEGENDARY)
+				"Token":     return target_card_data.hasType(CardData.CardType.TOKEN)
+				_:
+					push_warning("Unsupported type for IsType condition: " + timing)
+					return false
 		_:
 			push_warning("Unsupported condition property: " + property)
 			return false

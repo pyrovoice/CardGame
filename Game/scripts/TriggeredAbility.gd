@@ -40,7 +40,8 @@ enum GameEventType {
 	BEGINNING_OF_TURN,    # At beginning of turn
 	END_OF_TURN_CLEANUP,  # After end of turn, for cleanup (temporary effects, orphaned abilities)
 	STRIKE,               # Creature strikes
-	CARD_RECYCLED         # When a card is recycled from hand
+	CARD_RECYCLED,        # When a card is recycled from hand
+	END_OF_COMBAT         # After all combat in a zone is resolved
 }
 
 enum TriggerCondition {
@@ -66,7 +67,9 @@ const EVENT_TO_SIGNAL = {
 	GameEventType.END_OF_TURN: "end_of_turn",
 	GameEventType.BEGINNING_OF_TURN: "beginning_of_turn",
 	GameEventType.END_OF_TURN_CLEANUP: "end_of_turn_cleanup",
-	GameEventType.STRIKE: "strike"
+	GameEventType.STRIKE: "strike",
+	GameEventType.CARD_RECYCLED: "card_recycled",
+	GameEventType.END_OF_COMBAT: "end_of_combat",
 }
 
 var game_event_trigger: GameEventType
@@ -110,9 +113,6 @@ func register_to_game(game: Node):
 	# Connect to the signal
 	if not game.is_connected(signal_name, _on_game_event):
 		game.connect(signal_name, _on_game_event)
-		
-		var owner = get_owner()
-		var card_name = owner.cardName if owner else "Unknown"
 
 func unregister_from_game(game: Node):
 	"""Disconnect from game signal (called when card leaves play or is destroyed)"""
@@ -122,9 +122,6 @@ func unregister_from_game(game: Node):
 	
 	if game.has_signal(signal_name) and game.is_connected(signal_name, _on_game_event):
 		game.disconnect(signal_name, _on_game_event)
-		
-		var owner = get_owner()
-		var card_name = owner.cardName if owner else "Unknown"
 
 ## Signal callback
 
@@ -150,13 +147,6 @@ func _on_game_event(event_card_data: CardData = null, from_zone = null, to_zone 
 	var ability_desc = event_to_string(game_event_trigger) + " -> " + EffectType.type_to_string(effect_type)
 	print("⚡ [TRIGGER] ", owner.cardName, " ability triggered: ", ability_desc)
 	
-	# Debug logging for Grave Whisperer Elusive
-	if owner.cardName == "Grave Whisperer" and game_event_trigger == GameEventType.CARD_CHANGED_ZONES:
-		var from_str = GameZone.get_as_string(from_zone) if from_zone != null else "null"
-		var to_str = GameZone.get_as_string(to_zone) if to_zone != null else "null"
-		var event_card_name = event_card_data.cardName if event_card_data else "null"
-		print("    🔍 [ELUSIVE TRIGGERED] Zone change: ", from_str, " → ", to_str, " (event card: ", event_card_name, ")")
-	
 	# Package the event context
 	var event_context = {}
 	if event_card_data:
@@ -172,12 +162,18 @@ func _on_game_event(event_card_data: CardData = null, from_zone = null, to_zone 
 
 func _check_trigger_conditions(cardData: CardData, event_card_data: CardData, game: Game, from_zone = null, to_zone = null) -> bool:
 	"""Check if the trigger conditions for this ability are met"""
+	var skip_zone_check_for_own_death = (game_event_trigger == GameEventType.CARD_DIED and
+		event_card_data == cardData)
+	
 	var trigger_zones = trigger_conditions.get(TriggerCondition.TRIGGER_ZONES, [])
-	if trigger_zones is Array and trigger_zones.size() > 0:
+	if not skip_zone_check_for_own_death and trigger_zones is Array and trigger_zones.size() > 0:
 		var cardData_zone = game.game_data.get_card_zone(cardData)
-		
 		if cardData_zone not in trigger_zones:
-			return false 
+			return false
+		# For END_OF_COMBAT, also require the owner is in the specific zone that ended combat
+		if game_event_trigger == GameEventType.END_OF_COMBAT and from_zone != null:
+			if cardData_zone != from_zone:
+				return false
 	
 	# Check Origin condition for zone changes (e.g., "Origin$ Hand")
 	var origin_filter = trigger_conditions.get(TriggerCondition.ORIGIN, "")
@@ -199,8 +195,8 @@ func _check_trigger_conditions(cardData: CardData, event_card_data: CardData, ga
 	if valid_card_filter != "":
 		# Special case: "Card.Self" means only this card can trigger this ability
 		if valid_card_filter == "Card.Self":
-			var matches = event_card_data == cardData
-			if not matches:
+			# Phase-type events (end of turn, end of combat) emit no event card — zone check is the scope limiter
+			if event_card_data != null and event_card_data != cardData:
 				return false
 		else:
 			# Check if event card matches the filter (works with CardData directly)

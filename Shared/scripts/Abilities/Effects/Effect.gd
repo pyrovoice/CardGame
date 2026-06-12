@@ -34,42 +34,40 @@ static func requires_target(parameters: Dictionary) -> bool:
 	# Effect requires targeting if it has ValidTargets parameter
 	return parameters.has("ValidTargets")
 
-## Execute an alternative effect if specified in parameters
-## @param alternative_name: String - Name of the alternative effect (from IfNotFound parameter)
-## @param parameters: Dictionary - Current effect parameters
-## @param source_card_data: CardData - The card that is the source of this effect
-## @param game_context: Game - The game context for accessing game state
-## @return: bool - True if alternative was executed, false if not found
-func execute_alternative(alternative_name: String, parameters: Dictionary, source_card_data: CardData, game_context: Game) -> bool:
-	"""Execute an alternative effect by looking up alternative parameters"""
-	if not alternative_name:
+## Check whether this effect can validly resolve given the current game state.
+## Return false to signal that the primary effect has no valid targets/conditions,
+## which causes AbilityManager to run the alternativeResolve fallback (if one is set).
+## Override in subclasses for effects that have optional targets or conditions.
+## @return: bool - True (default) means "go ahead and execute"
+func can_execute(parameters: Dictionary, source_card_data: CardData, game_context: Game) -> bool:
+	# Check mandatory Condition$ if specified
+	var condition: String = parameters.get("Condition", "")
+	if not condition.is_empty() and not game_context.check_effect_condition(condition, source_card_data):
 		return false
-	
-	# Look for alternative effect parameters embedded in the main parameters
-	var alternative_params_key = "Alternative_" + alternative_name
-	if not parameters.has(alternative_params_key):
-		print("⚠️ Alternative effect '", alternative_name, "' not found in parameters")
+
+	# If the effect specified ValidTargets, require that targets were actually resolved
+	if parameters.has("ValidTargets") and parameters.get("Targets", []).is_empty():
 		return false
-	
-	var alternative_params = parameters.get(alternative_params_key, {})
-	if alternative_params.is_empty():
-		print("⚠️ Alternative effect '", alternative_name, "' has no parameters")
-		return false
-	
-	# Get the effect type for the alternative
-	var alt_effect_type_str = alternative_params.get("EffectType", "")
-	if alt_effect_type_str.is_empty():
-		print("⚠️ Alternative effect '", alternative_name, "' has no EffectType")
-		return false
-	
-	var alt_effect_type = EffectType.string_to_type(alt_effect_type_str)
-	
-	print("🔄 Executing alternative effect: ", alternative_name, " (", alt_effect_type_str, ")")
-	
-	# Execute the alternative effect using EffectFactory
-	await EffectFactory.execute_effect(alt_effect_type, alternative_params, source_card_data, game_context)
-	
+
 	return true
+
+## Return all in-play cards matching ValidCard$, selected per Choice$/NumCard$.
+## Choice$ Random (default) picks without UI; Choice$ Player triggers selection UI.
+func get_affected_cards(parameters: Dictionary, source_card_data: CardData, game_context: Game) -> Array[CardData]:
+	var all_in_play: Array[CardData] = game_context.game_data.get_cards_in_play()
+	return await filter_and_select_cards(all_in_play, parameters, "play", "Select Target", source_card_data, game_context)
+
+## Sync check: true if any in-play card matches the ValidCard$ filter.
+## Use this in can_execute overrides to avoid the async cost of get_affected_cards.
+func _has_valid_affected_cards(parameters: Dictionary, game_context: Game) -> bool:
+	var valid_card: String = parameters.get("ValidCard", "")
+	if valid_card.is_empty():
+		return true
+	var criteria = GameUtility.parseCriteria(valid_card)
+	for card in game_context.game_data.get_cards_in_play():
+		if GameUtility.matchesCardDataCriteria(card, criteria):
+			return true
+	return false
 
 ## Select cards from a filtered list based on choice type
 ## @param filtered_cards: Array[CardData] - Cards available for selection
@@ -103,9 +101,9 @@ func select_cards_from_list(filtered_cards: Array[CardData], num_to_select: int,
 	return selected_cards
 
 ## Filter and select cards from a list based on effect parameters
-## Handles ValidCard filtering, Choice selection, and IfNotFound alternatives
+## Handles ValidCard filtering and Choice selection.
 ## @param cards_to_filter: Array[CardData] - Source cards to filter
-## @param parameters: Dictionary - Effect parameters (ValidCard, Choice, NumCard, IfNotFound, etc.)
+## @param parameters: Dictionary - Effect parameters (ValidCard, Choice, NumCard, etc.)
 ## @param origin_zone_str: String - Zone name for error messages
 ## @param selection_context: String - Context for UI (e.g., "Move Card")
 ## @param source_card_data: CardData - The card that is the source of this effect
@@ -115,7 +113,6 @@ func filter_and_select_cards(cards_to_filter: Array[CardData], parameters: Dicti
 	var valid_card: String = parameters.get("ValidCard", "Card")
 	var choice_type: String = parameters.get("Choice", "Random")
 	var num_cards: int = parameters.get("NumCard", 1)
-	var if_not_found: String = parameters.get("IfNotFound", "")
 	
 	# Filter cards by ValidCard criteria using GameUtility's filtering
 	var criteria = GameUtility.parseCriteria(valid_card)
@@ -126,9 +123,6 @@ func filter_and_select_cards(cards_to_filter: Array[CardData], parameters: Dicti
 	
 	if filtered_cards.is_empty():
 		print("⚠️ No valid cards found in ", origin_zone_str, " matching ", valid_card)
-		# Try alternative if specified
-		if if_not_found:
-			await execute_alternative(if_not_found, parameters, source_card_data, game_context)
 		return []
 	
 	# Limit number of cards to available cards

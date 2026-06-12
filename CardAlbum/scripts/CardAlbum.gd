@@ -102,7 +102,7 @@ func _on_back_button_pressed():
 	get_tree().change_scene_to_file("res://MainMenu/scenes/MainMenu.tscn")
 
 func _on_card_clicked(card: Card2D):
-	print("Card clicked: ", card.card_data.cardName)
+	print("Card clicked: ", card.cardData.cardName)
 
 func _on_card_right_clicked(card: Card):
 	if card_popup_manager and card_popup_manager.has_method("show_card_popup"):

@@ -42,6 +42,15 @@ static func create_effect(effect_type: EffectType.Type) -> Effect:
 		EffectType.Type.SACRIFICE:
 			return SacrificeEffect.new()
 		
+		EffectType.Type.RELIC_DURABILITY_TICK:
+			return RelicDurabilityEffect.new()
+		
+		EffectType.Type.ADD_GOLD:
+			return AddGoldEffect.new()
+		
+		EffectType.Type.DRAFT:
+			return DraftEffect.new()
+		
 		_:
 			push_error("Unknown effect type: " + str(effect_type))
 			return null

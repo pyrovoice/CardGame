@@ -6,7 +6,8 @@ class_name Card2D
 @onready var type_label: Label = $Background/TypeLabel
 @onready var text_label: RichTextLabel = $Background/TextLabel
 @onready var cost_label: Label = $Background/costBackground/CostLabel
-@onready var power_label: Label = $Background/TextureRect/PowerLabel
+@onready var power_background: Control = $Background/PowerBackground
+@onready var power_label: Label = $Background/PowerBackground/PowerLabel
 @onready var name_label: AutoSizeLabel = $Background/ColorRect/NameLabel
 
 var cardData: CardData
@@ -48,7 +49,15 @@ func update_display():
 	name_label.text = cardData.cardName
 	cost_label.text = str(cardData.goldCost)
 	type_label.text = cardData.getFullTypeString()
-	power_label.text = str(cardData.power)
+	
+	if cardData.hasType(CardData.CardType.SPELL):
+		power_background.visible = false
+	elif cardData.hasType(CardData.CardType.RELIC):
+		power_background.visible = true
+		power_label.text = str(cardData.durability)
+	else:
+		power_background.visible = true
+		power_label.text = str(cardData.power)
 	
 	# Set card art if available
 	if cardData.cardArt:

@@ -35,14 +35,6 @@ func _ready():
 
 func get_tween(is_blocking: bool = true, priority: int = 1, animation_name: String = "") -> Tween:
 	"""Create and configure a tween with common settings. Priority: 0=lowest, 1=normal, 2=highest"""
-	var card_name = card.cardData.cardName if card else "unknown"
-	if current_tween and current_tween.is_valid() and is_blocking:
-		if priority >= current_animation_priority:
-			print("[CardAnimator] %s: '%s' (p%d) kills '%s' (p%d)" % [card_name, animation_name, priority, _current_animation_name, current_animation_priority])
-		else:
-			print("[CardAnimator] %s: '%s' (p%d) blocked by '%s' (p%d)" % [card_name, animation_name, priority, _current_animation_name, current_animation_priority])
-	else:
-		print("[CardAnimator] %s: '%s' (p%d)" % [card_name, animation_name, priority])
 	
 	var tween = create_tween()
 	tween.set_speed_scale(ANIMATION_SPEED)
@@ -370,8 +362,8 @@ const CARD_VIEWPORT_SIZE_SMALL    := Vector2i(150, 150)
 const CARD_VIEWPORT_SIZE_BIG      := Vector2i(198, 267)
 const CARD_2D_POS_SMALL           := Vector2(-25, 0)
 const CARD_2D_POS_BIG             := Vector2(0, 0)
-const CARD_COLLISION_Z_SMALL      := 0.55
-const CARD_COLLISION_Y_BIG        := 1.335  # 0.89*1.5
+const CARD_COLLISION_SIZE_SMALL   := Vector3(0.54, 0.01, 0.6)  # Matches BoxShape3D_card in Card.tscn
+const CARD_COLLISION_SIZE_BIG     := Vector3(0.54, 0.01, 0.915)   # 1.5x scale (same ratio as mesh big/small)
 const CARD_HIGHLIGHT_SCALE_SMALL  := Vector3(1.05, 1, 0.65)
 const CARD_HIGHLIGHT_SCALE_BIG    := Vector3(1.03, 1, 1.02)
 
@@ -391,7 +383,7 @@ func _animate_make_small() -> Tween:
 	size_animation.tween_property(card.card_2d, "position", CARD_2D_POS_SMALL, makeSmallTime)
 	
 	# Adjust collision shape
-	size_animation.tween_callback(func(): (card.collision_shape_3d.shape as BoxShape3D).size.z = CARD_COLLISION_Z_SMALL)
+	size_animation.tween_callback(func(): (card.collision_shape_3d.shape as BoxShape3D).size = CARD_COLLISION_SIZE_SMALL)
 	return size_animation
 
 const makeBigTime = 0.1
@@ -410,7 +402,7 @@ func _animate_make_big() -> Tween:
 	
 	# Connect to finished signal to execute cleanup after parallel animations complete
 	size_animation.finished.connect(func():
-		(card.collision_shape_3d.shape as BoxShape3D).size.y = CARD_COLLISION_Y_BIG
+		(card.collision_shape_3d.shape as BoxShape3D).size = CARD_COLLISION_SIZE_BIG
 		card.highlight_mesh.scale = CARD_HIGHLIGHT_SCALE_BIG
 	)
 	return size_animation

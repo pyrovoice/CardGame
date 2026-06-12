@@ -75,6 +75,36 @@ func execute(parameters: Dictionary, source_card_data: CardData, game_context: G
 		# Use game's execute_move_card with GameZone enums
 		await game_context.execute_move_card(selected_card, destination_zone_enum, origin_zone_enum)
 
+func can_execute(parameters: Dictionary, source_card_data: CardData, game_context: Game) -> bool:
+	"""Returns false when no valid cards exist in the origin zone (or condition fails)."""
+	var condition: String = parameters.get("Condition", "")
+	if condition and not game_context.check_effect_condition(condition, source_card_data):
+		return false
+
+	var defined: String = parameters.get("Defined", "")
+	if defined == "Self":
+		return true  # Moving self is always a valid action
+
+	var origin_zone_str: String = parameters.get("Origin", "Graveyard.Player")
+	var from_player_perspective: bool = source_card_data.playerControlled
+	var origin_zone_enum: GameZone.e = game_context.game_data.parse_zone_string_to_enum(origin_zone_str, from_player_perspective)
+
+	if origin_zone_enum == GameZone.e.UNKNOWN:
+		return false
+
+	var origin_cards: Array[CardData] = game_context.game_data.get_cards_in_zone(origin_zone_enum)
+	var valid_card_filter: String = parameters.get("ValidCard", "")
+
+	if valid_card_filter.is_empty():
+		return not origin_cards.is_empty()
+
+	var criteria = GameUtility.parseCriteria(valid_card_filter)
+	for card in origin_cards:
+		if GameUtility.matchesCardDataCriteria(card, criteria):
+			return true
+
+	return false
+
 func validate_parameters(parameters: Dictionary) -> bool:
 	return parameters.has("Origin") and parameters.has("Destination")
 

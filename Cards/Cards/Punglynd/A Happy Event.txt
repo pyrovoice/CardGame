@@ -1,0 +1,7 @@
+Name:For those who come after
+Color:Red
+Rarity:Common Legendary
+Types:Spell
+ManaCost:1
+CardText: Cast for free at the beginning of game
+Create a Punglyng child.

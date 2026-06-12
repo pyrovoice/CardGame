@@ -804,33 +804,29 @@ func test_growth_spell_pump() -> bool:
 	return true
 
 func test_punglynd_child_growup():
-	"""Test that Punglynd Child gains 'Grown-up' subtype after attacking and passing turn"""
+	"""Test that Punglynd Child gains 'Grown-up' subtype at end of combat while in a combat zone"""
 	
-	# Step 1: Create Punglynd Child token
+	# Step 1: Create Punglynd Child token in play
 	var child_card = createCardFromName("Punglynd Child", GameZone.e.BATTLEFIELD_PLAYER)
 	
-	# Step 3: Verify initial state - should not have Grown-up subtype yet
+	# Step 2: Verify initial state - should not have Grown-up subtype yet
 	if not assert_test_false("Grown-up" in child_card.subtypes, "Child should not have Grown-up subtype initially"):
 		return false
 	
-	# Step 4: Make the child attack by moving it to a combat zone and resolving combat
+	# Step 3: Move the child to a combat zone - trigger requires TriggerZones$ Combat
 	var combat_zone = game.game_view.combat_zones[0] as CombatZone
-	
-	# Move to combat zone (pass CombatZone directly after GridContainer3D refactor)
 	await game.tryMoveCard(child_card, combat_zone)
 	
-	# Resolve combat to mark the card as having attacked
-	await clickCombatButton(combat_zone)
-	
-	# Step 5: Verify the card attacked this turn
-	if not assert_test_true(child_card.hasAttackedThisTurn, "Child should be marked as having attacked this turn"):
+	# Verify child is in combat zone before resolving
+	var child_zone = game.game_data.get_card_zone(child_card)
+	if not assert_test_true(GameZone.is_combat_zone(child_zone), "Child should be in a combat zone"):
 		return false
 	
-	# Step 6: Start new turn to trigger end-of-turn phase (simulates real game flow)
-	await game.onTurnStart()
+	# Step 4: Resolve combat - END_OF_COMBAT fires immediately after resolution
+	await clickCombatButton(combat_zone)
 	
-	# Step 7: Verify the child now has the Grown-up subtype
-	if not assert_test_true("Grown-up" in child_card.subtypes, "Child should have Grown-up subtype after attacking and end-of-turn trigger"):
+	# Step 5: Verify Grown-up was granted by the EndOfCombat trigger (no turn change needed)
+	if not assert_test_true("Grown-up" in child_card.subtypes, "Child should have Grown-up subtype after end of combat trigger"):
 		return false
 	
 	print("✅ Punglynd Child grow-up test passed!")
@@ -1839,6 +1835,62 @@ func _count_cards_by_name(cards: Array[CardData], name: String) -> int:
 			count += 1
 	return count
 
+func test_death_trigger_adds_gold() -> bool:
+	"""Test that a creature with 'when I die, add 1 gold' triggers correctly on death.
+	Verifies the full death-trigger pipeline:
+	  - CARD_DIED fires before abilities are unregistered
+	  - Zone check is bypassed for self-death triggers
+	  - AddGold effect resolves from the trigger queue"""
+
+	# --- Setup: build creature template with a death trigger ---
+	var template = CardData.new()
+	template.cardName = "Test Death Trigger Creature"
+	template.playerControlled = true
+	template.playerOwned = true
+	template.addType(CardData.CardType.CREATURE)
+
+	# Place on battlefield via game.createCardData so abilities are registered properly
+	var creature = game.createCardData(template, GameZone.e.BATTLEFIELD_PLAYER, true)
+	if not assert_test_not_null(creature, "Creature should be created"):
+		return false
+
+	# Attach the death trigger manually (same pattern as the Elusive test)
+	var death_ability = TriggeredAbility.new(
+		creature,
+		TriggeredAbility.GameEventType.CARD_DIED,
+		EffectType.Type.ADD_GOLD
+	)
+	death_ability.trigger_conditions[TriggeredAbility.TriggerCondition.VALID_CARD] = "Card.Self"
+	creature.triggered_abilities.append(death_ability)
+	death_ability.register_to_game(game)
+
+	# Verify creature is on battlefield
+	if not assert_test_true(GameZone.is_in_play(game.game_data.get_card_zone(creature)), "Creature should be in play"):
+		return false
+
+	# --- Record gold before death ---
+	var gold_before = game.game_data.player_gold.getValue()
+	print("  🪙 Gold before death: ", gold_before)
+
+	# --- Kill the creature ---
+	await game.execute_move_card(creature, GameZone.e.GRAVEYARD_PLAYER)
+	await test_runner.get_tree().process_frame
+	await test_runner.get_tree().process_frame  # Extra frame for trigger queue to resolve
+
+	# --- Verify creature is in graveyard ---
+	var final_zone = game.game_data.get_card_zone(creature)
+	if not assert_test_equal(final_zone, GameZone.e.GRAVEYARD_PLAYER, "Creature should be in graveyard"):
+		return false
+
+	# --- Verify gold increased by 1 ---
+	var gold_after = game.game_data.player_gold.getValue()
+	print("  🪙 Gold after death: ", gold_after)
+	if not assert_test_equal(gold_after, gold_before + 1, "Death trigger should have added 1 gold"):
+		return false
+
+	print("✅ Death trigger test passed!")
+	return true
+
 func _make_raw_card(card_name: String, colors: Array, rarity: CardData.Rarity, types: Array) -> CardData:
 	"""Create a raw CardData with color/rarity set, not registered in any game zone.
 	Use this when you need a template for CardLoader injection (e.g. deck builder tests).
@@ -1851,3 +1903,200 @@ func _make_raw_card(card_name: String, colors: Array, rarity: CardData.Rarity, t
 	for t in types:
 		c._types.append(t)
 	return c
+
+func test_relic_durability() -> bool:
+	"""Test Relic durability ticks and sacrifice on depletion.
+	Covers four cards across three beginning-of-turn triggers:
+	  - relic_permanent:        Relic throughout → sacrificed at trigger 3
+	  - relic_loses_type:       Relic until after trigger 1 → stays alive
+	  - creature_becomes_relic: Creature until after trigger 1, then Relic → durability 1 after trigger 3
+	  - creature_permanent:     Creature throughout → never ticked"""
+	
+	# --- Setup: place 4 cards directly on the battlefield ---
+	# game.createCardData duplicates the template through duplicateCardScript,
+	# which attaches the universal relic durability trigger before registering abilities.
+	
+	var tpl_relic_perm = CardData.new()
+	tpl_relic_perm.cardName = "TestRelicPermanent"
+	tpl_relic_perm.addType(CardData.CardType.RELIC)
+	var relic_permanent = game.createCardData(tpl_relic_perm, GameZone.e.BATTLEFIELD_PLAYER, true)
+	
+	var tpl_relic_loses = CardData.new()
+	tpl_relic_loses.cardName = "TestRelicLosesType"
+	tpl_relic_loses.addType(CardData.CardType.RELIC)
+	var relic_loses_type = game.createCardData(tpl_relic_loses, GameZone.e.BATTLEFIELD_PLAYER, true)
+	
+	var tpl_becomes_relic = CardData.new()
+	tpl_becomes_relic.cardName = "TestCreatureBecomesRelic"
+	tpl_becomes_relic.addType(CardData.CardType.CREATURE)
+	var creature_becomes_relic = game.createCardData(tpl_becomes_relic, GameZone.e.BATTLEFIELD_PLAYER, true)
+	
+	var tpl_creature = CardData.new()
+	tpl_creature.cardName = "TestCreaturePermanent"
+	tpl_creature.addType(CardData.CardType.CREATURE)
+	var creature_permanent = game.createCardData(tpl_creature, GameZone.e.BATTLEFIELD_PLAYER, true)
+	
+	# Verify all 4 start in play with full durability
+	assert_test_equal(GameZone.is_in_play(game.game_data.get_card_zone(relic_permanent)), true,
+		"Setup: relic_permanent starts in play")
+	assert_test_equal(GameZone.is_in_play(game.game_data.get_card_zone(relic_loses_type)), true,
+		"Setup: relic_loses_type starts in play")
+	assert_test_equal(GameZone.is_in_play(game.game_data.get_card_zone(creature_becomes_relic)), true,
+		"Setup: creature_becomes_relic starts in play")
+	assert_test_equal(GameZone.is_in_play(game.game_data.get_card_zone(creature_permanent)), true,
+		"Setup: creature_permanent starts in play")
+	
+	# --- Trigger 1 ---
+	# relic_permanent:        3 → 2
+	# relic_loses_type:       3 → 2
+	# creature_becomes_relic: no tick (not Relic yet)
+	# creature_permanent:     no tick
+	await game.trigger_phase("BeginningOfTurn")
+	
+	assert_test_equal(relic_permanent.durability, 2,
+		"Trigger 1: relic_permanent durability = 2")
+	assert_test_equal(relic_loses_type.durability, 2,
+		"Trigger 1: relic_loses_type durability = 2")
+	assert_test_equal(creature_becomes_relic.durability, 3,
+		"Trigger 1: creature_becomes_relic not ticked (still Creature)")
+	assert_test_equal(creature_permanent.durability, 3,
+		"Trigger 1: creature_permanent not ticked")
+	
+	# Type changes between trigger 1 and 2
+	relic_loses_type.removeType(CardData.CardType.RELIC)
+	creature_becomes_relic.addType(CardData.CardType.RELIC)
+	
+	# --- Trigger 2 ---
+	# relic_permanent:        2 → 1
+	# relic_loses_type:       no tick (lost Relic type)
+	# creature_becomes_relic: 3 → 2 (first tick as Relic)
+	# creature_permanent:     no tick
+	await game.trigger_phase("BeginningOfTurn")
+	
+	assert_test_equal(relic_permanent.durability, 1,
+		"Trigger 2: relic_permanent durability = 1")
+	assert_test_equal(relic_loses_type.durability, 2,
+		"Trigger 2: relic_loses_type durability unchanged (no longer Relic)")
+	assert_test_equal(creature_becomes_relic.durability, 2,
+		"Trigger 2: creature_becomes_relic durability = 2 (first Relic tick)")
+	assert_test_equal(creature_permanent.durability, 3,
+		"Trigger 2: creature_permanent not ticked")
+	
+	# --- Trigger 3 ---
+	# relic_permanent:        1 → 0 → SACRIFICED
+	# relic_loses_type:       no tick
+	# creature_becomes_relic: 2 → 1
+	# creature_permanent:     no tick
+	await game.trigger_phase("BeginningOfTurn")
+	
+	assert_test_equal(GameZone.is_in_play(game.game_data.get_card_zone(relic_permanent)), false,
+		"Trigger 3: relic_permanent sacrificed (durability depleted)")
+	assert_test_equal(GameZone.is_in_play(game.game_data.get_card_zone(relic_loses_type)), true,
+		"Trigger 3: relic_loses_type still in play (lost Relic type after trigger 1)")
+	assert_test_equal(GameZone.is_in_play(game.game_data.get_card_zone(creature_becomes_relic)), true,
+		"Trigger 3: creature_becomes_relic still in play (only 2 ticks)")
+	assert_test_equal(GameZone.is_in_play(game.game_data.get_card_zone(creature_permanent)), true,
+		"Trigger 3: creature_permanent still in play (never a Relic)")
+	assert_test_equal(creature_becomes_relic.durability, 1,
+		"Trigger 3: creature_becomes_relic durability = 1")
+	
+	return not current_test_failed
+
+func test_alternative_resolve() -> bool:
+	"""Test the AlternativeResolve mechanism on a card with the same logic as Punglynd Elder.
+	Scenario 1: No Punglynd Children in play → AddType finds no valid targets → CreateToken fires.
+	Scenario 2: Only Grown-up Punglynd Children → excluded by !Grown-up → CreateToken fires.
+	Scenario 3: A non-Grown-up Punglynd Child in play → AddType fires and grants Grown-up, no token created."""
+
+	var card_text = (
+		"Name:TestAlternativeResolveCard\n" +
+		"ManaCost:0\n" +
+		"Types:Creature\n" +
+		"Power:0\n" +
+		"T:Mode$ CardEnters | ValidCard$ Card.Self | Execute$ ElderEffect\n" +
+		"SVar:ElderEffect$ AddType | ValidCard$ YouCtrl+Name<Punglynd Child>+!Grown-up | Types$ Grown-up | Duration$ Permanent | Choice$ Random | NumCard$ 1 | AlternativeResolve$ ElderFallback\n" +
+		"SVar:ElderFallback$ CreateToken | TokenScript$ Punglynd Child\n" +
+		"CardText:Test card"
+	)
+
+	var count_children = func() -> int:
+		return game.game_data.get_cards_in_zone(GameZone.e.BATTLEFIELD_PLAYER).filter(
+			func(c: CardData): return c.cardName.to_lower() == "punglynd child"
+		).size()
+
+	var count_non_grownup = func() -> int:
+		return game.game_data.get_cards_in_zone(GameZone.e.BATTLEFIELD_PLAYER).filter(
+			func(c: CardData): return c.cardName.to_lower() == "punglynd child" and not ("Grown-up" in c.subtypes)
+		).size()
+
+	# Promotes all existing Punglynd Children to Grown-up so the next scenario starts clean.
+	var promote_all = func():
+		for c in game.game_data.get_cards_in_zone(GameZone.e.BATTLEFIELD_PLAYER):
+			if c.cardName.to_lower() == "punglynd child" and not ("Grown-up" in c.subtypes):
+				c.addSubtype("Grown-up")
+
+	# --- Scenario 1: no children present → AlternativeResolve → token created ---
+	print("--- AlternativeResolve S1: no children → token created ---")
+	var template1 = CardLoaderAL.parse_card_data(card_text)
+	var test_card1 = game.createCardData(template1, GameZone.e.HAND_PLAYER, true)
+	var children_before_s1 = count_children.call()
+
+	await game.execute_move_card(test_card1, GameZone.e.BATTLEFIELD_PLAYER)
+	await test_runner.get_tree().process_frame
+	await test_runner.get_tree().process_frame
+
+	if not assert_test_equal(count_children.call(), children_before_s1 + 1,
+			"S1: AlternativeResolve should create 1 Punglynd Child token"):
+		return false
+	print("✅ S1 passed")
+
+	# Promote the token to Grown-up so S2 only has Grown-up children.
+	promote_all.call()
+
+	# --- Scenario 2: only Grown-up children → excluded → AlternativeResolve → token created ---
+	print("--- AlternativeResolve S2: only Grown-up child → token created ---")
+	var grownup_child = createCardFromName("Punglynd Child", GameZone.e.BATTLEFIELD_PLAYER)
+	grownup_child.addSubtype("Grown-up")
+
+	var template2 = CardLoaderAL.parse_card_data(card_text)
+	var test_card2 = game.createCardData(template2, GameZone.e.HAND_PLAYER, true)
+	var children_before_s2 = count_children.call()
+
+	await game.execute_move_card(test_card2, GameZone.e.BATTLEFIELD_PLAYER)
+	await test_runner.get_tree().process_frame
+	await test_runner.get_tree().process_frame
+
+	if not assert_test_equal(count_children.call(), children_before_s2 + 1,
+			"S2: Grown-up child excluded, AlternativeResolve should create token"):
+		return false
+	print("✅ S2 passed")
+
+	# Promote the new token before S3 so the fresh child is the only non-Grown-up target.
+	promote_all.call()
+
+	# --- Scenario 3: non-Grown-up child present → AddType fires, no token ---
+	print("--- AlternativeResolve S3: non-Grown-up child → AddType fires ---")
+	var child = createCardFromName("Punglynd Child", GameZone.e.BATTLEFIELD_PLAYER)
+	if not assert_test_false("Grown-up" in child.subtypes,
+			"S3 setup: fresh child should not have Grown-up yet"):
+		return false
+
+	var template3 = CardLoaderAL.parse_card_data(card_text)
+	var test_card3 = game.createCardData(template3, GameZone.e.HAND_PLAYER, true)
+	var total_before_s3 = count_children.call()
+	var non_grownup_before_s3 = count_non_grownup.call()  # should be 1 (just `child`)
+
+	await game.execute_move_card(test_card3, GameZone.e.BATTLEFIELD_PLAYER)
+	await test_runner.get_tree().process_frame
+	await test_runner.get_tree().process_frame
+
+	if not assert_test_equal(count_children.call(), total_before_s3,
+			"S3: AddType fired (not AlternativeResolve), no new token"):
+		return false
+	if not assert_test_equal(count_non_grownup.call(), non_grownup_before_s3 - 1,
+			"S3: one non-Grown-up child should have gained Grown-up"):
+		return false
+	print("✅ S3 passed")
+
+	print("✅ AlternativeResolve test passed!")
+	return true

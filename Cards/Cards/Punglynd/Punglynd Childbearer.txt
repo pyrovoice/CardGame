@@ -1,6 +1,6 @@
 Name:Punglynd Childbearer
 Color:Red
-Rarity:Uncommon
+Rarity:Common
 ManaCost:2
 Types:Creature Punglynd
 Power:2
@@ -8,5 +8,7 @@ AC:$ Replace | ValidCard$ Card.YouCtrl+Cost.1+Creature | ValidCardAlt$ Card.YouC
 T:Mode$ CardEnters | Origin$ Any | Destination$ Battlefield | ValidCard$ Card.Self | Execute$ TrigToken | TriggerDescription$ Whenever CARDNAME enters or attack, a Punglynd Child is born.
 T:Mode$ StartAttack | ValidCard$ Card.Self | Execute$ TrigToken | TriggerDescription$ Whenever CARDNAME enters or attack, a Punglynd Child is born.
 SVar:TrigToken$ CreateToken | TokenScript$ Punglynd Child
+AA:$ TriggerDescription$ I receive all damage that would be dealt to target creature this turn.
 CardText: Replace 1-Cost. If the replaced creature was a Punglynd Grown-up, my cost is reduced by an additional 1.
 Whenever CARDNAME enters or attack, a Punglynd Child is born.
+{0}: I receive all damage that would be dealt to target creature this turn.

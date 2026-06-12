@@ -15,6 +15,7 @@ signal card_drawn(cards: Array, is_player: bool)
 signal card_changed_zones(card_data: CardData, from_zone: GameZone.e, to_zone: GameZone.e)
 signal strike(card_data: CardData)
 signal card_recycled(card_data: CardData)
+signal end_of_combat(card_data: CardData, zone: GameZone.e)
 
 # Controller references (MVC: Controller layer)
 @onready var player_control: PlayerControl = $GameView/playerControl
@@ -248,13 +249,13 @@ func execute_move_card(cardData: CardData, destination_zone: GameZone.e, origin_
 	elif GameZone.is_battlefield_zone(destination_zone):
 		await _move_to_battlefield(cardData, destination_zone)
 	elif destination_zone == GameZone.e.GRAVEYARD_PLAYER or destination_zone == GameZone.e.GRAVEYARD_OPPONENT:
-		await _move_to_graveyard(cardData, destination_zone, origin_zone_enum)
+		await _move_to_graveyard(cardData, destination_zone, origin_zone)
 	elif GameZone.is_battlefield_zone(origin_zone) and GameZone.is_combat_zone(destination_zone):
 		await _move_base_to_combat(cardData, destination_zone, index)
 	elif GameZone.is_combat_zone(origin_zone) and GameZone.is_battlefield_zone(destination_zone):
 		await _move_combat_to_base(cardData, destination_zone, origin_zone_node)
 	else:
-		await _move_generic(cardData, destination_zone, origin_zone_enum, origin_zone_node)
+		await _move_generic(cardData, destination_zone, origin_zone, origin_zone_node)
 	
 	return true
 
@@ -379,15 +380,15 @@ func _move_to_graveyard(card_data: CardData, dest_zone: GameZone.e, origin_zone:
 	var from_battlefield = GameZone.is_in_play(origin_zone)
 	
 	if from_battlefield:
+		# Trigger card died BEFORE unregistering so self-death triggers can fire
+		emit_game_event(TriggeredAbility.GameEventType.CARD_DIED, card_data)
+		
 		for ability in card_data.triggered_abilities:
 			ability.unregister_from_game(self)
 		for ability in card_data.static_abilities:
 			ability.remove_from_game(self)
 		for ability in card_data.replacement_abilities:
 			ability.remove_from_game(self)
-		
-		# Trigger card died
-		emit_game_event(TriggeredAbility.GameEventType.CARD_DIED, card_data)
 	
 	# Unsubscribe from game signals
 	card_data.unsubscribe_from_game_signals(self)
@@ -769,8 +770,10 @@ func resolve_combat_for_zone(combat_zone_enum: GameZone.e):
 	# Resolve this zone's combat
 	var lock = playerControlLock.addLock()
 	await resolveCombatInZone(combat_zone_enum)
+	# Mark resolved in data (keyed on view node until CombatLocationData is refactored to use enum)
 	if combat_zone_view:
 		game_data.set_combat_resolved(combat_zone_view, true)
+	await emit_game_event(TriggeredAbility.GameEventType.END_OF_COMBAT, combat_zone_enum)
 	playerControlLock.removeLock(lock)
 
 func reset_all_card_turn_tracking():
@@ -1773,6 +1776,8 @@ func emit_game_event(event_type: TriggeredAbility.GameEventType, card_data):
 			strike.emit(card_data)
 		TriggeredAbility.GameEventType.CARD_RECYCLED:
 			card_recycled.emit(card_data)
+		TriggeredAbility.GameEventType.END_OF_COMBAT:
+			end_of_combat.emit(null, card_data)
 	
 	# After emitting the event, resolve any resolvables that were added to the queue
 	await resolve_queue()

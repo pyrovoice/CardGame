@@ -88,6 +88,9 @@ func parse_card_data(card_text: String) -> CardData:
 	if "Rarity" in properties:
 		card_data.rarity = _parse_rarity(properties["Rarity"])
 	
+	if "Durability" in properties:
+		card_data.durability = int(properties["Durability"])
+	
 	# Set CardText from collected content
 	if card_text_content.size() > 0:
 		card_data.text_box = "\n".join(card_text_content).strip_edges()
@@ -161,12 +164,7 @@ func parse_single_spell_effect(effect_text: String, card_data: CardData) -> Dict
 	# First pass: detect effect type
 	for part in parts:
 		part = part.strip_edges()
-		
-		# Check if this part matches any valid effect type
-		if part in ["CreateDelayedEffect", "DealDamage", "Pump", "Draw", "CreateToken", 
-					"CreateCard", "Cast", "AddType", "AddKeyword", "PumpAll", "MoveCard", 
-					"SwitchPositions", "Destroy", "Bounce", "Exile", "Mill", "Discard", 
-					"Search", "Shuffle", "Sacrifice"]:
+		if EffectType.is_valid_string(part):
 			effect_type_str = part
 			break
 	
@@ -197,27 +195,40 @@ func parse_single_spell_effect(effect_text: String, card_data: CardData) -> Dict
 
 # Shared helper to parse effect parameters from parts array
 func _parse_effect_parameters_from_parts(parts: Array) -> Dictionary:
-	"""Extract effect parameters from parts array (shared between spell effects and nested effects)"""
+	"""Extract effect parameters from parts array (used by both SVar and spell effect parsing)"""
 	var parameters: Dictionary = {}
 	
 	for part in parts:
 		part = part.strip_edges()
 		
-		# Common parameters
 		if part.begins_with("ValidTgts$"):
 			parameters["ValidTargets"] = part.substr(11)
 		elif part.begins_with("ValidCards$"):
 			parameters["ValidCards"] = part.substr(12)
 		elif part.begins_with("ValidCard$"):
 			parameters["ValidCard"] = part.substr(11)
-		elif part.begins_with("Num$"):
-			parameters["Num"] = part.substr(5)
+		elif part.begins_with("TokenScript$"):
+			parameters["TokenScript"] = part.substr(13)
+		elif part.begins_with("NumCards$"):
+			parameters["NumCards"] = part.substr(10)
 		elif part.begins_with("NumCard$"):
-			parameters["NumCard"] = int(part.substr(8))
+			parameters["NumCard"] = int(part.substr(9))
 		elif part.begins_with("NumDmg$"):
 			parameters["NumDamage"] = int(part.substr(8))
+		elif part.begins_with("Num$"):
+			parameters["Num"] = part.substr(5)
 		elif part.begins_with("Pow$"):
 			parameters["PowerBonus"] = int(part.substr(5))
+		elif part.begins_with("Pool$"):
+			parameters["Pool"] = part.substr(6)
+		elif part.begins_with("Type$"):
+			parameters["Type"] = part.substr(6)
+		elif part.begins_with("Types$"):
+			parameters["Types"] = part.substr(7)
+		elif part.begins_with("Amount$"):
+			parameters["Amount"] = part.substr(8)
+		elif part.begins_with("Target$"):
+			parameters["Target"] = part.substr(8)
 		elif part.begins_with("Defined$"):
 			parameters["Defined"] = part.substr(9)
 		elif part.begins_with("Duration$"):
@@ -230,9 +241,16 @@ func _parse_effect_parameters_from_parts(parts: Array) -> Dictionary:
 			parameters["Choice"] = part.substr(8)
 		elif part.begins_with("Condition$"):
 			parameters["Condition"] = part.substr(11)
-		elif part.begins_with("IfNotFound$"):
-			parameters["IfNotFound"] = part.substr(12)
-		# Add more parameter types as needed
+		elif part.begins_with("Modif$"):
+			parameters["Modif"] = part.substr(7)
+		elif part.begins_with("Mandatory$"):
+			parameters["Mandatory"] = part.substr(11).strip_edges().to_lower() != "false"
+		elif part.begins_with("Archetype$"):
+			parameters["Archetype"] = part.substr(11)
+		elif part.begins_with("AlternativeResolve$"):
+			parameters["alternativeResolve"] = part.substr(20)
+		elif part.begins_with("IfNotFound$"):  # backward-compat alias
+			parameters["alternativeResolve"] = part.substr(12)
 	
 	return parameters
 
@@ -301,10 +319,11 @@ func parse_abilities(properties: Dictionary, card_data: CardData) -> Array[CardA
 			if svar_parts.size() >= 2:
 				var svar_name = svar_parts[0].strip_edges()
 				var svar_definition = svar_parts[1].strip_edges()
-				
-				# Parse the definition to extract effect type and parameters
-				var parsed_svar = _parse_svar_definition(svar_definition)
-				svar_effects[svar_name] = parsed_svar
+				var svar_parts_def = svar_definition.split(" | ")
+				svar_effects[svar_name] = {
+					"effect_type": svar_parts_def[0].strip_edges(),
+					"parameters": _parse_effect_parameters_from_parts(svar_parts_def.slice(1))
+				}
 	
 	# Second pass: parse triggered abilities and activated abilities
 	for key in properties.keys():
@@ -427,6 +446,13 @@ func parse_triggered_ability(trigger_text: String, svar_effects: Dictionary, car
 		# Use the effect type from SVar if available
 		if not svar_data.get("effect_type", "").is_empty():
 			effect_name = svar_data["effect_type"]
+		
+		# Embed alternative SVar data so AbilityManager can resolve it without a SVar lookup
+		var alt_name: String = effect_parameters.get("alternativeResolve", "")
+		if not alt_name.is_empty() and alt_name in svar_effects:
+			var alt_svar = svar_effects[alt_name]
+			effect_parameters["alternativeResolve_effect_type"] = alt_svar.get("effect_type", "")
+			effect_parameters["alternativeResolve_parameters"] = alt_svar.get("parameters", {})
 	
 	# Set default trigger zone to Battlefield if not specified
 	if not trigger_conditions.has(TriggeredAbility.TriggerCondition.TRIGGER_ZONES):
@@ -466,9 +492,7 @@ func parse_game_event_from_string(event_str: String) -> TriggeredAbility.GameEve
 		"CardDrawn":
 			return TriggeredAbility.GameEventType.CARD_DRAWN
 		"EndOfCombat":
-			# Note: No EndOfCombat event yet - fallback to EndOfTurn
-			push_warning("EndOfCombat not implemented, using EndOfTurn")
-			return TriggeredAbility.GameEventType.END_OF_TURN
+			return TriggeredAbility.GameEventType.END_OF_COMBAT
 		_:
 			push_warning("Unknown trigger event: " + event_str + ", defaulting to EndOfTurn")
 			return TriggeredAbility.GameEventType.END_OF_TURN
@@ -492,6 +516,8 @@ func _convert_trigger_type_to_game_event(trigger_type: TriggerType.Type, conditi
 			return parse_game_event_from_string(phase)
 		TriggerType.Type.STRIKE:
 			return TriggeredAbility.GameEventType.STRIKE
+		TriggerType.Type.Card_DIES:
+			return TriggeredAbility.GameEventType.CARD_DIED
 		_:
 			push_warning("Unknown TriggerType: " + str(trigger_type))
 			return TriggeredAbility.GameEventType.CARD_ENTERED_PLAY  # Default fallback
@@ -569,14 +595,7 @@ func _add_fleeting_ability(card_data: CardData):
 
 # Validate if an effect type string is valid
 func _is_valid_effect_type(effect_type_str: String) -> bool:
-	"""Check if an effect type string is recognized by EffectType enum"""
-	var valid_types = [
-		"DealDamage", "Pump", "Draw", "CreateToken", "CreateCard", "Cast",
-		"AddType", "AddKeyword", "PumpAll", "MoveCard", "SwitchPositions",
-		"Destroy", "Bounce", "Exile", "Mill", "Discard", "Search", "Shuffle",
-		"Sacrifice", "CreateDelayedEffect"
-	]
-	return effect_type_str.strip_edges() in valid_types
+	return EffectType.is_valid_string(effect_type_str)
 
 func _parse_color(color_str: String) -> CardData.CardColor:
 	"""Convert a color string to CardData.CardColor enum"""
@@ -595,60 +614,6 @@ func _parse_rarity(rarity_str: String) -> CardData.Rarity:
 		"rare":     return CardData.Rarity.RARE
 		"mythic":   return CardData.Rarity.MYTHIC
 		_:          return CardData.Rarity.COMMON
-
-# Helper to parse SVar definition into effect type and parameters
-func _parse_svar_definition(definition: String) -> Dictionary:
-	"""Parse SVar definition like 'ReplaceToken | Type$ AddToken | Amount$ 1' into effect type and parameters"""
-	var result = {
-		"effect_type": "",
-		"parameters": {}
-	}
-	
-	var parts = definition.split(" | ")
-	if parts.size() > 0:
-		# First part is the effect type (e.g., "ReplaceToken", "Token", "Cast")
-		result["effect_type"] = parts[0].strip_edges()
-		
-		# Remaining parts are parameters
-		for i in range(1, parts.size()):
-			var part = parts[i].strip_edges()
-			if part.begins_with("TokenScript$"):
-				result["parameters"]["TokenScript"] = part.substr(13)
-			elif part.begins_with("Num$"):
-				result["parameters"]["Num"] = part.substr(5)
-			elif part.begins_with("Pool$"):
-				result["parameters"]["Pool"] = part.substr(6)
-			elif part.begins_with("Type$"):
-				result["parameters"]["Type"] = part.substr(6)
-			elif part.begins_with("Amount$"):
-				result["parameters"]["Amount"] = part.substr(8)
-			elif part.begins_with("Target$"):
-				result["parameters"]["Target"] = part.substr(8)
-			elif part.begins_with("Defined$"):
-				result["parameters"]["Defined"] = part.substr(9)
-			elif part.begins_with("NumCards$"):
-				result["parameters"]["NumCards"] = part.substr(10)
-			elif part.begins_with("Types$"):
-				result["parameters"]["Types"] = part.substr(7)
-			elif part.begins_with("Duration$"):
-				result["parameters"]["Duration"] = part.substr(10)
-			# MoveCard effect parameters
-			elif part.begins_with("Origin$"):
-				result["parameters"]["Origin"] = part.substr(8)
-			elif part.begins_with("Destination$"):
-				result["parameters"]["Destination"] = part.substr(13)
-			elif part.begins_with("Choice$"):
-				result["parameters"]["Choice"] = part.substr(8)
-			elif part.begins_with("ValidCard$"):
-				result["parameters"]["ValidCard"] = part.substr(11)
-			elif part.begins_with("Condition$"):
-				result["parameters"]["Condition"] = part.substr(11)
-			elif part.begins_with("IfNotFound$"):
-				result["parameters"]["IfNotFound"] = part.substr(12)
-			elif part.begins_with("Modif$"):
-				result["parameters"]["Modif"] = part.substr(7)
-	
-	return result
 
 # Parse a single replacement effect
 func parse_replacement_effect(replacement_text: String, svar_effects: Dictionary, card_data: CardData) -> ReplacementAbility:
@@ -1295,6 +1260,7 @@ func duplicateCardScript(original: CardData) -> CardData:
 	copy.text_box = original.text_box
 	copy.colors = original.colors.duplicate()
 	copy.rarity = original.rarity
+	copy.durability = original.durability
 	
 	# Deep copy types array
 	copy._types = original._types.duplicate()
@@ -1344,6 +1310,14 @@ func duplicateCardScript(original: CardData) -> CardData:
 	copy.card_object = null
 	var temp_effects: Array[TemporaryEffect] = []
 	copy.temporary_effects = temp_effects
+	
+	# Add universal relic durability trigger to every card.
+	# It checks hasType(RELIC) before enqueuing, so non-Relic cards never pay the cost.
+	# If a card gains or loses the Relic type at runtime, this trigger handles it seamlessly.
+	var relic_trigger = TriggeredAbility.new(copy, TriggeredAbility.GameEventType.BEGINNING_OF_TURN, EffectType.Type.RELIC_DURABILITY_TICK)
+	relic_trigger.trigger_conditions[TriggeredAbility.TriggerCondition.TRIGGER_ZONES] = GameZone.parse_trigger_zones("Battlefield")
+	relic_trigger.trigger_conditions[TriggeredAbility.TriggerCondition.CONDITION] = "Self.IsType+Relic"
+	copy.triggered_abilities.append(relic_trigger)
 	
 	return copy
 

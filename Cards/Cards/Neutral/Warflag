@@ -1,0 +1,7 @@
+Name:Warflag
+Color:Red
+ManaCost:2
+Rarity:Rare
+Types:Relic
+CardText: Creatures attacking here have +1 offense.
+When you conquer this location, draw a card, gain {2} and refill a random Legendary.

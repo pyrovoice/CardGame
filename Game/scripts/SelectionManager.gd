@@ -4,6 +4,7 @@ class_name SelectionManager
 signal selection_completed(selection: RefCounted)
 signal selection_cancelled()
 signal selection_started()  # Emitted when selection UI is shown and ready
+signal selection_updated(description: String, can_validate: bool)  # Emitted each time selection state changes
 
 # Comprehensive selection data structure for pre-specifying all card play choices
 class CardPlaySelections:
@@ -211,6 +212,23 @@ func _update_ui():
 	# Update visualizer selection states if using it
 	if using_visualizer and container_visualizer:
 		container_visualizer.update_card_selection_states(current_selection.selected_cards)
+	
+	# Notify any UI listening (SelectionUI connects to this signal via link())
+	selection_updated.emit(desc, current_selection.is_complete)
+	
+	# Auto-validate when selection is mandatory and full (optional selections require explicit confirmation)
+	if _should_auto_validate():
+		validate_selection()
+
+func _should_auto_validate() -> bool:
+	"""Returns true when a mandatory selection is full and should auto-confirm without user clicking Validate."""
+	if not current_selection or not current_selection.is_complete:
+		return false
+	if current_selection.requirement.get("optional", false):
+		return false
+	var max_count = current_selection.requirement.get("max_count",
+		current_selection.requirement.get("count", 1))
+	return current_selection.selected_cards.size() >= max_count
 
 func validate_selection():
 	"""Public method for controller to validate selection"""

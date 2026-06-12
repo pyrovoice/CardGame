@@ -1,0 +1,12 @@
+Name:Punglynd Elder
+Color:Red
+Rarity:Common
+ManaCost:1
+Types:Creature Punglynd
+Power:0
+T:Mode$ CardEnters | ValidCard$ Card.Self | Execute$ ElderEffect
+T:Mode$ CardDies | ValidCard$ Card.Self | Execute$ ElderEffect
+SVar:ElderEffect$ AddType | ValidCard$ YouCtrl+Name<Punglynd Child>+!Grown-up | Types$ Grown-up | Duration$ Permanent | Choice$ Random | NumCard$ 1 | AlternativeResolve$ ElderFallback
+SVar:ElderFallback$ CreateToken | TokenScript$ Punglynd Child
+CardText: When I enter and die, if you control a non-grown-up Punglynd child, one of them randomly grows up. Otherwise, create a Punglynd child.
+Sacrifice me: Target creature gains 1 power this turn.

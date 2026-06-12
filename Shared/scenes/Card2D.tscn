@@ -60,8 +60,10 @@ stretch_mode = 6
 
 [node name="ColorRect" type="ColorRect" parent="Background"]
 layout_mode = 0
+offset_left = 3.0
+offset_top = 3.0
 offset_right = 195.0
-offset_bottom = 21.0
+offset_bottom = 24.0
 
 [node name="NameLabel" type="Label" parent="Background/ColorRect"]
 clip_contents = true
@@ -168,7 +170,7 @@ text = "[color=#705E05][outline_size=4]Haste[/outline_size][/color][p][/p]Other 
 [p][/p]Other Goblin creatures you control get +1/+1 and have haste."
 autowrap_mode = 2
 
-[node name="TextureRect" type="TextureRect" parent="Background"]
+[node name="PowerBackground" type="TextureRect" parent="Background"]
 modulate = Color(1, 0.357326, 0.290208, 1)
 layout_mode = 0
 offset_top = 102.0
@@ -177,7 +179,7 @@ offset_bottom = 138.0
 texture = ExtResource("6_tgpg6")
 expand_mode = 1
 
-[node name="PowerLabel" type="Label" parent="Background/TextureRect"]
+[node name="PowerLabel" type="Label" parent="Background/PowerBackground"]
 layout_mode = 1
 anchors_preset = 3
 anchor_left = 1.0

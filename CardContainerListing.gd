@@ -1,6 +1,8 @@
 extends Control
 class_name CardContainerVizualizer
 
+signal closed
+
 @onready var scroll_container: ScrollContainer = $scrollContainer
 const SCROLL_SPEED = 20
 @onready var h_box_container: HBoxContainer = $scrollContainer/HBoxContainer
@@ -14,6 +16,20 @@ var selection_callback: Callable = Callable()
 
 # Track selectable cards for sorting
 var selectable_card_data: Array[CardData] = []
+
+
+func _ready():
+	background_mask.gui_input.connect(_on_background_input)
+
+
+func _on_background_input(event: InputEvent):
+	if event is InputEventMouseButton and event.pressed:
+		close()
+
+
+func close():
+	closed.emit()
+	hide()
 
 
 func setContainer(cards: Array[CardData], selectable_cards: Array[CardData] = []):
@@ -75,15 +91,19 @@ func update_card_selection_states(selected_cards: Array[CardData]):
 		
 		
 func _input(event):
-	if event is InputEventMouseButton:
-		if event.pressed:
-			match event.button_index:
-				MOUSE_BUTTON_WHEEL_UP:
-					_on_scroll_up()
-					get_viewport().set_input_as_handled()
-				MOUSE_BUTTON_WHEEL_DOWN:
-					_on_scroll_down()
-					get_viewport().set_input_as_handled()
+	if not visible:
+		return
+	if event is InputEventMouseButton and event.pressed:
+		match event.button_index:
+			MOUSE_BUTTON_RIGHT:
+				get_viewport().set_input_as_handled()
+				close()
+			MOUSE_BUTTON_WHEEL_UP:
+				_on_scroll_up()
+				get_viewport().set_input_as_handled()
+			MOUSE_BUTTON_WHEEL_DOWN:
+				_on_scroll_down()
+				get_viewport().set_input_as_handled()
 
 func _on_scroll_up():
 	scroll_container.scroll_horizontal -= SCROLL_SPEED

@@ -1,4 +1,4 @@
-[gd_scene load_steps=23 format=3 uid="uid://bkqg746td2asx"]
+[gd_scene load_steps=24 format=3 uid="uid://bkqg746td2asx"]
 
 [ext_resource type="Script" uid="uid://bfo2jk26bbnjb" path="res://Game/scripts/GameView.gd" id="1_s4hdo"]
 [ext_resource type="PackedScene" uid="uid://daynfobgnbdrp" path="res://Game/scenes/combat_zone.tscn" id="2_lpwbj"]
@@ -17,6 +17,7 @@
 [ext_resource type="PackedScene" uid="uid://dtajdc0mlayg0" path="res://Game/scenes/CardContainerVizualizer.tscn" id="14_76l0o"]
 [ext_resource type="Script" uid="uid://dhq14u8nrm6wt" path="res://Game/scripts/SelectionManager.gd" id="14_kkm63"]
 [ext_resource type="PackedScene" uid="uid://b23h2nqcsg3ha" path="res://Game/scenes/card_hand.tscn" id="15_4ovxi"]
+[ext_resource type="PackedScene" uid="uid://kxt24mjfk68d" path="res://Game/scenes/CardChoicePicker.tscn" id="15_vthm1"]
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_vc2ns"]
 size = Vector3(20, 20, 0.01)
@@ -241,6 +242,13 @@ game = NodePath("../..")
 [node name="AlternativeCastChoice" parent="UI" instance=ExtResource("12_11jk7")]
 visible = false
 layout_mode = 1
+
+[node name="CardChoicePicker" parent="UI" instance=ExtResource("15_vthm1")]
+layout_mode = 1
+offset_left = 3.0
+offset_top = -1.0
+offset_right = 3.0
+offset_bottom = -1.0
 
 [node name="extraDeck" parent="." instance=ExtResource("13_sp61m")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4.036, 0, 2.8624501)

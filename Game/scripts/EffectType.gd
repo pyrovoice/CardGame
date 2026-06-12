@@ -23,6 +23,15 @@ enum Type {
 	SWITCH_POSITIONS,  # Switch positions between two cards (Elusive)
 	SACRIFICE,  # Sacrifice permanents (move to owner's graveyard)
 	
+	# Relic mechanics
+	RELIC_DURABILITY_TICK,  # Decrement relic durability; sacrifice at zero
+	
+	# Draft effects
+	DRAFT,  # Draft a card from an archetype pool to hand
+
+	# Resource effects
+	ADD_GOLD,  # Add gold to the controlling player
+	
 	# Future effects
 	DESTROY,  # Destroy permanents
 	BOUNCE,  # Return to hand
@@ -61,6 +70,12 @@ static func type_to_string(effect_type: Type) -> String:
 			return "SwitchPositions"
 		Type.SACRIFICE:
 			return "Sacrifice"
+		Type.RELIC_DURABILITY_TICK:
+			return "RelicDurabilityTick"
+		Type.DRAFT:
+			return "Draft"
+		Type.ADD_GOLD:
+			return "AddGold"
 		Type.DESTROY:
 			return "Destroy"
 		Type.BOUNCE:
@@ -108,6 +123,12 @@ static func string_to_type(effect_string: String) -> Type:
 			return Type.SWITCH_POSITIONS
 		"Sacrifice":
 			return Type.SACRIFICE
+		"RelicDurabilityTick":
+			return Type.RELIC_DURABILITY_TICK
+		"Draft":
+			return Type.DRAFT
+		"AddGold":
+			return Type.ADD_GOLD
 		"Destroy":
 			return Type.DESTROY
 		"Bounce":
@@ -123,8 +144,11 @@ static func string_to_type(effect_string: String) -> Type:
 		"Shuffle":
 			return Type.SHUFFLE
 		_:
-			push_error("❌ UNKNOWN EFFECT TYPE: '" + normalized + "' (original: '" + effect_string + "') - Check card definition. Defaulting to DRAW.")
-			return Type.NONE  # Default fallback
+			return Type.NONE  # Unknown string — caller should check with is_valid_string first
+
+# Check if a string is a valid effect type (without emitting errors)
+static func is_valid_string(s: String) -> bool:
+	return string_to_type(s) != Type.NONE
 
 # Get all available effect type strings
 static func get_all_strings() -> Array[String]:
