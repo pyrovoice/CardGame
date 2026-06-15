@@ -1107,12 +1107,15 @@ func _restore_cancelled_card():
 
 func cancelSelection():
 	"""Handle UI/interaction cancellation and restore the card"""
-	# Clean up the selection state in SelectionManager
 	if selection_manager.is_selecting():
-		selection_manager._end_selection()
-	
-	# Restore the casting card using shared logic
-	_restore_cancelled_card()
+		# cancel_selection() emits selection_completed(null), unblocking the coroutine in
+		# start_selection_and_wait. That coroutine returns [] → selection_data.cancelled = true
+		# → tryPlayCard calls _restore_cancelled_card() to clean up.
+		# cancel_selection() also emits selection_cancelled, which re-enters this function,
+		# but is_selecting() is false by then so it falls through to _restore_cancelled_card().
+		selection_manager.cancel_selection()
+	else:
+		_restore_cancelled_card()
 
 func _on_focus_battlefield(index: int):
 	if playerControlLock.isLocked():

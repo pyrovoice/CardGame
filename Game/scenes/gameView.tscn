@@ -51,7 +51,7 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 6.4710474, -0.001, 0)
 transform = Transform3D(0.99999994, 0, -0.00036651915, 0, 1, 0, 0.00036651915, 0, 0.99999994, -4.155265, -0.001, 2.3502297)
 
 [node name="DeckOpponent" parent="." instance=ExtResource("3_76l0o")]
-transform = Transform3D(-1, 0, -8.742278e-08, 0, 1, 0, 8.742278e-08, 0, -1, 3.20598, -0.001, -1.50072)
+transform = Transform3D(-1, 0, -8.742278e-08, 0, 1, 0, 8.742278e-08, 0, -1, 3.3656433, -0.001, -1.50072)
 
 [node name="Camera3D" type="Camera3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, -4.37114e-08, 1, 0, -1, -4.37114e-08, -0.0602603, 3.63253, 1.02689)
@@ -93,11 +93,10 @@ shape = SubResource("BoxShape3D_yieuc")
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.406809, 0, 0.037858486)
 
 [node name="opponentbase" type="StaticBody3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.59764, -0.001, -3.1685605)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.1770063, 0.057626773, -1.4940937)
 script = ExtResource("6_k71w3")
 
 [node name="MeshInstance3D" type="MeshInstance3D" parent="opponentbase"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.69399214, 0, 0.4584682)
 mesh = SubResource("PlaneMesh_bqf56")
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="opponentbase"]
@@ -258,7 +257,7 @@ script = ExtResource("14_kkm63")
 metadata/_custom_type_script = "uid://dhq14u8nrm6wt"
 
 [node name="graveyardOpponent" parent="." instance=ExtResource("5_inj8b")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4.165329, -0.001, -1.4649769)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4.3232894, -0.001, -1.4649769)
 
 [node name="PlayerHand" parent="." instance=ExtResource("15_4ovxi")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.07212627, 1.720877, 2.3721745)
