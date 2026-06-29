@@ -102,6 +102,9 @@ mesh = SubResource("PlaneMesh_bqf56")
 [node name="CollisionShape3D" type="CollisionShape3D" parent="opponentbase"]
 shape = SubResource("BoxShape3D_yieuc")
 
+[node name="GridContainer3D" parent="opponentbase" instance=ExtResource("7_lpwbj")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.406809, 0, 0.037858486)
+
 [node name="UI" type="Control" parent="."]
 layout_mode = 3
 anchors_preset = 15
