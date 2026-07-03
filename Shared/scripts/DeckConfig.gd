@@ -3,6 +3,7 @@ extends Node
 ## MainMenu sets this up before transitioning to game
 
 var player_deck_building_data: PlayerDeckBuildingData = null
+var current_archetype_id: String = ""
 
 func setup_default_decks() -> void:
 	load_deck_from_file("res://DeckData/Punglynd.json")
@@ -21,6 +22,7 @@ func load_deck_from_file(path: String) -> void:
 		return
 
 	var data: Dictionary = json.get_data()
+	current_archetype_id = (data.get("name", "") as String).to_lower()
 	player_deck_building_data = PlayerDeckBuildingData.new()
 
 	for entry in data.get("limits", []):

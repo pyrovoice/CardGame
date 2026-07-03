@@ -16,6 +16,7 @@ signal card_changed_zones(card_data: CardData, from_zone: GameZone.e, to_zone: G
 signal strike(card_data: CardData)
 signal card_recycled(card_data: CardData)
 signal end_of_combat(card_data: CardData, zone: GameZone.e)
+signal opponent_turn_ended()  # Fires after the opponent AI completes its main phase
 
 # Controller references (MVC: Controller layer)
 @onready var player_control: PlayerControl = $GameView/playerControl
@@ -112,6 +113,8 @@ func _ready() -> void:
 		game_data.playerDeckList.deck_cards = deck_list.deck_cards
 		game_data.playerDeckList.extra_deck_cards = deck_list.extra_deck_cards
 		game_data.opponentDeckList.deck_cards = _build_default_opponent_deck()
+		# Register persistent archetype abilities
+		ArchetypeEffectLibrary.create_and_register(DeckConfigAL.current_archetype_id, self)
 	else:
 		# No deck configuration - leave empty (for tests)
 		print("⚠️ No deck configuration found - decks will be empty")
@@ -207,6 +210,8 @@ func onTurnStart(skipFirstTurn = false):
 	await drawCard(game_data.danger_level.getValue()/3, false)
 	game_data.setOpponentGold()
 	await opponent_ai.execute_main_phase()
+	opponent_turn_ended.emit()
+	await resolve_queue()
 
 func execute_move_card(cardData: CardData, destination_zone: GameZone.e, origin_zone_enum: GameZone.e = GameZone.e.UNKNOWN, index: int = -1) -> bool:
 	"""Centralized zone change system - handles all card movements with appropriate animations and triggers (MVC pattern)
@@ -906,6 +911,11 @@ func resolveCombatInZone(combat_zone: GameZone.e):
 			# Apply damage
 			player_card_data.receiveDamage(opponent_damage)
 			opponent_card_data.receiveDamage(player_damage)
+			# Corrupted on-hit: 50% chance to spread Corrupted to the attacker
+			if opponent_damage > 0 and "Corrupted" in player_card_data.keywords:
+				CorruptedKeyword.on_combat_received(player_card_data, opponent_card_data, self)
+			if player_damage > 0 and "Corrupted" in opponent_card_data.keywords:
+				CorruptedKeyword.on_combat_received(opponent_card_data, player_card_data, self)
 		elif player_card_data and not opponent_card_data:
 			# Player attacks location directly
 			await emit_game_event(TriggeredAbility.GameEventType.STRIKE, player_card_data)

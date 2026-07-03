@@ -9,16 +9,20 @@ func execute(parameters: Dictionary, source_card_data: CardData, game_context: G
 		print("❌ No Pool specified for card creation")
 		return
 	
-	# Parse the pool - expecting format like "Archetype.Punglynd"
+	# Parse the pool — try archetype pool first, then named card pool
 	var archetype_enum = _parse_archetype_pool(pool_string)
-	if archetype_enum == CardLoader.Archetype.UNKNOWN:
-		print("❌ Unknown or invalid archetype pool: ", pool_string)
-		return
-	
-	# Get the card pool for this archetype
-	var card_pool: Array[CardData] = CardLoaderAL.get_archetype_pool(archetype_enum)
+	var card_pool: Array[CardData]
+	if archetype_enum != CardLoader.Archetype.UNKNOWN:
+		card_pool = CardLoaderAL.get_archetype_pool(archetype_enum)
+	else:
+		# Strip "Archetype." prefix and look up named pool
+		var pool_name = pool_string
+		if pool_string.begins_with("Archetype."):
+			pool_name = pool_string.substr(10)
+		card_pool = CardLoaderAL.get_card_pool(pool_name)
+
 	if card_pool.is_empty():
-		print("⚠️ Archetype pool '", pool_string, "' is empty")
+		print("⚠️ Card pool '", pool_string, "' is empty or unknown")
 		return
 	
 	# Filter out legendary cards unless explicitly included

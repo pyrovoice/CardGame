@@ -4,7 +4,7 @@ class_name AddKeywordEffect
 ## Effect that adds keyword abilities to creatures (formerly PumpAll)
 ## Expects targets to be pre-resolved and passed in parameters["Targets"]
 
-func execute(parameters: Dictionary, _source_card_data: CardData, _game_context: Game):
+func execute(parameters: Dictionary, _source_card_data: CardData, game_context: Game):
 	var keyword = parameters.get("KW", "")
 	var duration = parameters.get("Duration", "Permanent")
 	
@@ -23,11 +23,13 @@ func execute(parameters: Dictionary, _source_card_data: CardData, _game_context:
 	
 	# Apply the keyword to each target
 	for target_card in target_cards:
-		_grant_keyword_to_card(target_card, keyword, duration)
+		_grant_keyword_to_card(target_card, keyword, duration, game_context)
 
-func _grant_keyword_to_card(target_card_data: CardData, keyword: String, duration: String):
+func _grant_keyword_to_card(target_card_data: CardData, keyword: String, duration: String, game_context: Game = null):
 	"""Grant a keyword ability to a card"""
-	CardModifier.modify_card(target_card_data, "keyword", {"keyword": keyword}, duration)
+	# Passing game_context lets CardModifier call KeywordRegistry.on_keyword_applied automatically,
+	# which fires the keyword's on_apply() without any per-keyword special-casing here.
+	CardModifier.modify_card(target_card_data, "keyword", {"keyword": keyword}, duration, game_context)
 
 func validate_parameters(parameters: Dictionary) -> bool:
 	return parameters.has("KW")
