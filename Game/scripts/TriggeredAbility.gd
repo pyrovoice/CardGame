@@ -41,7 +41,8 @@ enum GameEventType {
 	END_OF_TURN_CLEANUP,  # After end of turn, for cleanup (temporary effects, orphaned abilities)
 	STRIKE,               # Creature strikes
 	CARD_RECYCLED,        # When a card is recycled from hand
-	END_OF_COMBAT         # After all combat in a zone is resolved
+	END_OF_COMBAT,        # After all combat in a zone is resolved
+	OPPONENT_TURN_END,    # After the opponent AI finishes its main phase
 }
 
 enum TriggerCondition {
@@ -70,6 +71,7 @@ const EVENT_TO_SIGNAL = {
 	GameEventType.STRIKE: "strike",
 	GameEventType.CARD_RECYCLED: "card_recycled",
 	GameEventType.END_OF_COMBAT: "end_of_combat",
+	GameEventType.OPPONENT_TURN_END: "opponent_turn_ended",
 }
 
 var game_event_trigger: GameEventType

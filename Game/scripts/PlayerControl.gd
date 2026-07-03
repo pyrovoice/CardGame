@@ -268,5 +268,4 @@ func getObjectUnderMouse(target_class = Node3D) -> Node3D:
 	return null
 		
 func isMousePointerInHandZone() -> bool:
-	print(get_viewport().get_mouse_position().y)
 	return get_viewport().get_mouse_position().y > HAND_ZONE_CUTTOFF

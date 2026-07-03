@@ -16,11 +16,17 @@ var opponentCards: Array[CardData] = []
 # Dictionary mapping Archetype enum to Array[CardData]
 var archetype_pools: Dictionary = {}
 
+# Named sub-pools that aren't playable archetypes (e.g. effect reward pools)
+# Keyed by folder name string. Cards here are NOT added to cardData.
+var card_pools: Dictionary = {}  # String → Array[CardData]
+
 func _ready():
 	# Initialize archetype pools with properly typed arrays
 	for archetype in Archetype.values():
 		var pool: Array[CardData] = []
 		archetype_pools[archetype] = pool
+	# Initialize named card pools
+	card_pools["Punglynd_Corrupted"] = []
 	load_all_cards()
 	
 # Parse card data from text content (can be from file or string)
@@ -524,73 +530,8 @@ func _convert_trigger_type_to_game_event(trigger_type: TriggerType.Type, conditi
 
 # Add automatic triggered abilities for special keywords
 func _add_keyword_triggered_abilities(card_data: CardData):
-	"""Add triggered abilities for keywords that require special game logic"""
-	# Check if card has Elusive keyword
-	if card_data.text_box.contains("Elusive"):
-		_add_elusive_ability(card_data)
-	
-	# Check if card has fleeting keyword (case-insensitive)
-	if card_data.has_keyword("fleeting"):
-		_add_fleeting_ability(card_data)
-
-# Add the Elusive triggered ability
-func _add_elusive_ability(card_data: CardData):
-	"""Add automatic triggered ability for Elusive keyword
-	
-	Elusive triggers when:
-	- Combat starts (attack is declared at a combat zone)
-	- The Elusive card is in that combat zone
-	- There are other cards in the same zone
-	Effect: Move to the last position in the combat zone
-	"""
-	# Parse as a standard triggered ability string
-	# Using StartAttack (ATTACK_DECLARED) trigger instead of ChangedZone
-	# ValidCard$ Card.Self makes it trigger only when this card attacks (once per combat)
-	var trigger_string = "Mode$ StartAttack | ValidCard$ Card.Self | TriggerZones$ Combat | Execute$ ElusiveRetreat"
-	
-	# Create SVar for the effect
-	var svar_effects = {
-		"ElusiveRetreat": {
-			"effect_type": "SwitchPositions",
-			"parameters": {
-				"SwitchWith": "LastOther",  # Swap with the last card in zone (that isn't self)
-				"OnlySameLocation": true
-			}
-		}
-	}
-	
-	var ability = parse_triggered_ability(trigger_string, svar_effects, card_data)
-	if ability:
-		card_data.add_ability(ability)
-
-# Add the fleeting triggered ability
-func _add_fleeting_ability(card_data: CardData):
-	"""Add automatic triggered ability for fleeting keyword
-	
-	Fleeting triggers when:
-	- Turn ends
-	- The fleeting card is in hand
-	Effect: Move to graveyard (discard)
-	"""
-	# Parse as a standard triggered ability string
-	# Mode$ Phase trigger on EndOfTurn
-	# TriggerZones$ Hand - only triggers when in hand
-	var trigger_string = "Mode$ Phase | Phase$ EndOfTurn | TriggerZones$ Hand | Execute$ FleetingDiscard"
-	
-	# Create SVar for the effect
-	var svar_effects = {
-		"FleetingDiscard": {
-			"effect_type": "MoveCard",
-			"parameters": {
-				"Origin": "Hand.Controller",
-				"Destination": "Graveyard.Controller",
-				"Defined": "Self"
-			}
-		}
-	}
-	
-	var ability = parse_triggered_ability(trigger_string, svar_effects, card_data)
-	if ability:
+	"""Delegate to KeywordRegistry — each Keyword subclass handles its own ability setup."""
+	for ability in KeywordRegistry.get_all_abilities_for_card(card_data):
 		card_data.add_ability(ability)
 
 # Validate if an effect type string is valid
@@ -1116,15 +1057,22 @@ func _load_cards_from_directory_recursive(base_path: String, dir: DirAccess, is_
 				if sub_dir:
 					_load_cards_from_directory_recursive(full_path, sub_dir, is_opponent, root_path)
 		elif file_name.ends_with(".txt"):
-			# Extract archetype from folder structure
-			var archetype = _extract_archetype_from_path(full_path, root_path)
-			
-			# Load card file
-			if is_opponent:
-				var opponent_card = load_opponent_card_from_file(full_path, archetype)
-				if opponent_card:
-					opponentCards.push_back(opponent_card)
+			# Check if this card belongs to a named sub-pool (not a playable archetype)
+			var pool_name = _get_named_pool_from_path(full_path, root_path)
+			if not pool_name.is_empty():
+				var card = load_token_from_file(full_path)  # doesn't add to cardData
+				if card:
+					if pool_name not in card_pools:
+						var empty: Array[CardData] = []
+						card_pools[pool_name] = empty
+					card_pools[pool_name].append(card)
 			else:
+				# Regular archetype card loading
+				var archetype = _extract_archetype_from_path(full_path, root_path)
+				if is_opponent:
+					var opponent_card = load_opponent_card_from_file(full_path, archetype)
+					if opponent_card:
+						opponentCards.push_back(opponent_card)
 				load_card_from_file(full_path, archetype)
 		
 		file_name = dir.get_next()
@@ -1159,6 +1107,18 @@ func _load_tokens_from_directory_recursive(base_path: String, dir: DirAccess):
 	
 	dir.list_dir_end()
 
+func _get_named_pool_from_path(file_path: String, root_path: String) -> String:
+	"""Return the card_pools key if this file lives in a named sub-pool folder, else ''."""
+	var relative_path = file_path.replace(root_path + "/", "")
+	if relative_path.begins_with("/"):
+		relative_path = relative_path.substr(1)
+	if not "/" in relative_path:
+		return ""
+	var folder_name = relative_path.split("/")[0]
+	if folder_name in card_pools:
+		return folder_name
+	return ""
+
 func _extract_archetype_from_path(file_path: String, root_path: String) -> Archetype:
 	"""Extract archetype enum from file path based on subfolder name"""
 	# Remove root path to get relative path
@@ -1190,6 +1150,15 @@ func get_archetype_pool(archetype: Archetype) -> Array[CardData]:
 	"""Get all cards belonging to a specific archetype"""
 	if archetype in archetype_pools:
 		var pool = archetype_pools[archetype]
+		if pool is Array:
+			return pool
+	var empty_pool: Array[CardData] = []
+	return empty_pool
+
+func get_card_pool(pool_name: String) -> Array[CardData]:
+	"""Get all cards belonging to a named sub-pool (non-archetype reward/effect pools)"""
+	if pool_name in card_pools:
+		var pool = card_pools[pool_name]
 		if pool is Array:
 			return pool
 	var empty_pool: Array[CardData] = []

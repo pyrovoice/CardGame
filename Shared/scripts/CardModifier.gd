@@ -4,7 +4,7 @@ class_name CardModifier
 ## Utility class for modifying cards (keywords, types, power, etc.)
 ## This centralizes all card modification logic
 
-static func modify_card(target_card_data: CardData, modification_type: String, modification_data: Dictionary, duration: String):
+static func modify_card(target_card_data: CardData, modification_type: String, modification_data: Dictionary, duration: String, game_context: Game = null):
 	"""
 	Unified method to apply any modification to a card (keyword, type, power boost, etc.)
 	
@@ -21,7 +21,7 @@ static func modify_card(target_card_data: CardData, modification_type: String, m
 	"""
 	match modification_type:
 		"keyword":
-			_apply_keyword_modification(target_card_data, modification_data.get("keyword", ""), duration)
+			_apply_keyword_modification(target_card_data, modification_data.get("keyword", ""), duration, game_context)
 		
 		"type":
 			_apply_type_modification(target_card_data, modification_data.get("type", ""), duration)
@@ -47,7 +47,7 @@ static func modify_card(target_card_data: CardData, modification_type: String, m
 	# Emit dirty signal to update UI
 	target_card_data.emit_signal("dirty_data")
 
-static func _apply_keyword_modification(target_card_data: CardData, keyword: String, duration: String):
+static func _apply_keyword_modification(target_card_data: CardData, keyword: String, duration: String, game_context: Game = null):
 	"""Internal: Apply keyword modification to a card"""
 	if keyword.is_empty():
 		print("❌ No keyword specified for modification")
@@ -60,6 +60,10 @@ static func _apply_keyword_modification(target_card_data: CardData, keyword: Str
 	var temp_effect = TemporaryEffect.create_keyword_effect(keyword, duration_enum, target_card_data)
 	target_card_data.add_temporary_effect(temp_effect)
 	target_card_data.dirty_data.emit()
+
+	# Fire on_apply hook if a game context was supplied
+	if game_context:
+		KeywordRegistry.on_keyword_applied(target_card_data, keyword, game_context)
 
 static func _apply_type_modification(target_card_data: CardData, type_string: String, duration: String):
 	"""Internal: Apply type modification to a card"""

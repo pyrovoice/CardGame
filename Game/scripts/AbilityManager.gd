@@ -111,6 +111,12 @@ func executeAbilityEffect(source_card_data: CardData, ability, game_context: Gam
 	if not has_preselected_targets and has_targeting_spec:
 		var resolved_targets = TargetResolver.resolve_targets(resolved_parameters, source_card_data, game_context)
 		if not resolved_targets.is_empty():
+			# Honour NumCard + Choice:Random to reduce the target pool
+			var num_card: int = int(resolved_parameters.get("NumCard", 0))
+			var choice: String = resolved_parameters.get("Choice", "")
+			if num_card > 0 and choice.to_lower() == "random" and resolved_targets.size() > num_card:
+				resolved_targets.shuffle()
+				resolved_targets = resolved_targets.slice(0, num_card)
 			resolved_parameters["Targets"] = resolved_targets
 
 	if requires_targets and (not resolved_parameters.has("Targets") or resolved_parameters.get("Targets", []).is_empty()):

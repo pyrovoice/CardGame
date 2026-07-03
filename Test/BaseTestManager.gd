@@ -330,6 +330,16 @@ func waitForSelectionStart(max_frames: int = 10) -> bool:
 	print("❌ Selection didn't start within ", max_frames, " frames")
 	return false
 
+func waitForCastGuardCleared(max_frames: int = 10) -> bool:
+	"""Wait for current_casting_card to be null (coroutine-owned cleanup after cancel)"""
+	for i in range(max_frames):
+		if game.current_casting_card == null:
+			return true
+		await test_runner.get_tree().process_frame
+	
+	print("❌ Cast guard wasn't cleared within ", max_frames, " frames")
+	return false
+
 func getCardsInPlay() -> Array[Card]:
 	"""Helper to get all cards in play (returns Card objects from view)"""
 	return game.game_view.player_base.getCards()

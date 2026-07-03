@@ -369,3 +369,54 @@ func test_container_visualizer_graveyard_selection() -> bool:
 	
 	print("✅ Container visualizer graveyard selection test passed!")
 	return true
+
+func test_cancel_cast_mid_selection() -> bool:
+	"""Test that cancelling a cast then recasting only charges gold once.
+	Replicates the double-cast bug: start cast → cancel → recast → validate → assert cost paid once.
+	Runs with animations to match real game conditions.
+	"""
+	var bolt_card: CardData = createCardFromName("Bolt", GameZone.e.HAND_PLAYER)
+	var target_creature: CardData = createCardFromName("goblin", GameZone.e.BATTLEFIELD_PLAYER)
+	setPlayerGold(5)
+	var gold_before = game.game_data.player_gold.getValue()
+
+	# --- First cast: start, then cancel ---
+	game.tryPlayCard(bolt_card, GameZone.e.BATTLEFIELD_PLAYER)
+	if not await waitForSelectionStart(30):
+		return false
+	game.cancelSelection()
+	await test_runner.get_tree().process_frame
+
+	if not assert_test_null(game.current_casting_card, "Guard should be cleared after cancel"):
+		return false
+
+	# --- Second cast: start, select target, validate ---
+	game.tryPlayCard(bolt_card, GameZone.e.BATTLEFIELD_PLAYER)
+	if not await waitForSelectionStart(30):
+		return false
+
+	var target_card_obj = target_creature.get_card_object()
+	if not assert_test_not_null(target_card_obj, "Goblin should have a Card view object"):
+		return false
+	game.selection_manager.handle_card_click(target_card_obj)
+	await test_runner.get_tree().process_frame
+	game.selection_manager.validate_selection()
+
+	# Wait for cast animation and resolution to finish
+	await test_runner.get_tree().create_timer(1.5).timeout
+	await test_runner.get_tree().process_frame
+
+	# Guard must be cleared after the cast completes
+	if not assert_test_null(game.current_casting_card, "Guard should be null after cast completes"):
+		return false
+
+	# Gold should have been spent exactly once (Bolt costs 1)
+	if not assert_test_equal(game.game_data.player_gold.getValue(), gold_before - 1, "Gold should be spent exactly once"):
+		return false
+
+	# Bolt should be in graveyard (was cast exactly once)
+	if not assertCardExists("Bolt", "graveyard"):
+		return false
+
+	print("✅ Cancel cast mid-selection test passed!")
+	return true

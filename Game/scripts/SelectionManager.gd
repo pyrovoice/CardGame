@@ -240,6 +240,7 @@ func validate_selection():
 func cancel_selection():
 	"""Public method for controller to cancel selection"""
 	_end_selection()
+	selection_completed.emit(null)  # Unblock any coroutine awaiting selection_completed
 	selection_cancelled.emit()
 
 func _end_selection():

@@ -56,17 +56,18 @@ var current_viewing_container: CardContainer = null
 # --- Battlefield focus ---
 const _WIDE_POSITIONS: Array = [
 	Vector3(-6.8445325, -0.001, 0.0),
-	Vector3(-0.112, -0.001, 0.5769086),
+	Vector3(-0.112, -0.001, 0.0),
 	Vector3(6.4710474, -0.001, 0.0),
 ]
-const _FOCUSED_POSITION := Vector3(-0.112, -0.001, 0.5769086)
+const _FOCUSED_POSITION := Vector3(-0.112, -0.001, 0.0)
 const _FOCUSED_SCALE := Vector3(1.0, 1.0, 1.0)
 const _MINI_POSITIONS: Array = [
-	Vector3(-4.5, -0.001, 0.0),
-	Vector3(4.5, -0.001, 0.0),
+	Vector3(-9.0, -0.001, 0.0),
+	Vector3(9.0, -0.001, 0.0),
 ]
 const _MINI_SCALE := Vector3(0.65, 0.65, 0.65)
 const _FOCUS_TWEEN_DURATION := 0.35
+const _FOCUS_SPACING := 6.5
 
 func _init():
 	pass
@@ -673,18 +674,12 @@ func set_battlefield_focus(index: int) -> void:
 		# Wide view: restore all zones to original layout
 		for i in range(combat_zones.size()):
 			tween.tween_property(combat_zones[i], "position", _WIDE_POSITIONS[i], _FOCUS_TWEEN_DURATION)
-			tween.tween_property(combat_zones[i], "scale", _MINI_SCALE, _FOCUS_TWEEN_DURATION)
 	else:
-		# Focus one zone; place the other two as minis on the sides
-		var mini_slot := 0
+		# Focused zone goes to center; others offset by their distance from focused index
 		for i in range(combat_zones.size()):
-			if i == index:
-				tween.tween_property(combat_zones[i], "position", _FOCUSED_POSITION, _FOCUS_TWEEN_DURATION)
-				tween.tween_property(combat_zones[i], "scale", _FOCUSED_SCALE, _FOCUS_TWEEN_DURATION)
-			else:
-				tween.tween_property(combat_zones[i], "position", _MINI_POSITIONS[mini_slot], _FOCUS_TWEEN_DURATION)
-				tween.tween_property(combat_zones[i], "scale", _MINI_SCALE, _FOCUS_TWEEN_DURATION)
-				mini_slot += 1
+			var offset := (i - index) * _FOCUS_SPACING
+			var target := _FOCUSED_POSITION + Vector3(offset, 0.0, 0.0)
+			tween.tween_property(combat_zones[i], "position", target, _FOCUS_TWEEN_DURATION)
 
 ## Get player base
 func get_player_base() -> PlayerBase:

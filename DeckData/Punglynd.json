@@ -1,0 +1,17 @@
+{
+	"name": "Punglynd",
+	"limits": [
+		{ "color": "Red", "rarity": "Common",   "count": 3 },
+		{ "color": "Red", "rarity": "Uncommon", "count": 2 },
+		{ "color": "Red", "rarity": "Rare",     "count": 1 },
+		{ "color": "Red", "rarity": "Mythic",   "count": 1 }
+	],
+	"cards": [
+		"Punglynd Elder",
+		"Punglynd Childbearer",
+		"Punglynd Merchant",
+		"For those who come after",
+		"Warflag",
+		"Bolt"
+	]
+}

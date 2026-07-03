@@ -1,0 +1,37 @@
+[gd_scene load_steps=2 format=3 uid="uid://bc42aha2a06yq"]
+
+[ext_resource type="Script" uid="uid://bomo8rk2rl7ut" path="res://RunStartUI/run_start_ui.gd" id="1_kuho3"]
+
+[node name="Control" type="Control"]
+layout_mode = 3
+anchor_right = 0.804
+anchor_bottom = 0.82400006
+offset_right = -0.11999512
+offset_bottom = -0.2800293
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_kuho3")
+
+[node name="GridContainer" type="GridContainer" parent="."]
+layout_mode = 0
+offset_right = 40.0
+offset_bottom = 40.0
+columns = 4
+
+[node name="Label" type="Button" parent="GridContainer"]
+custom_minimum_size = Vector2(200, 80)
+layout_mode = 2
+text = "Punglynd"
+
+[node name="Label2" type="Button" parent="GridContainer"]
+custom_minimum_size = Vector2(200, 80)
+layout_mode = 2
+text = "Archetype"
+
+[node name="Button" type="Button" parent="."]
+layout_mode = 0
+offset_left = 973.0
+offset_top = 595.0
+offset_right = 1279.0
+offset_bottom = 722.0
+text = "Start"
