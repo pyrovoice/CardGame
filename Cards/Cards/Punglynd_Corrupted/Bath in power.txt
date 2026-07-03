@@ -1,0 +1,6 @@
+Name:Bath in Power
+Rarity:Common
+Types:Spell
+ManaCost:0
+E:$ Draw | NumCards$ 2
+CardText: Draw two cards.
