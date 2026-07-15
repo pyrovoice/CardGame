@@ -7,11 +7,12 @@ class_name DraftEffect
 ##   Mandatory$           — false = show Skip button (default: true)
 ##   AlternativeResolve$  — SVar to run when pool is empty (can_execute=false)
 ##                          Also executed inline when the player skips (Mandatory$ false)
+##   SubAbility$          — SVar to run after a successful draft (the drafted card is remembered)
 
 func can_execute(parameters: Dictionary, source_card_data: CardData, game_context: Game) -> bool:
 	return not _get_draft_pool(parameters).is_empty()
 
-func execute(parameters: Dictionary, source_card_data: CardData, game_context: Game):
+func execute(parameters: Dictionary, source_card_data: CardData, game_context: Game) -> Array[CardData]:
 	var pool = _get_draft_pool(parameters)
 
 	# Pick up to 3 unique cards at random for the draft window
@@ -40,10 +41,15 @@ func execute(parameters: Dictionary, source_card_data: CardData, game_context: G
 			var fallback_type = EffectType.string_to_type(fallback_type_str)
 			var fallback_params: Dictionary = parameters.get("alternativeResolve_parameters", {})
 			await EffectFactory.execute_effect(fallback_type, fallback_params, source_card_data, game_context)
-		return
+		return []  # Skipped — sub-ability will not fire
 
 	# Create the chosen card template as a real card in the player's hand
-	game_context.createCardData(choices[chosen_index], GameZone.e.HAND_PLAYER, source_card_data.playerOwned)
+	var new_card = game_context.createCardData(choices[chosen_index], GameZone.e.HAND_PLAYER, source_card_data.playerOwned)
+
+	# Track for effects that reference "LastDrafted" (e.g. ReduceCost)
+	game_context.last_drafted_card = new_card
+
+	return [new_card]  # Non-empty — sub-ability fires with the drafted card as remembered
 
 func validate_parameters(parameters: Dictionary) -> bool:
 	return parameters.has("Archetype")

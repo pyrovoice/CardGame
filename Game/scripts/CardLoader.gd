@@ -135,12 +135,13 @@ func parse_card_data(card_text: String) -> CardData:
 	
 	# Parse spell effects (for spell cards)
 	if card_data.hasType(CardData.CardType.SPELL):
-		card_data.spell_effects = parse_spell_effects(properties, card_data)
+		var svar_effects_for_spell = _build_svar_effects(properties)
+		card_data.spell_effects = parse_spell_effects(properties, card_data, svar_effects_for_spell)
 	
 	return card_data
 
 # Parse spell effects from card properties
-func parse_spell_effects(properties: Dictionary, card_data: CardData) -> Array[Dictionary]:
+func parse_spell_effects(properties: Dictionary, card_data: CardData, svar_effects: Dictionary = {}) -> Array[Dictionary]:
 	var spell_effects: Array[Dictionary] = []
 	
 	# Look for E: lines (Effect lines for spells)
@@ -151,14 +152,14 @@ func parse_spell_effects(properties: Dictionary, card_data: CardData) -> Array[D
 			effect_lines = [effect_lines]
 		
 		for effect_line in effect_lines:
-			var effect_dict = parse_single_spell_effect(effect_line, card_data)
+			var effect_dict = parse_single_spell_effect(effect_line, card_data, svar_effects)
 			if effect_dict:
 				spell_effects.append(effect_dict)
 	
 	return spell_effects
 
 # Parse a single spell effect line (same parsing as triggered abilities)
-func parse_single_spell_effect(effect_text: String, card_data: CardData) -> Dictionary:
+func parse_single_spell_effect(effect_text: String, card_data: CardData, svar_effects: Dictionary = {}) -> Dictionary:
 	var effect_type_str: String = ""
 	
 	# Remove the initial "$ " if present
@@ -190,6 +191,10 @@ func parse_single_spell_effect(effect_text: String, card_data: CardData) -> Dict
 		push_error("   Valid types: DealDamage, Pump, Draw, CreateToken, CreateCard, Cast, AddType, AddKeyword, MoveCard, SwitchPositions, etc.")
 		return {}
 	
+	# Embed sub-ability chain if SVars are available
+	if not svar_effects.is_empty():
+		_embed_sub_ability_chain(parameters, svar_effects)
+	
 	# Convert to EffectType enum
 	var effect_type = EffectType.string_to_type(effect_type_str)
 	
@@ -220,7 +225,9 @@ func _parse_effect_parameters_from_parts(parts: Array) -> Dictionary:
 		elif part.begins_with("NumCard$"):
 			parameters["NumCard"] = int(part.substr(9))
 		elif part.begins_with("NumDmg$"):
-			parameters["NumDamage"] = int(part.substr(8))
+			var val = part.substr(8).strip_edges()
+			# Keep as string when the value is a formula (e.g. "Card.Remembered.Power")
+			parameters["NumDamage"] = int(val) if val.is_valid_int() else val
 		elif part.begins_with("Num$"):
 			parameters["Num"] = part.substr(5)
 		elif part.begins_with("Pow$"):
@@ -251,12 +258,22 @@ func _parse_effect_parameters_from_parts(parts: Array) -> Dictionary:
 			parameters["Modif"] = part.substr(7)
 		elif part.begins_with("Mandatory$"):
 			parameters["Mandatory"] = part.substr(11).strip_edges().to_lower() != "false"
+		elif part.begins_with("Optional$"):
+			parameters["Optional"] = part.substr(9).strip_edges().to_lower() == "true"
 		elif part.begins_with("Archetype$"):
 			parameters["Archetype"] = part.substr(11)
 		elif part.begins_with("AlternativeResolve$"):
 			parameters["alternativeResolve"] = part.substr(20)
 		elif part.begins_with("IfNotFound$"):  # backward-compat alias
 			parameters["alternativeResolve"] = part.substr(12)
+		elif part.begins_with("FollowUp$"):
+			parameters["followUp"] = part.substr(10)  # alias → subAbility
+		elif part.begins_with("IfPaid$"):
+			parameters["ifPaid"] = part.substr(8)      # alias → subAbility
+		elif part.begins_with("SubAbility$"):
+			parameters["subAbility"] = part.substr(12)
+		elif part.begins_with("Affected$"):
+			parameters["Affected"] = part.substr(10)
 	
 	return parameters
 
@@ -459,6 +476,9 @@ func parse_triggered_ability(trigger_text: String, svar_effects: Dictionary, car
 			var alt_svar = svar_effects[alt_name]
 			effect_parameters["alternativeResolve_effect_type"] = alt_svar.get("effect_type", "")
 			effect_parameters["alternativeResolve_parameters"] = alt_svar.get("parameters", {})
+		
+		# Recursively embed SubAbility$ chain (SubAbility$, FollowUp$, IfPaid$ are all aliases)
+		_embed_sub_ability_chain(effect_parameters, svar_effects)
 	
 	# Set default trigger zone to Battlefield if not specified
 	if not trigger_conditions.has(TriggeredAbility.TriggerCondition.TRIGGER_ZONES):
@@ -537,6 +557,45 @@ func _add_keyword_triggered_abilities(card_data: CardData):
 # Validate if an effect type string is valid
 func _is_valid_effect_type(effect_type_str: String) -> bool:
 	return EffectType.is_valid_string(effect_type_str)
+
+# Build the SVar lookup dictionary from card properties.
+# Extracted so it can be shared between parse_abilities and parse_spell_effects.
+func _build_svar_effects(properties: Dictionary) -> Dictionary:
+	var svar_effects: Dictionary = {}
+	if properties.has("SVar"):
+		var svar_lines = properties["SVar"]
+		if typeof(svar_lines) == TYPE_STRING:
+			svar_lines = [svar_lines]
+		for svar_line in svar_lines:
+			var svar_parts = svar_line.split("$", false, 1)
+			if svar_parts.size() >= 2:
+				var svar_name = svar_parts[0].strip_edges()
+				var svar_definition = svar_parts[1].strip_edges()
+				var svar_parts_def = svar_definition.split(" | ")
+				svar_effects[svar_name] = {
+					"effect_type": svar_parts_def[0].strip_edges(),
+					"parameters": _parse_effect_parameters_from_parts(svar_parts_def.slice(1))
+				}
+	return svar_effects
+
+# Recursively embed SubAbility$ (and its IfPaid$/FollowUp$ aliases) into params.
+# Reads params["subAbility"] / params["ifPaid"] / params["followUp"],
+# looks up the referenced SVar, and stores:
+#   params["subAbility_effect_type"]  — the SVar effect type string
+#   params["subAbility_parameters"]   — the SVar parameters (with their own chain embedded)
+func _embed_sub_ability_chain(params: Dictionary, svar_effects: Dictionary) -> void:
+	var sub_name: String = params.get("subAbility", "")
+	if sub_name.is_empty():
+		sub_name = params.get("ifPaid", "")    # alias: conditional sub-ability after cost paid
+	if sub_name.is_empty():
+		sub_name = params.get("followUp", "") # alias: post-success chain (e.g. DraftEffect)
+	if sub_name.is_empty() or sub_name not in svar_effects:
+		return
+	var sub_svar = svar_effects[sub_name]
+	var sub_params: Dictionary = sub_svar.get("parameters", {}).duplicate()
+	_embed_sub_ability_chain(sub_params, svar_effects)  # recurse
+	params["subAbility_effect_type"] = sub_svar.get("effect_type", "")
+	params["subAbility_parameters"] = sub_params
 
 func _parse_color(color_str: String) -> CardData.CardColor:
 	"""Convert a color string to CardData.CardColor enum"""

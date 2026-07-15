@@ -4,14 +4,23 @@ class_name Effect
 ## Base class for all ability effects
 ## Each effect type should extend this and implement execute()
 
-## Execute the effect
-## @param parameters: Dictionary - Effect-specific parameters
-## @param source_card_data: CardData - The card that is the source of this effect
-## @param game_context: Game - The game context for accessing game state
-## @return: void (use await if the effect is async)
-func execute(parameters: Dictionary, source_card_data: CardData, game_context: Game):
+## Execute the effect and return the cards it acted on.
+## Return an empty array to signal the effect was suppressed (player skipped, condition not met,
+## not enough resources, etc.) — the sub-ability chain will NOT fire in that case.
+## Return a non-empty array for success; those cards become the new remembered set.
+## For effects that don't act on specific cards (e.g. AddGold, Draw), return [source_card_data]
+## as a "ran successfully" sentinel so the sub-ability still fires.
+func execute(parameters: Dictionary, source_card_data: CardData, game_context: Game) -> Array[CardData]:
 	push_error("Effect.execute() must be implemented by subclass")
-	pass
+	return []
+
+## Runner — called by EffectFactory instead of execute() directly.
+## Handles the full lifecycle: execute → remember affected cards → fire sub-ability chain.
+## The sub-ability always fires unless execute() itself fizzles (returns early without acting).
+## An empty return only means no cards were transmitted — it does not suppress the chain.
+func run(parameters: Dictionary, source_card_data: CardData, game_context: Game) -> void:
+	Effect.remembered_cards = await execute(parameters, source_card_data, game_context)
+	await _run_sub_ability(parameters, source_card_data, game_context)
 
 ## Validate that required parameters are present
 ## @param parameters: Dictionary - Effect parameters to validate
@@ -50,6 +59,59 @@ func can_execute(parameters: Dictionary, source_card_data: CardData, game_contex
 		return false
 
 	return true
+
+# ─── Sub-Ability + Remembered Cards ──────────────────────────────────────────
+
+## Cards affected by the last resolved effect.
+## Overwritten automatically by each effect after it acts on its targets.
+## Sub-abilities reference this set via Affected$ Card.Remembered.
+static var remembered_cards: Array[CardData] = []
+
+## Overwrite the remembered set with the given cards.
+static func remember(cards: Array[CardData]) -> void:
+	remembered_cards = cards
+
+## If parameters include Affected$ Card.Remembered, return the remembered cards.
+## Otherwise returns an empty array — caller should fall through to its own targeting.
+static func resolve_affected(parameters: Dictionary) -> Array[CardData]:
+	if parameters.get("Affected", "") == "Card.Remembered":
+		return remembered_cards
+	return []
+
+## Execute the sub-ability chain embedded in parameters, if one was defined (SubAbility$).
+## CardLoader pre-resolves the SVar name into subAbility_effect_type + subAbility_parameters
+## at load time. Call this at the end of execute() — or inside a success branch for
+## conditional sub-abilities (e.g. only when a cost is paid).
+func _run_sub_ability(parameters: Dictionary, source_card_data: CardData, game_context: Game) -> void:
+	var sub_type_str: String = parameters.get("subAbility_effect_type", "")
+	if sub_type_str.is_empty():
+		return
+	var sub_type = EffectType.string_to_type(sub_type_str)
+	var sub_params: Dictionary = parameters.get("subAbility_parameters", {})
+	await EffectFactory.execute_effect(sub_type, sub_params, source_card_data, game_context)
+
+## Resolve a parameter value that may be a literal int or a runtime formula string.
+## Formulas are evaluated against Effect.remembered_cards at execution time.
+##
+## Supported formulas:
+##   "Card.Remembered.Power"  → power of the first remembered card (0 if none)
+##
+## Example card text:  NumDmg$ Card.Remembered.Power
+static func resolve_numeric(value) -> int:
+	if value is int:
+		return value
+	if value is String:
+		match value:
+			"Card.Remembered.Power":
+				if not remembered_cards.is_empty():
+					return remembered_cards[0].power
+				return 0
+		# Fall back to plain integer parse
+		if value.is_valid_int():
+			return int(value)
+		push_warning("Effect.resolve_numeric: unknown formula '" + str(value) + "', defaulting to 0")
+		return 0
+	return 0
 
 ## Return all in-play cards matching ValidCard$, selected per Choice$/NumCard$.
 ## Choice$ Random (default) picks without UI; Choice$ Player triggers selection UI.

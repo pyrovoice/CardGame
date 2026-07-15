@@ -32,6 +32,10 @@ enum Type {
 	# Resource effects
 	ADD_GOLD,  # Add gold to the controlling player
 	
+	# Recycle mechanic
+	RECYCLE,  # Exile X cards from graveyard at random (optional or mandatory)
+	REDUCE_COST,  # Reduce a card's gold cost by N
+
 	# Future effects
 	DESTROY,  # Destroy permanents
 	BOUNCE,  # Return to hand
@@ -76,6 +80,10 @@ static func type_to_string(effect_type: Type) -> String:
 			return "Draft"
 		Type.ADD_GOLD:
 			return "AddGold"
+		Type.RECYCLE:
+			return "Recycle"
+		Type.REDUCE_COST:
+			return "ReduceCost"
 		Type.DESTROY:
 			return "Destroy"
 		Type.BOUNCE:
@@ -129,6 +137,10 @@ static func string_to_type(effect_string: String) -> Type:
 			return Type.DRAFT
 		"AddGold":
 			return Type.ADD_GOLD
+		"Recycle":
+			return Type.RECYCLE
+		"ReduceCost":
+			return Type.REDUCE_COST
 		"Destroy":
 			return Type.DESTROY
 		"Bounce":

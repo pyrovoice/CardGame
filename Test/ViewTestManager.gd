@@ -420,3 +420,145 @@ func test_cancel_cast_mid_selection() -> bool:
 
 	print("✅ Cancel cast mid-selection test passed!")
 	return true
+
+func test_death_from_the_grave_targeting() -> bool:
+	"""View test: per-effect targeting for a Death-from-the-Grave-style spell.
+
+	Selection 1 (mandatory, graveyard creature):
+	  - Container visualizer opens because the pool lives in a container zone.
+	Selection 2 (optional, opponent creature):
+	  - Confirm button is available immediately (count=0 → selection already complete).
+	  - Selecting the opponent creature triggers Card.Remembered.Power damage.
+
+	Final assertions verify the spell's two effects resolved correctly."""
+	print("=== Testing Death-from-the-Grave per-effect targeting (view) ===")
+
+	# -- Setup ----------------------------------------------------------------
+	var gc_tpl = CardData.new()
+	gc_tpl.cardName = "TestGraveyardCreature"
+	gc_tpl.addType(CardData.CardType.CREATURE)
+	gc_tpl._power = 3
+	var gc = game.createCardData(gc_tpl, GameZone.e.GRAVEYARD_PLAYER, true)
+
+	var opp_tpl = CardData.new()
+	opp_tpl.cardName = "TestOpponentCreature"
+	opp_tpl.addType(CardData.CardType.CREATURE)
+	opp_tpl._power = 5  # Survives 3 damage
+	var opp = game.createCardData(opp_tpl, GameZone.e.BATTLEFIELD_OPPONENT, false)
+
+	var spell_tpl = CardData.new()
+	spell_tpl.cardName = "Test Death From The Grave"
+	spell_tpl.goldCost = 1
+	spell_tpl.addType(CardData.CardType.SPELL)
+	# Effect 1: mandatory — return target graveyard creature to battlefield
+	spell_tpl.spell_effects.append({
+		"effect_type": EffectType.Type.MOVE_CARD,
+		"effect_parameters": {
+			"Origin": "Graveyard.Player",
+			"Destination": "Battlefield.Player",
+			"ValidTargets": "Graveyard.Player+Creature",
+		}
+	})
+	# Effect 2: optional — deal Card.Remembered.Power damage to an opponent creature
+	spell_tpl.spell_effects.append({
+		"effect_type": EffectType.Type.DEAL_DAMAGE,
+		"effect_parameters": {
+			"NumDamage": "Card.Remembered.Power",
+			"ValidTargets": "Creature+OppCtrl",
+			"Optional": true,
+		}
+	})
+	var spell = game.createCardData(spell_tpl, GameZone.e.HAND_PLAYER, true)
+	setPlayerGold(1)
+
+	# -- UI state captured across the two selection prompts --------------------
+	var sel_count = [0]
+	var state = {
+		"first_visualizer_shown": false,   # Container visualizer for graveyard pool
+		"second_confirm_immediate": false,  # Optional: Confirm enabled before any card is picked
+	}
+
+	# handler is connected WITHOUT ONE_SHOT so it fires for both selections
+	var handler = func():
+		sel_count[0] += 1
+		var n = sel_count[0]
+
+		# Each selection is driven asynchronously so as not to block the signal dispatch
+		var async_h = func():
+			await test_runner.get_tree().process_frame
+
+			if n == 1:
+				# ── First selection: mandatory graveyard creature ─────────────
+				# Pool is from GRAVEYARD_PLAYER (a container zone) → visualizer should open
+				state["first_visualizer_shown"] = game.game_view.container_visualizer.visible
+
+				# Select via visualizer if open; fall back to direct card click
+				if game.game_view.container_visualizer.visible:
+					var hb = game.game_view.container_visualizer.h_box_container
+					for child in hb.get_children():
+						if child is Card2D and child.cardData == gc:
+							game.selection_manager._on_visualizer_card_clicked(child.cardData)
+							break
+				else:
+					var gc_card = gc.get_card_object()
+					if gc_card and is_instance_valid(gc_card):
+						game.selection_manager.handle_card_click(gc_card)
+
+				await test_runner.get_tree().process_frame
+				game.selection_manager.validate_selection()
+
+			elif n == 2:
+				# ── Second selection: optional opponent creature ──────────────
+				# count=0 → PlayerSelection.is_complete=true from the start →
+				# Confirm button must be enabled before the player picks anything
+				state["second_confirm_immediate"] = not game.game_view.main_action_button.disabled
+
+				# Click the opponent creature directly (in-play, 3D world highlight path)
+				var opp_card = opp.get_card_object()
+				if opp_card and is_instance_valid(opp_card):
+					game.selection_manager.handle_card_click(opp_card)
+
+				await test_runner.get_tree().process_frame
+				game.selection_manager.validate_selection()
+
+		async_h.call()
+
+	game.selection_manager.selection_started.connect(handler)
+	await game.tryPlayCard(spell, GameZone.e.BATTLEFIELD_PLAYER)
+	# Allow animations triggered by effects to settle
+	await test_runner.get_tree().create_timer(1.5).timeout
+	game.selection_manager.selection_started.disconnect(handler)
+
+	# -- Assertions -----------------------------------------------------------
+	if not assert_test_equal(sel_count[0], 2,
+			"Spell should prompt for exactly 2 targets (one per effect)"):
+		return false
+	print("  ✅ 2 selection prompts fired in sequence")
+
+	if not assert_test_true(state["first_visualizer_shown"],
+			"Container visualizer should open for the graveyard-pool selection"):
+		return false
+	print("  ✅ Container visualizer shown for first (graveyard) target")
+
+	if not assert_test_true(state["second_confirm_immediate"],
+			"Confirm button should be enabled immediately for the optional target"):
+		return false
+	print("  ✅ Optional selection's Confirm was available without picking a card")
+
+	if not assert_test_equal(game.game_data.get_card_zone(gc), GameZone.e.BATTLEFIELD_PLAYER,
+			"Graveyard creature should now be on battlefield"):
+		return false
+	print("  ✅ Creature returned from graveyard to battlefield")
+
+	if not assert_test_equal(opp.getDamage(), 3,
+			"Opponent should have taken 3 damage (Card.Remembered.Power = gc.power = 3)"):
+		return false
+	print("  ✅ Opponent took 3 damage via Card.Remembered.Power formula")
+
+	if not assert_test_true(GameZone.is_in_play(game.game_data.get_card_zone(opp)),
+			"Opponent creature should survive (power 5 > damage 3)"):
+		return false
+	print("  ✅ Opponent survived (5 power, 3 damage)")
+
+	print("✅ Death-from-the-Grave targeting UI test passed!")
+	return true

@@ -3,19 +3,17 @@ class_name CastEffect
 
 ## Effect that plays/casts a card from any zone (deck, hand, graveyard, etc.)
 
-func execute(parameters: Dictionary, source_card_data: CardData, game_context: Game):
+func execute(parameters: Dictionary, source_card_data: CardData, game_context: Game) -> Array[CardData]:
 	var target = parameters.get("Target", "")
 	
 	if target == "Self":
-		# Cast the source card itself (e.g., Eyepatch the Pirate from deck)
 		print("🎭 [CAST] Casting ", source_card_data.cardName, " from its current zone")
-
-		# Use game-effect execution path (not player-input play path),
-		# so casting from deck/graveyard bypasses hand-only source checks.
 		var empty_selections = SelectionManager.CardPlaySelections.new()
 		await game_context.tryPayAndSelectsForCardPlay(source_card_data, empty_selections, false)
+		return [source_card_data]
 	else:
 		print("❌ Unsupported Cast target: ", target)
+		return []
 
 func validate_parameters(parameters: Dictionary) -> bool:
 	return parameters.has("Target")

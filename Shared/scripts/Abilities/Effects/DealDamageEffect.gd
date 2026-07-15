@@ -3,20 +3,23 @@ class_name DealDamageEffect
 
 ## Effect that deals damage to a target
 
-func execute(parameters: Dictionary, source_card_data: CardData, game_context: Game):
-	var damage_amount = parameters.get("NumDamage", 1)
+func execute(parameters: Dictionary, source_card_data: CardData, game_context: Game) -> Array[CardData]:
+	# NumDamage may be a literal int or a formula string (e.g. "Card.Remembered.Power")
+	var damage_amount = Effect.resolve_numeric(parameters.get("NumDamage", 1))
 	var valid_targets = parameters.get("ValidTargets", "Any")
-	# Effects expect targets to be resolved by the caller.
+	# Pre-resolved targets from AbilityManager, or fall back to Affected$ Card.Remembered
 	var preselected_targets: Array = parameters.get("Targets", [])
 	if preselected_targets.is_empty():
+		preselected_targets.assign(Effect.resolve_affected(parameters))
+	if preselected_targets.is_empty():
 		print("⚠️ DealDamageEffect missing pre-resolved Targets (ValidTargets=", valid_targets, ")")
-		return
+		return []
 
 	var target_data: CardData = preselected_targets[0]
 	var target_node: Card
 	if not target_data:
 		print("⚠️ Target no longer exists")
-		return
+		return []
 	
 	print("⚡ ", source_card_data.cardName, " deals ", damage_amount, " damage to ", target_data.cardName)
 	
@@ -30,6 +33,10 @@ func execute(parameters: Dictionary, source_card_data: CardData, game_context: G
 	
 	# Resolve state-based actions after damage
 	game_context.resolveStateBasedAction()
+
+	var affected: Array[CardData] = []
+	affected.assign(preselected_targets)
+	return affected
 
 func validate_parameters(parameters: Dictionary) -> bool:
 	return parameters.has("NumDamage")

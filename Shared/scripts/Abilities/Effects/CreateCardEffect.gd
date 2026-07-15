@@ -3,11 +3,11 @@ class_name CreateCardEffect
 
 ## Effect that creates a card from an archetype pool and adds it to hand
 
-func execute(parameters: Dictionary, source_card_data: CardData, game_context: Game):
+func execute(parameters: Dictionary, source_card_data: CardData, game_context: Game) -> Array[CardData]:
 	var pool_string = parameters.get("Pool", "")
 	if pool_string.is_empty():
 		print("❌ No Pool specified for card creation")
-		return
+		return []
 	
 	# Parse the pool — try archetype pool first, then named card pool
 	var archetype_enum = _parse_archetype_pool(pool_string)
@@ -23,7 +23,7 @@ func execute(parameters: Dictionary, source_card_data: CardData, game_context: G
 
 	if card_pool.is_empty():
 		print("⚠️ Card pool '", pool_string, "' is empty or unknown")
-		return
+		return []
 	
 	# Filter out legendary cards unless explicitly included
 	var include_legendary = parameters.get("IncludeLegendary", false)
@@ -31,11 +31,12 @@ func execute(parameters: Dictionary, source_card_data: CardData, game_context: G
 		card_pool = card_pool.filter(func(card: CardData): return not card.hasType(CardData.CardType.LEGENDARY))
 		if card_pool.is_empty():
 			print("⚠️ Archetype pool '", pool_string, "' has no non-legendary cards")
-			return
+			return []
 	
 	# Get number of cards to create
 	var num_cards = int(parameters.get("Num", 1))
 	
+	var created: Array[CardData] = []
 	# Create the cards
 	for i in range(num_cards):
 		# Add to appropriate hand
@@ -60,6 +61,9 @@ func execute(parameters: Dictionary, source_card_data: CardData, game_context: G
 			_apply_modifier_to_card(new_card_data, modif)
 		
 		print("✨ Created card '", new_card_data.cardName, "' from archetype '", pool_string, "' into hand")
+		created.append(new_card_data)
+
+	return created
 
 func _apply_modifier_to_card(card_data: CardData, modifier: String):
 	"""Apply a modifier (like 'fleeting') to a created card"""

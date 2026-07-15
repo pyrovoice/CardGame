@@ -4,21 +4,22 @@ class_name CreateTokenEffect
 ## Effect that creates token creatures
 ## Replacement effects should be handled at the ability level, not here
 
-func execute(parameters: Dictionary, source_card_data: CardData, game_context: Game):
+func execute(parameters: Dictionary, source_card_data: CardData, game_context: Game) -> Array[CardData]:
 	var token_script = parameters.get("TokenScript", "")
 	if token_script.is_empty():
 		print("❌ No TokenScript specified for token creation")
-		return
+		return []
 	
 	# Load the token data from the tokensData array
 	var token_template = CardLoaderAL.getCardByName(token_script)
 	if not token_template:
 		print("❌ Failed to load token: " + token_script)
-		return
+		return []
 	
 	# Get number of tokens to create (may have been modified by replacement effects)
 	var tokens_to_create = parameters.get("tokens_to_create", 1)
 	
+	var created: Array[CardData] = []
 	# Create the tokens
 	for i in range(tokens_to_create):
 		# Tokens enter the battlefield immediately on creation.
@@ -38,6 +39,9 @@ func execute(parameters: Dictionary, source_card_data: CardData, game_context: G
 		var token_card = token_data.get_card_object()
 		if token_card:
 			token_card.setFlip(true)
+		created.append(token_data)
+
+	return created
 
 func validate_parameters(parameters: Dictionary) -> bool:
 	return parameters.has("TokenScript")

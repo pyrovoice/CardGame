@@ -51,17 +51,23 @@ static func create_effect(effect_type: EffectType.Type) -> Effect:
 		EffectType.Type.DRAFT:
 			return DraftEffect.new()
 		
+		EffectType.Type.RECYCLE:
+			return RecycleEffect.new()
+		
+		EffectType.Type.REDUCE_COST:
+			return ReduceCostEffect.new()
+		
 		_:
 			push_error("Unknown effect type: " + str(effect_type))
 			return null
 
 static func execute_effect(effect_type: EffectType.Type, parameters: Dictionary, source_card_data: CardData, game_context: Game):
-	"""Convenience method to create and execute an effect in one call"""
+	"""Convenience method to create and run an effect in one call"""
 	var effect = create_effect(effect_type)
 	if effect:
 		if not effect.validate_parameters(parameters):
 			push_error("Invalid parameters for effect type: " + EffectType.type_to_string(effect_type))
 			return
-		await effect.execute(parameters, source_card_data, game_context)
+		await effect.run(parameters, source_card_data, game_context)
 	else:
 		push_error("Failed to create effect for type: " + EffectType.type_to_string(effect_type))

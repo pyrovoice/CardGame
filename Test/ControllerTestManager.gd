@@ -1379,15 +1379,12 @@ func test_elusive_position_swap() -> bool:
 	var regular_card_2 = game.createCardData(regular_template_2, GameZone.e.BATTLEFIELD_PLAYER, true)
 	var dummy_card = game.createCardData(dummy_template, GameZone.e.BATTLEFIELD_PLAYER, true)
 	
-	# Add Elusive ability using CardLoader (ensures test uses same logic as production code)
-	# Note: _add_elusive_ability adds the ability but doesn't register it to game signals
-	CardLoaderAL._add_elusive_ability(elusive_card)
-	
-	# Register the newly added ability to game signals (since createCardData already called subscribe_to_game_signals)
-	if elusive_card.triggered_abilities.size() > 0:
-		var new_ability = elusive_card.triggered_abilities[-1]
-		new_ability.register_to_game(game)
-	
+	# Add keyword abilities via KeywordRegistry (same logic as production CardLoader)
+	# Then register each new ability to game signals since createCardData already called subscribe_to_game_signals
+	for ability in KeywordRegistry.get_all_abilities_for_card(elusive_card):
+		elusive_card.add_ability(ability)
+		ability.register_to_game(game)
+
 	print("  ✅ Cards created at battlefield using game.createCardData")
 	
 	# Step 3: Move elusive and regular cards to combat zone 0
@@ -1521,8 +1518,9 @@ func test_fleeting_keyword() -> bool:
 	test_card.addType(CardData.CardType.CREATURE)
 	test_card.add_keyword("fleeting")  # Add the fleeting keyword
 	
-	# Step 2: Add fleeting ability using CardLoader (same as production code)
-	CardLoaderAL._add_fleeting_ability(test_card)
+	# Step 2: Add fleeting ability via KeywordRegistry (same as production code)
+	for ability in KeywordRegistry.get_all_abilities_for_card(test_card):
+		test_card.add_ability(ability)
 	
 	# Step 3: Create the card in hand and register it to game signals
 	test_card = game.createCardData(test_card, GameZone.e.HAND_PLAYER, true)
@@ -2099,4 +2097,220 @@ func test_alternative_resolve() -> bool:
 	print("✅ S3 passed")
 
 	print("✅ AlternativeResolve test passed!")
+	return true
+
+func test_sub_ability_move_and_pump() -> bool:
+	"""Test a Death-from-the-Grave-style spell:
+	  Effect 1 (mandatory):  MoveCard — return target creature from Graveyard.Player to battlefield.
+	  Effect 2 (optional):   DealDamage — deal damage equal to that creature's power (Card.Remembered.Power)
+	                         to up to one opponent creature.
+	Exercises per-effect upfront targeting, zone-scoped ValidTargets, and the Card.Remembered.Power formula.
+	Two casts:
+	  Cast A — both targets provided → creature returns, opponent takes damage equal to moved creature's power.
+	  Cast B — only graveyard target provided → creature returns, optional damage effect fizzles."""
+	print("=== Testing Death-from-the-Grave-style spell ===")
+
+	# Helper — builds the spell inline with the same two effects as Death from the Grave
+	var make_spell = func() -> CardData:
+		var s = CardData.new()
+		s.cardName = "Test Death From The Grave"
+		s.goldCost = 1
+		s.addType(CardData.CardType.SPELL)
+		# Effect 1: mandatory — return target graveyard creature to battlefield
+		s.spell_effects.append({
+			"effect_type": EffectType.Type.MOVE_CARD,
+			"effect_parameters": {
+				"Origin": "Graveyard.Player",
+				"Destination": "Battlefield.Player",
+				"ValidTargets": "Graveyard.Player+Creature",  # zone-scoped mandatory target
+			}
+		})
+		# Effect 2: optional — deal damage = moved creature's power to an opponent creature
+		s.spell_effects.append({
+			"effect_type": EffectType.Type.DEAL_DAMAGE,
+			"effect_parameters": {
+				"NumDamage": "Card.Remembered.Power",  # resolved at runtime
+				"ValidTargets": "Creature+OppCtrl",
+				"Optional": true,
+			}
+		})
+		return game.createCardData(s, GameZone.e.HAND_PLAYER, true)
+
+	# ── Setup ──────────────────────────────────────────────────────────────────
+	# Graveyard creature: power 3
+	var gc_tpl = CardData.new()
+	gc_tpl.cardName = "TestGraveyardCreature"
+	gc_tpl.addType(CardData.CardType.CREATURE)
+	gc_tpl._power = 3
+	var gc = game.createCardData(gc_tpl, GameZone.e.GRAVEYARD_PLAYER, true)
+
+	# Opponent creature: power 5 (survives 3 damage)
+	var opp_tpl = CardData.new()
+	opp_tpl.cardName = "TestOpponentCreature"
+	opp_tpl.addType(CardData.CardType.CREATURE)
+	opp_tpl._power = 5
+	var opp = game.createCardData(opp_tpl, GameZone.e.BATTLEFIELD_OPPONENT, false)
+
+	if not assert_test_true(game.game_data.get_cards_in_zone(GameZone.e.GRAVEYARD_PLAYER).has(gc),
+			"Graveyard creature should start in graveyard"):
+		return false
+	if not assert_test_true(GameZone.is_in_play(game.game_data.get_card_zone(opp)),
+			"Opponent creature should start in play"):
+		return false
+
+	# ── Cast A: both targets → creature returns + opponent takes damage ─────────
+	print("  --- Cast A: mandatory + optional target ---")
+	setPlayerGold(1)
+	var spell_a = make_spell.call()
+
+	# Pre-select in effect order: [graveyard creature, opponent creature]
+	var sel_a = SelectionManager.CardPlaySelections.new()
+	sel_a.add_spell_target(gc)   # slot 0 → MoveCard
+	sel_a.add_spell_target(opp)  # slot 1 → DealDamage
+	await game.tryPlayCard(spell_a, GameZone.e.BATTLEFIELD_PLAYER, sel_a)
+	await test_runner.get_tree().process_frame
+	await test_runner.get_tree().process_frame
+
+	# Graveyard creature should now be on battlefield
+	if not assert_test_equal(game.game_data.get_card_zone(gc), GameZone.e.BATTLEFIELD_PLAYER,
+			"Graveyard creature should be on battlefield after spell"):
+		return false
+	print("  ✅ Creature returned to battlefield")
+
+	# Opponent creature should have taken 3 damage (gc.power = 3)
+	if not assert_test_equal(opp.getDamage(), 3,
+			"Opponent creature should have 3 damage (= moved creature's power)"):
+		return false
+	print("  ✅ Opponent took 3 damage (Card.Remembered.Power = 3)")
+
+	# Opponent still alive — power 5 > damage 3
+	if not assert_test_true(GameZone.is_in_play(game.game_data.get_card_zone(opp)),
+			"Opponent creature should survive (power 5 > damage 3)"):
+		return false
+	print("  ✅ Opponent creature survived (5 power, 3 damage)")
+
+	# ── Cast B: only graveyard target → optional damage fizzles ───────────────
+	print("  --- Cast B: mandatory target only, optional target skipped ---")
+
+	# Need a new graveyard creature (gc is now on battlefield)
+	var gc2_tpl = CardData.new()
+	gc2_tpl.cardName = "TestGraveyardCreature2"
+	gc2_tpl.addType(CardData.CardType.CREATURE)
+	gc2_tpl._power = 2
+	var gc2 = game.createCardData(gc2_tpl, GameZone.e.GRAVEYARD_PLAYER, true)
+
+	setPlayerGold(1)
+	var spell_b = make_spell.call()
+
+	# Pre-select only one target (the graveyard creature); no second target → DealDamage fizzles
+	var sel_b = SelectionManager.CardPlaySelections.new()
+	sel_b.add_spell_target(gc2)
+	var opp_damage_before = opp.getDamage()  # Should be 3 from Cast A
+
+	await game.tryPlayCard(spell_b, GameZone.e.BATTLEFIELD_PLAYER, sel_b)
+	await test_runner.get_tree().process_frame
+	await test_runner.get_tree().process_frame
+
+	# gc2 should be on battlefield
+	if not assert_test_equal(game.game_data.get_card_zone(gc2), GameZone.e.BATTLEFIELD_PLAYER,
+			"Second graveyard creature should be on battlefield"):
+		return false
+	print("  ✅ Second creature returned to battlefield")
+
+	# Opponent damage must NOT have changed — DealDamage had no target and fizzled
+	if not assert_test_equal(opp.getDamage(), opp_damage_before,
+			"Opponent damage should be unchanged when optional target is skipped"):
+		return false
+	print("  ✅ Optional DealDamage correctly fizzled (no second target)")
+
+	print("✅ Death-from-the-Grave-style spell test passed!")
+	return true
+
+func test_recycle_spell_sub_ability() -> bool:
+	"""Test RecycleEffect chained with AddGold via SubAbility (Mandatory$ true).
+	Cast 1: graveyard has no cards → Recycle.can_execute returns false → spell fizzles → gold unchanged.
+	Cast 2: 3 creatures in graveyard → Recycle exiles all 3 → SubAbility AddGold fires → +1 gold."""
+	print("=== Testing Recycle SubAbility: exile 3 → AddGold ===")
+
+	# Helper lambda — builds a fresh copy of the spell (zero cost, single effect)
+	var make_spell = func() -> CardData:
+		var s = CardData.new()
+		s.cardName = "Test Recycle Gold Spell"
+		s.goldCost = 0
+		s.addType(CardData.CardType.SPELL)
+		# Mandatory: true → can_execute fails cleanly when graveyard < 3,
+		# so the whole spell effect skips and gold is never added.
+		s.spell_effects.append({
+			"effect_type": EffectType.Type.RECYCLE,
+			"effect_parameters": {
+				"Num": 3,
+				"Mandatory": true,
+				"subAbility_effect_type": "AddGold",
+				"subAbility_parameters": {"Amount": 1}
+			}
+		})
+		return game.createCardData(s, GameZone.e.HAND_PLAYER, true)
+
+	setPlayerGold(5)
+	var initial_gold = game.game_data.player_gold.getValue()
+
+	# === Cast 1: graveyard empty → Recycle can_execute = false → no gold gained ===
+	print("  --- Cast 1: empty graveyard (should fizzle) ---")
+	var graveyard_before_cast1 = game.game_data.get_cards_in_zone(GameZone.e.GRAVEYARD_PLAYER).size()
+
+	var spell1 = make_spell.call()
+	await game.tryPlayCard(spell1, GameZone.e.BATTLEFIELD_PLAYER)
+	await test_runner.get_tree().process_frame
+
+	if not assert_test_equal(game.game_data.player_gold.getValue(), initial_gold,
+			"Gold should not change when Recycle fizzles (empty graveyard)"):
+		return false
+	print("  ✅ Gold unchanged after fizzled cast")
+
+	# spell1 itself moved to graveyard after resolving; record the new graveyard size
+	var graveyard_after_cast1 = game.game_data.get_cards_in_zone(GameZone.e.GRAVEYARD_PLAYER).size()
+
+	# === Add 3 creature cards directly to the graveyard ===
+	print("  --- Adding 3 creatures to graveyard ---")
+	for i in range(1, 4):
+		var tpl = CardData.new()
+		tpl.cardName = "RecycleTarget" + str(i)
+		tpl.addType(CardData.CardType.CREATURE)
+		game.createCardData(tpl, GameZone.e.GRAVEYARD_PLAYER, true)
+
+	var graveyard_before_cast2 = game.game_data.get_cards_in_zone(GameZone.e.GRAVEYARD_PLAYER).size()
+	if not assert_test_equal(graveyard_before_cast2, graveyard_after_cast1 + 3,
+			"Graveyard should have grown by 3"):
+		return false
+
+	var recycle_zone_before = game.game_data.get_cards_in_zone(GameZone.e.RECYCLE_ZONE).size()
+	var gold_before_cast2 = game.game_data.player_gold.getValue()
+
+	# === Cast 2: 3 creatures in graveyard → Recycle succeeds → SubAbility AddGold fires ===
+	print("  --- Cast 2: 3 creatures in graveyard (should succeed) ---")
+	var spell2 = make_spell.call()
+	await game.tryPlayCard(spell2, GameZone.e.BATTLEFIELD_PLAYER)
+	await test_runner.get_tree().process_frame
+
+	# Verify 3 cards were exiled to Recycle Zone
+	var recycle_zone_after = game.game_data.get_cards_in_zone(GameZone.e.RECYCLE_ZONE).size()
+	if not assert_test_equal(recycle_zone_after, recycle_zone_before + 3,
+			"Recycle Zone should have gained 3 exiled cards"):
+		return false
+	print("  ✅ 3 cards exiled to Recycle Zone")
+
+	# Graveyard: 3 cards exiled (−3) and spell2 added (+1) → net −2
+	var graveyard_after_cast2 = game.game_data.get_cards_in_zone(GameZone.e.GRAVEYARD_PLAYER).size()
+	if not assert_test_equal(graveyard_after_cast2, graveyard_before_cast2 - 3 + 1,
+			"Graveyard should shrink by net 2 (3 exiled, spell2 added)"):
+		return false
+	print("  ✅ Graveyard size decreased by 3 (plus spell added)")
+
+	# Verify SubAbility AddGold fired: +1 gold
+	if not assert_test_equal(game.game_data.player_gold.getValue(), gold_before_cast2 + 1,
+			"Gold should increase by 1 from SubAbility AddGold"):
+		return false
+	print("  ✅ Gold +1 from SubAbility chain")
+
+	print("✅ Recycle SubAbility test passed!")
 	return true

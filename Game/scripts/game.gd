@@ -50,6 +50,9 @@ var activeHand: CardHand
 var current_casting_card: Card = null
 var casting_card_original_parent: Node = null
 
+# Tracks the most recently drafted card (for follow-up effects like ReduceCost)
+var last_drafted_card: CardData = null
+
 # Card library loaded from files
 var loaded_card_data: Array[CardData] = []
 
@@ -631,7 +634,11 @@ func tryPlayCard(card_data: CardData, destination_zone: GameZone.e = GameZone.e.
 	
 	# Execute the card play with all collected selections
 	await tryPayAndSelectsForCardPlay(card_data, selection_data, pay_cost)
-	
+
+	# Clear casting state after successful play
+	current_casting_card = null
+	casting_card_original_parent = null
+
 	# If playing directly to combat, handle combat entry
 	if GameZone.is_combat_zone(destination_zone):
 		await execute_move_card(card_data, destination_zone)
@@ -1114,6 +1121,9 @@ func _restore_cancelled_card():
 	# Clear casting state
 	current_casting_card = null
 	casting_card_original_parent = null
+	
+	# Refresh castable-card highlights so the returned card is highlighted correctly
+	highlightCastableCards()
 
 func cancelSelection():
 	"""Handle UI/interaction cancellation and restore the card"""
@@ -1243,10 +1253,10 @@ func start_card_selection(requirement: Dictionary, possible_cards: Array[CardDat
 	# SelectionManager now takes CardData arrays and returns CardData arrays
 	var selected_cards = await selection_manager.start_selection_and_wait(requirement, possible_cards, selection_type, self, casting_card_data, preselected_cards)
 	
-	# Clear casting state when selection completes (successfully or cancelled)
-	if casting_card_data:
-		current_casting_card = null
-		casting_card_original_parent = null
+# Clear casting state when selection completes (successfully or cancelled).
+	# NOTE: Do NOT clear current_casting_card / casting_card_original_parent here.
+	# Those are owned by tryPlayCard and must survive until _restore_cancelled_card()
+	# is called on the cancel path.  tryPlayCard clears them after a successful play.
 	
 	return selected_cards
 
@@ -1431,70 +1441,101 @@ func _collectAllPlayerSelections(card_data: CardData, pre_selections: SelectionM
 	return selection_data
 
 func _spellRequiresTargeting(card_data: CardData) -> bool:
-	"""Check if a spell has any effects that require targeting"""
+	"""True only when at least one spell effect has MANDATORY targeting (Optional$ false/absent)."""
 	for spell_effect in card_data.spell_effects:
 		var effect_parameters = spell_effect.get("effect_parameters", {})
-		if Effect.requires_target(effect_parameters):
+		if Effect.requires_target(effect_parameters) and not effect_parameters.get("Optional", false):
 			return true
 	return false
 
 func _getSpellTargetsIfRequired(card_data: CardData, preselected_targets: Array[CardData] = []) -> Array[CardData]:
-	"""Get spell targets if the spell requires targeting, returns empty array if cancelled"""
+	"""Collect targets for every spell effect that needs them, in declaration order.
 	
-	# If pre-selected targets are provided, return them
-	if preselected_targets.size() > 0:
+	Returns a flat Array[CardData] — one entry per targeting slot — consumed sequentially
+	by _executeSpellWithTargets.  Returns null on mandatory-targeting failure / cancellation.
+	"""
+	# Pre-selections bypass the whole collection (used by tests and re-cast paths)
+	if not preselected_targets.is_empty():
 		print("🎯 Using pre-selected spell targets: ", preselected_targets.map(func(c): return c.cardName))
 		return preselected_targets
 	
-	# Get spell effects that require targeting
-	var targeting_effects: Array[Dictionary] = []
+	var all_targets: Array[CardData] = []
+	
 	for spell_effect in card_data.spell_effects:
-		var effect_parameters = spell_effect.get("effect_parameters", {})
-		if Effect.requires_target(effect_parameters):
-			targeting_effects.append(spell_effect)
+		var params: Dictionary = spell_effect.get("effect_parameters", {})
+		var valid_targets_str: String = params.get("ValidTargets", "")
+		if valid_targets_str.is_empty():
+			continue  # This effect has no targeting requirement
+		
+		var is_optional: bool = params.get("Optional", false)
+		
+		# Build the eligible pool (zone-aware)
+		var pool: Array[CardData] = _resolve_spell_target_pool(valid_targets_str)
+		
+		if pool.is_empty():
+			if not is_optional:
+				print("⚠️ No valid targets for mandatory effect — spell cannot be cast")
+				return null  # Signal spell cancellation
+			continue  # Optional effect with empty pool → skip quietly
+		
+		# Choose how many the player must pick (default 1)
+		var count = 0 if is_optional else 1
+		var requirement = {"valid_card": valid_targets_str, "count": count}
+		
+		var selected = await start_card_selection(
+			requirement, pool, "spell_target_" + card_data.cardName, card_data
+		)
+		
+		if not is_optional and selected.is_empty():
+			return null  # Mandatory selection cancelled
+		
+		all_targets.append_array(selected)
 	
-	if targeting_effects.is_empty():
-		return []  # No targeting required
+	return all_targets
+
+func _resolve_spell_target_pool(valid_targets_str: String) -> Array[CardData]:
+	"""Parse a ValidTargets string, extract an optional zone prefix, and return matching cards.
 	
-	# For now, handle the first targeting effect
-	# TODO: Handle multiple targeting effects
-	var first_targeting_effect = targeting_effects[0]
-	var valid_targets = first_targeting_effect.get("effect_parameters", {}).get("ValidTargets", "Any")
+	Format:  [ZoneStr+]Filter
+	  "Graveyard.Player+Creature"  → graveyard creatures you own
+	  "Creature+OppCtrl"           → opponent-controlled in-play creatures
+	  "Creature"                   → any in-play creature
+	"""
+	var filter_str = valid_targets_str
+	var base_pool: Array[CardData] = []
 	
-	# Query GameData for cards in play (MVC pattern)
-	var cards_in_play_data = game_data.get_cards_in_play()
+	# Ordered list so longer prefixes are tested first
+	const ZONE_STRINGS = [
+		"Graveyard.Player", "Graveyard.Opponent",
+		"Hand.Player", "Hand.Opponent",
+		"Deck.Player", "Deck.Opponent",
+		"Battlefield.Player", "Battlefield.Opponent",
+	]
 	
-	# Filter CardData based on ValidTargets
-	var valid_card_data: Array[CardData] = []
-	match valid_targets:
-		"Any":
-			valid_card_data = cards_in_play_data
-		"Creature":
-			for cd in cards_in_play_data:
-				if cd.hasType(CardData.CardType.CREATURE):
-					valid_card_data.append(cd)
-		_:
-			print("❌ Unknown target type: ", valid_targets)
-			return []
+	var matched_zone = false
+	for zone_str in ZONE_STRINGS:
+		if valid_targets_str.begins_with(zone_str):
+			var zone_enum = game_data.parse_zone_string_to_enum(zone_str, true)
+			base_pool = game_data.get_cards_in_zone(zone_enum).duplicate()
+			# Strip zone prefix + optional leading "+"
+			var rest = valid_targets_str.substr(zone_str.length())
+			filter_str = rest.trim_prefix("+")
+			matched_zone = true
+			break
 	
-	if valid_card_data.is_empty():
-		print("⚠️ No valid targets for ", card_data.cardName)
-		var empty_result: Array[CardData] = []
-		return empty_result
+	if not matched_zone:
+		base_pool = game_data.get_cards_in_play()
 	
-	# Start target selection with CardData
-	var requirement = {
-		"valid_card": "Any",  # We've already filtered the valid_card_data
-		"count": 1
-	}
+	if filter_str.is_empty() or filter_str == "Card" or filter_str == "Any":
+		return base_pool
 	
-	var selected_targets = await start_card_selection(requirement, valid_card_data, "spell_target_" + card_data.cardName, card_data)
-	
-	if selected_targets.is_empty():
-		var cancelled_result: Array[CardData] = []
-		return cancelled_result  # Selection was cancelled
-	
-	return selected_targets
+	# Apply the remaining filter using GameUtility
+	var criteria = GameUtility.parseCriteria(filter_str)
+	var result: Array[CardData] = []
+	for card in base_pool:
+		if GameUtility.matchesCardDataCriteria(card, criteria):
+			result.append(card)
+	return result
 
 func tryPayAndSelectsForCardPlay(card_data: CardData, selection_data: SelectionManager.CardPlaySelections, pay_cost: bool = true):
 	"""Execute card play with all selections already collected"""

@@ -11,26 +11,32 @@ func can_execute(parameters: Dictionary, source_card_data: CardData, game_contex
 		return _has_valid_affected_cards(parameters, game_context)
 	return super.can_execute(parameters, source_card_data, game_context)
 
-func execute(parameters: Dictionary, source_card_data: CardData, game_context: Game):
+func execute(parameters: Dictionary, source_card_data: CardData, game_context: Game) -> Array[CardData]:
 	var target_cards: Array[CardData] = []
 	target_cards.assign(parameters.get("Targets", []))
+
+	# Fall back to Affected$ Card.Remembered if no pre-resolved targets
+	if target_cards.is_empty():
+		target_cards.assign(Effect.resolve_affected(parameters))
 
 	if target_cards.is_empty() and parameters.has("ValidCard"):
 		target_cards = await get_affected_cards(parameters, source_card_data, game_context)
 
 	if target_cards.is_empty():
 		print("⚠️ AddTypeEffect: no targets resolved")
-		return
+		return []
 
 	var types_to_add = parameters.get("Types", "")
 	if types_to_add.is_empty():
 		print("❌ No types specified for AddType effect")
-		return
+		return []
 
 	var duration = parameters.get("Duration", "Permanent")
 
 	for target_card_data in target_cards:
 		_add_types_to_card(target_card_data, types_to_add, duration)
+
+	return target_cards
 
 func _add_types_to_card(target_card_data: CardData, types_string: String, duration: String):
 	"""Add types/subtypes to a card with specified duration"""

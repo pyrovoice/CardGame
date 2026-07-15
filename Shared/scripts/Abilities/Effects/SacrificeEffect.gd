@@ -4,39 +4,46 @@ class_name SacrificeEffect
 ## Effect that sacrifices cards (moves them to their owner's graveyard)
 ## Can target specific cards or filter cards in play
 
-func execute(parameters: Dictionary, source_card_data: CardData, game_context: Game):
+func execute(parameters: Dictionary, source_card_data: CardData, game_context: Game) -> Array[CardData]:
 	print("💀 [SACRIFICE] Executing sacrifice effect")
 	
+	var sacrificed: Array[CardData] = []
+
 	# Check if we have a specific target card (used by orphaned abilities from CreateDelayedEffect)
 	var target_card: CardData = parameters.get("TargetCard", null)
 	
 	if target_card:
-		# Sacrifice specific card
 		await _sacrifice_card(target_card, game_context)
-		return
-	
-	# Otherwise, gather cards matching criteria
-	var defined: String = parameters.get("Defined", "")
-	var valid_cards: String = parameters.get("ValidCards", "Card.YouCtrl")
-	var num_cards: int = parameters.get("Num", 1)
-	
-	# Handle "Defined$ Self" - sacrifice the source card
-	if defined == "Self":
-		await _sacrifice_card(source_card_data, game_context)
-		return
-	
-	# Gather cards matching ValidCards filter
-	var matching_cards = game_context._matches_card_filter(valid_cards)
-	
-	if matching_cards.is_empty():
-		print("⚠️ No valid cards to sacrifice matching: ", valid_cards)
-		return
-	
-	# Sacrifice up to num_cards
-	var cards_to_sacrifice = matching_cards.slice(0, min(num_cards, matching_cards.size()))
-	
-	for card in cards_to_sacrifice:
-		await _sacrifice_card(card, game_context)
+		sacrificed.append(target_card)
+	else:
+		# Otherwise, gather cards matching criteria
+		var defined: String = parameters.get("Defined", "")
+		var valid_cards: String = parameters.get("ValidCards", "Card.YouCtrl")
+		var num_cards: int = parameters.get("Num", 1)
+		
+		# Handle "Defined$ Self" - sacrifice the source card
+		if defined == "Self":
+			await _sacrifice_card(source_card_data, game_context)
+			sacrificed.append(source_card_data)
+		else:
+			# Affected$ Card.Remembered overrides filter
+			var affected = Effect.resolve_affected(parameters)
+			var matching_cards: Array[CardData]
+			if not affected.is_empty():
+				matching_cards = affected
+			else:
+				matching_cards = game_context._matches_card_filter(valid_cards)
+			
+			if matching_cards.is_empty():
+				print("⚠️ No valid cards to sacrifice matching: ", valid_cards)
+				return []
+			
+			var cards_to_sacrifice = matching_cards.slice(0, min(num_cards, matching_cards.size()))
+			for card in cards_to_sacrifice:
+				await _sacrifice_card(card, game_context)
+				sacrificed.append(card)
+
+	return sacrificed
 
 func _sacrifice_card(card_data: CardData, game_context: Game):
 	"""Move a card to its owner's graveyard"""

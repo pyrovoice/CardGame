@@ -3,7 +3,7 @@ class_name MoveCardEffect
 
 ## Effect that moves a card from one zone to another (e.g., graveyard stealing, library search)
 
-func execute(parameters: Dictionary, source_card_data: CardData, game_context: Game):
+func execute(parameters: Dictionary, source_card_data: CardData, game_context: Game) -> Array[CardData]:
 	print("🔍 [MOVE DEBUG] MoveCardEffect.execute called")
 	print("  Parameters: ", parameters)
 	print("  Source card: ", source_card_data.cardName)
@@ -20,7 +20,36 @@ func execute(parameters: Dictionary, source_card_data: CardData, game_context: G
 	# Check condition using controller method
 	if condition and not game_context.check_effect_condition(condition, source_card_data):
 		print("  ❌ Condition check failed, returning early")
-		return
+		return []
+	
+	# Affected$ Card.Remembered — operate on remembered cards, bypassing zone filtering
+	var affected = Effect.resolve_affected(parameters)
+	if not affected.is_empty():
+		var from_player_perspective = source_card_data.playerControlled
+		var destination_zone_enum: GameZone.e = game_context.game_data.parse_zone_string_to_enum(destination_zone_str, from_player_perspective)
+		if destination_zone_enum == GameZone.e.UNKNOWN:
+			push_error("MoveCardEffect: invalid destination zone: ", destination_zone_str)
+			return []
+		var moved: Array[CardData] = []
+		for card in affected:
+			await game_context.execute_move_card(card, destination_zone_enum)
+			moved.append(card)
+		return moved
+	
+	# Pre-selected Targets (from upfront spell targeting via ValidTgts$) —
+	# move each specific card to the destination, regardless of its current zone.
+	var preselected_targets: Array = parameters.get("Targets", [])
+	if not preselected_targets.is_empty():
+		var from_player_perspective = source_card_data.playerControlled
+		var destination_zone_enum: GameZone.e = game_context.game_data.parse_zone_string_to_enum(destination_zone_str, from_player_perspective)
+		if destination_zone_enum == GameZone.e.UNKNOWN:
+			push_error("MoveCardEffect: invalid destination zone: ", destination_zone_str)
+			return []
+		var moved: Array[CardData] = []
+		for card in preselected_targets:
+			await game_context.execute_move_card(card, destination_zone_enum)
+			moved.append(card)
+		return moved
 	
 	# Determine perspective for zone resolution based on who controls the card
 	var from_player_perspective = source_card_data.playerControlled
@@ -36,7 +65,7 @@ func execute(parameters: Dictionary, source_card_data: CardData, game_context: G
 	if origin_zone_enum == GameZone.e.UNKNOWN or destination_zone_enum == GameZone.e.UNKNOWN:
 		push_error("Invalid zones: ", origin_zone_str, " -> ", destination_zone_str)
 		print("  ❌ Invalid zones detected, returning early")
-		return
+		return []
 	
 	# Handle "Defined$ Self" - move the source card itself
 	if defined == "Self":
@@ -49,7 +78,7 @@ func execute(parameters: Dictionary, source_card_data: CardData, game_context: G
 		
 		print("  Current zone after move: ", game_context.game_data.get_card_zone(source_card_data))
 		print("  Card in graveyard? ", game_context.game_data.get_cards_in_zone(GameZone.e.GRAVEYARD_PLAYER).has(source_card_data))
-		return
+		return [source_card_data]
 	
 	# Get cards from origin zone using GameData
 	var origin_cards: Array[CardData] = game_context.game_data.get_cards_in_zone(origin_zone_enum)
@@ -66,14 +95,14 @@ func execute(parameters: Dictionary, source_card_data: CardData, game_context: G
 	
 	if selected_cards.is_empty():
 		print("⚠️ No cards selected from ", origin_zone_str)
-		return
+		return []
 	
 	# Move all selected cards
 	for selected_card in selected_cards:
 		print("📦 ", source_card_data.cardName, " moves ", selected_card.cardName, " from ", origin_zone_str, " to ", destination_zone_str)
-		
-		# Use game's execute_move_card with GameZone enums
 		await game_context.execute_move_card(selected_card, destination_zone_enum, origin_zone_enum)
+	
+	return selected_cards
 
 func can_execute(parameters: Dictionary, source_card_data: CardData, game_context: Game) -> bool:
 	"""Returns false when no valid cards exist in the origin zone (or condition fails)."""

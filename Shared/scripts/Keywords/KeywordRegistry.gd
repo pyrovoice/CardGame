@@ -16,6 +16,7 @@ static func _register_all() -> void:
 	_add(CorruptedKeyword.new())
 	_add(ElusiveKeyword.new())
 	_add(FleetingKeyword.new())
+	_add(RecycleKeyword.new())
 
 static func _add(kw: Keyword) -> void:
 	_registry[kw.get_keyword_name()] = kw
