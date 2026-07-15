@@ -1,0 +1,8 @@
+Name:Death from the Grave
+Color:Green Black
+Rarity:Uncommon
+Types:Spell
+ManaCost:1
+E:$ MoveCard | Origin$ Graveyard.Player | Destination$ Battlefield.Player | ValidTgts$ Graveyard.Player+Creature
+E:$ DealDamage | NumDmg$ Card.Remembered.Power | ValidTgts$ Creature+OppCtrl | Optional$ true
+CardText: Return target creature from your graveyard to the battlefield. It deals damage equals to its power to up to one target creature an opponent controls.
