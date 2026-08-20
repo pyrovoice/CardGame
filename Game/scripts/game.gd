@@ -1236,29 +1236,24 @@ func _calculate_game_popup_position() -> Vector2:
 func _card_matches_requirement(card: Card, requirement: Dictionary) -> bool:
 	return GameUtility._card_matches_requirement(card, requirement)
 
-func start_card_selection(requirement: Dictionary, possible_cards: Array[CardData], selection_type: String, casting_card_data: CardData = null, preselected_cards: Array[CardData] = []) -> Array[CardData]:
-	# If we have pre-selected cards, use them directly
-	if preselected_cards.size() > 0:
-		print("🎯 Using pre-selected cards for ", selection_type, ": ", preselected_cards.size(), " cards")
-		return preselected_cards
+func start_card_selection():
+	var request = SelectionRequest.current
+	if not request:
+		push_error("start_card_selection: SelectionRequest.current is null — call SelectionRequest.reset() first")
+		return null
 	
-	# If we have a casting card, set up animation and state tracking
-	if casting_card_data:
-		var casting_card = casting_card_data.get_card_object()
-		if casting_card:
-			current_casting_card = casting_card
-			# Move to card selection position - using legacy method for now
-			await AnimationsManagerAL.animate_card_to_card_selection_position(casting_card)
+	# Handle casting card animation before handing off to SelectionManager
+	if request.casting_card and request.preselected.is_empty():
+		var casting_card_node = request.casting_card.get_card_object()
+		if casting_card_node:
+			current_casting_card = casting_card_node
+			await AnimationsManagerAL.animate_card_to_card_selection_position(casting_card_node)
 	
-	# SelectionManager now takes CardData arrays and returns CardData arrays
-	var selected_cards = await selection_manager.start_selection_and_wait(requirement, possible_cards, selection_type, self, casting_card_data, preselected_cards)
-	
-# Clear casting state when selection completes (successfully or cancelled).
+	# Pass the request object directly — SelectionManager owns unpacking
+	# (null = player rejected;  [] = player confirmed with no selection)
 	# NOTE: Do NOT clear current_casting_card / casting_card_original_parent here.
-	# Those are owned by tryPlayCard and must survive until _restore_cancelled_card()
-	# is called on the cancel path.  tryPlayCard clears them after a successful play.
-	
-	return selected_cards
+	# Those are owned by tryPlayCard and must survive until _restore_cancelled_card().
+	return await selection_manager.start_selection_and_wait(self)
 
 ## ===== UNIFIED CARD FILTER SYSTEM =====
 ## Single source of truth for matching cards against filter criteria.
@@ -1389,13 +1384,13 @@ func _collectAllPlayerSelections(card_data: CardData, pre_selections: SelectionM
 				if pre_selections != null and pre_selections.replace_target != null:
 					preselected_replace = [pre_selections.replace_target]
 				
-				var selected_replace_target = await start_card_selection(
-					requirement, 
-					valid_targets, 
-					"replace_for_" + card_data.cardName, 
-					card_data,
-					preselected_replace
-				)
+				SelectionRequest.reset()\
+						.with_pool(valid_targets)\
+						.optional()\
+						.with_context("replace_for_" + card_data.cardName)\
+						.with_casting_card(card_data)\
+						.with_preselected(preselected_replace)
+				var selected_replace_target = await start_card_selection()
 				
 				if selected_replace_target == null:
 					selection_data.cancelled = true
@@ -1475,21 +1470,27 @@ func _getSpellTargetsIfRequired(card_data: CardData, preselected_targets: Array[
 		if pool.is_empty():
 			if not is_optional:
 				print("⚠️ No valid targets for mandatory effect — spell cannot be cast")
-				return null  # Signal spell cancellation
+				return []  # Signal spell cancellation
 			continue  # Optional effect with empty pool → skip quietly
 		
 		# Choose how many the player must pick (default 1)
 		var count = 0 if is_optional else 1
 		var requirement = {"valid_card": valid_targets_str, "count": count}
 		
-		var selected = await start_card_selection(
-			requirement, pool, "spell_target_" + card_data.cardName, card_data
-		)
+		SelectionRequest.reset()\
+				.with_pool(pool)\
+				.with_count(count)\
+				.with_description(valid_targets_str)\
+				.with_context("spell_target_" + card_data.cardName)\
+				.with_casting_card(card_data)
+		var selected = await start_card_selection()
 		
-		if not is_optional and selected.is_empty():
-			return null  # Mandatory selection cancelled
+		# null = player cancelled; [] = confirmed with no selection (valid for optional)
+		if selected == null or (not is_optional and selected.is_empty()):
+			return null  # propagate cancellation
 		
-		all_targets.append_array(selected)
+		if selected != null:
+			all_targets.append_array(selected)
 	
 	return all_targets
 
@@ -1639,8 +1640,15 @@ func _startAdditionalCostSelection(card_data: CardData, additional_costs: Array[
 			
 			# Start the selection process with CardData
 			if valid_card_data.size() > 0:
-				var selected_cards = await start_card_selection(requirement, valid_card_data, "sacrifice_for_" + card_data.cardName, card_data)
-				return selected_cards
+				SelectionRequest.reset()\
+						.with_pool(valid_card_data)\
+						.with_count(required_count)\
+						.with_description(valid_card_filter)\
+						.with_context("sacrifice_for_" + card_data.cardName)\
+						.with_casting_card(card_data)
+				var selected_cards = await start_card_selection()
+				# Treat null (cancelled) the same as empty — caller checks is_empty()
+				return selected_cards if selected_cards != null else []
 			else:
 				print("❌ No valid cards found for selection: ", requirement)
 				return []

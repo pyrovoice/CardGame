@@ -12,8 +12,6 @@ class_name RecycleEffect
 ##   subAbility_effect_type (String)    — follow-up effect type (embedded by CardLoader)
 ##   subAbility_parameters (Dictionary) — follow-up effect parameters
 
-signal _player_decided(proceed: bool)
-
 func can_execute(parameters: Dictionary, source_card_data: CardData, game_context: Game) -> bool:
 	var mandatory: bool = parameters.get("Mandatory", true)
 	if not mandatory:
@@ -21,6 +19,19 @@ func can_execute(parameters: Dictionary, source_card_data: CardData, game_contex
 	var num: int = int(parameters.get("Num", 1))
 	var graveyard_zone = GameZone.e.GRAVEYARD_PLAYER if source_card_data.playerControlled else GameZone.e.GRAVEYARD_OPPONENT
 	return game_context.game_data.get_cards_in_zone(graveyard_zone).size() >= num
+
+func declare_selections(parameters: Dictionary, _source_card_data: CardData, _game_context: Game) -> Array:
+	var mandatory: bool = parameters.get("Mandatory", true)
+	if mandatory:
+		return []  # can_execute() already guards the precondition; no player choice needed
+	var num: int = int(parameters.get("Num", 1))
+	# Binary "You may" prompt — empty pool, custom confirm label, Cancel = skip.
+	return [
+		SelectionRequest.new()
+			.optional()
+			.with_confirm_text("Recycle " + str(num))
+			.with_result_key("RecycleChoice")
+	]
 
 func execute(parameters: Dictionary, source_card_data: CardData, game_context: Game) -> Array[CardData]:
 	var num: int = int(parameters.get("Num", 1))
@@ -34,8 +45,8 @@ func execute(parameters: Dictionary, source_card_data: CardData, game_context: G
 		return []
 
 	if not mandatory:
-		var should_recycle = await _prompt_player(game_context, num)
-		if not should_recycle:
+		# run() injected the player's answer: null = Cancel/skip, [] = Confirm/proceed
+		if parameters.get("RecycleChoice") == null:
 			print("♻️ [RECYCLE] Player skipped Recycle ", num)
 			return []  # Empty return — sub-ability will not fire
 
@@ -55,30 +66,6 @@ func execute(parameters: Dictionary, source_card_data: CardData, game_context: G
 
 	print("♻️ [RECYCLE] Successfully recycled ", to_exile.size(), " card(s)")
 	return to_exile  # Non-empty — sub-ability fires
-
-func _prompt_player(game_context: Game, num: int) -> bool:
-	if game_context.game_view.headless:
-		return true  # Auto-accept in headless/test mode
-
-	var decided = false
-	var chose_to_recycle = false
-
-	game_context.game_view.push_action_buttons(
-		{"text": "Recycle " + str(num), "callback": func():
-			chose_to_recycle = true
-			decided = true
-		},
-		{"text": "Skip", "callback": func():
-			decided = true
-		},
-		null
-	)
-
-	while not decided:
-		await game_context.get_tree().process_frame
-
-	game_context.game_view.pop_action_buttons()
-	return chose_to_recycle
 
 func validate_parameters(_parameters: Dictionary) -> bool:
 	return true

@@ -1,8 +1,8 @@
 extends RefCounted
 class_name PlayerSelection
 
-# The selection requirement data
-var requirement: Dictionary = {}
+# The selection request that drives this selection
+var request: SelectionRequest = null
 var possible_cards: Array[CardData] = []
 var selected_cards: Array[CardData] = []
 
@@ -10,8 +10,8 @@ var selected_cards: Array[CardData] = []
 var is_complete: bool = false
 var selection_type: String = ""  # "sacrifice", "target", "choose", etc.
 
-func _init(req: Dictionary, cards: Array[CardData], type: String = ""):
-	requirement = req
+func _init(req: SelectionRequest, cards: Array[CardData], type: String = ""):
+	request = req
 	possible_cards = cards
 	selection_type = type
 	selected_cards = []
@@ -34,32 +34,30 @@ func try_select_card(card_data: CardData) -> bool:
 
 # Check if the current selection meets the requirement
 func _check_completion():
-	var required_count = requirement.get("count", 1)
-	var min_count = requirement.get("min_count", required_count)
-	var max_count = requirement.get("max_count", required_count)
-	var is_optional = requirement.get("optional", false)
+	var req_min = request.effective_min()
+	var req_max = request.effective_max()
 	
 	# If optional, selection is always complete (even with 0 cards)
-	if is_optional:
-		is_complete = selected_cards.size() <= max_count
+	if request.is_optional:
+		is_complete = selected_cards.size() <= req_max
 		return
 	
 	# For exact match requirements (like "exactly 2 goblins")
-	is_complete = selected_cards.size() >= min_count and selected_cards.size() <= max_count
+	is_complete = selected_cards.size() >= req_min and selected_cards.size() <= req_max
 	
 	# For sacrifice requirements, must be exact
 	if selection_type == "sacrifice":
-		is_complete = selected_cards.size() == required_count
+		is_complete = selected_cards.size() == request.count
 
 # Get a description of what's needed
 func get_requirement_description() -> String:
-	var count = requirement.get("count", 1)
-	var card_filter = requirement.get("valid_card", "Any")
+	var n = request.count
+	var card_filter = request.description if not request.description.is_empty() else "Any"
 	
 	match selection_type:
 		"sacrifice":
-			return "Sacrifice " + str(count) + " " + card_filter
+			return "Sacrifice " + str(n) + " " + card_filter
 		"target":
-			return "Target " + str(count) + " " + card_filter
+			return "Target " + str(n) + " " + card_filter
 		_:
-			return "Choose " + str(count) + " " + card_filter
+			return "Choose " + str(n) + " " + card_filter

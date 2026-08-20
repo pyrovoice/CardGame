@@ -15,10 +15,16 @@ func execute(parameters: Dictionary, source_card_data: CardData, game_context: G
 	return []
 
 ## Runner — called by EffectFactory instead of execute() directly.
-## Handles the full lifecycle: execute → remember affected cards → fire sub-ability chain.
-## The sub-ability always fires unless execute() itself fizzles (returns early without acting).
-## An empty return only means no cards were transmitted — it does not suppress the chain.
+## Handles the full lifecycle: declare selections → execute → remember → sub-ability.
 func run(parameters: Dictionary, source_card_data: CardData, game_context: Game) -> void:
+	# Fulfil any declared selections before execute() so effects need not call game_context for UI
+	var requests: Array = declare_selections(parameters, source_card_data, game_context)
+	for request: SelectionRequest in requests:
+		SelectionRequest.current = request
+		request.with_casting_card(source_card_data).with_context("selection_for_" + get_class())
+		var selected = await game_context.start_card_selection()
+		parameters[request.result_key] = selected  # null = cancelled, [] = confirmed-empty
+
 	Effect.remembered_cards = await execute(parameters, source_card_data, game_context)
 	await _run_sub_ability(parameters, source_card_data, game_context)
 
@@ -28,6 +34,15 @@ func run(parameters: Dictionary, source_card_data: CardData, game_context: Game)
 func validate_parameters(parameters: Dictionary) -> bool:
 	# Base implementation - override in subclasses for specific validation
 	return true
+
+## Declare player-selections this effect needs resolved before execute() is called.
+## Override when the effect needs a player choice upfront.
+## run() fulfils each SelectionRequest via game_context.start_card_selection() and
+## injects the result into parameters[request.result_key] before calling execute().
+## Default: no selections needed (effects may still call game_context directly inside
+## execute(), but that is discouraged — declare_selections is the preferred path).
+func declare_selections(parameters: Dictionary, source_card_data: CardData, game_context: Game) -> Array:
+	return []
 
 ## Get a human-readable description of this effect
 ## @param parameters: Dictionary - Effect parameters
@@ -149,12 +164,16 @@ func select_cards_from_list(filtered_cards: Array[CardData], num_to_select: int,
 		for i in range(num_to_select):
 			selected_cards.append(filtered_cards[i])
 	elif choice_type == "Player":
-		# Player selection - trigger selection UI
-		var requirement = {
-			"count": num_to_select,
-			"type": valid_card_type
-		}
-		selected_cards = await game_context.start_card_selection(requirement, filtered_cards, selection_context, source_card_data)
+		# Player selection - configure global request then trigger
+		SelectionRequest.reset()\
+				.with_pool(filtered_cards)\
+				.with_count(num_to_select)\
+				.with_description(valid_card_type)\
+				.with_context(selection_context)\
+				.with_casting_card(source_card_data)
+		var result = await game_context.start_card_selection()
+		# null = cancelled; treat as empty (no cards selected)
+		selected_cards.assign(result if result != null else [])
 	else:
 		# Default: take first N cards
 		for i in range(num_to_select):

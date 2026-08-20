@@ -77,24 +77,28 @@ func setup_buttons(main_btn: Button, secondary_btn: Button, visualizer: CardCont
 		secondary_action_button.visible = false
 
 # Start a new card selection process and wait for completion
-func start_selection_and_wait(requirement: Dictionary, possible_cards: Array[CardData], selection_type: String, game_ref: Node, casting_card_param: CardData = null, preselected_cards: Array[CardData] = []) -> Array[CardData]:
+func start_selection_and_wait(game_ref: Node):
+	var request = SelectionRequest.current
+	if not request:
+		push_error("start_selection_and_wait: SelectionRequest.current is null")
+		return null
 	print("Starting selection and waiting for completion...")
 	
-	# If pre-selections are provided, use them directly
-	if preselected_cards.size() > 0:
-		print("Using pre-selected cards: ", preselected_cards.size())
-		return preselected_cards
+	# Pre-selected cards bypass the UI entirely
+	if not request.preselected.is_empty():
+		print("Using pre-selected cards: ", request.preselected.size())
+		return request.preselected
 	
 	# Store casting card for potential cancellation
-	casting_card = casting_card_param
+	casting_card = request.casting_card
 	
 	# Initialize the selection
 	var player_selection_script = load("res://Game/scripts/PlayerSelection.gd")
-	current_selection = player_selection_script.new(requirement, possible_cards, selection_type)
+	current_selection = player_selection_script.new(request, request.pool, request.context)
 	game_reference = game_ref
 	
 	# Check if all possible cards are in the same container zone
-	var container_zone = _get_container_zone_if_all_same(possible_cards)
+	var container_zone = _get_container_zone_if_all_same(request.pool)
 	
 	if container_zone != null and container_visualizer:
 		# Use visualizer for container selection
@@ -107,17 +111,17 @@ func start_selection_and_wait(requirement: Dictionary, possible_cards: Array[Car
 			var all_cards_in_zone = game.game_data.get_cards_in_zone(container_zone)
 			
 			# Setup visualizer with all cards and selectable cards
-			container_visualizer.setContainer(all_cards_in_zone, possible_cards)
+			container_visualizer.setContainer(all_cards_in_zone, request.pool)
 			container_visualizer.set_selection_callback(_on_visualizer_card_clicked)
 			container_visualizer.show()
 	else:
 		# Use 3D world highlighting for non-container selections
 		using_visualizer = false
-		print("🔍 [SELECTION] Highlighting ", possible_cards.size(), " possible cards in 3D world")
+		print("🔍 [SELECTION] Highlighting ", request.pool.size(), " possible cards in 3D world")
 		var hm := _get_highlight_manager()
 		if hm:
 			hm.clear_all()
-			for card_data in possible_cards:
+			for card_data in request.pool:
 				var card_node = card_data.get_card_object()
 				if card_node:
 					hm.set_card_highlight(card_node, HighlightManager.CardHighlightState.CASTABLE)
@@ -136,15 +140,7 @@ func start_selection_and_wait(requirement: Dictionary, possible_cards: Array[Car
 		return result.selected_cards
 	else:
 		print("Selection was cancelled or failed")
-		return []
-
-func _is_container_zone(zone: GameZone.e) -> bool:
-	"""Check if a zone is a container zone (deck, graveyard, extra deck)"""
-	return zone == GameZone.e.DECK_PLAYER or \
-		zone == GameZone.e.DECK_OPPONENT or \
-		zone == GameZone.e.GRAVEYARD_PLAYER or \
-		zone == GameZone.e.GRAVEYARD_OPPONENT or \
-		zone == GameZone.e.EXTRA_DECK_PLAYER
+		return null  # null = explicitly rejected; [] = confirmed with no cards
 
 func _get_container_zone_if_all_same(cards: Array[CardData]) -> Variant:
 	"""Check if all cards are in the same container zone. Returns zone enum or null."""
@@ -194,14 +190,18 @@ func _update_ui():
 	if not current_selection:
 		return
 	
-	# Build description text with count
-	var desc = current_selection.get_requirement_description()
-	desc += " (" + str(current_selection.selected_cards.size()) + "/" + str(current_selection.requirement.get("count", 1)) + ")"
-	
-	# Update main button text and enable state
-	if main_action_button:
-		main_action_button.text = desc
-		main_action_button.disabled = not current_selection.is_complete
+	# Custom confirm label takes priority over the auto-generated description
+	if not current_selection.request.confirm_text.is_empty():
+		if main_action_button:
+			main_action_button.text = current_selection.request.confirm_text
+			main_action_button.disabled = not current_selection.is_complete
+	else:
+		# Build description text with count
+		var desc = current_selection.get_requirement_description()
+		desc += " (" + str(current_selection.selected_cards.size()) + "/" + str(current_selection.request.count) + ")"
+		if main_action_button:
+			main_action_button.text = desc
+			main_action_button.disabled = not current_selection.is_complete
 	
 	# Show secondary button for cancellation
 	if secondary_action_button:
@@ -224,10 +224,9 @@ func _should_auto_validate() -> bool:
 	"""Returns true when a mandatory selection is full and should auto-confirm without user clicking Validate."""
 	if not current_selection or not current_selection.is_complete:
 		return false
-	if current_selection.requirement.get("optional", false):
+	if current_selection.request.is_optional:
 		return false
-	var max_count = current_selection.requirement.get("max_count",
-		current_selection.requirement.get("count", 1))
+	var max_count = current_selection.request.effective_max()
 	return current_selection.selected_cards.size() >= max_count
 
 func validate_selection():
