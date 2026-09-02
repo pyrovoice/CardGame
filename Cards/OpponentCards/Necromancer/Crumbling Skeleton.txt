@@ -1,0 +1,8 @@
+Name:Crumbling Skeleton
+ManaCost:2
+Power:1
+Types:Creature Skeleton
+CardText:When I take damage, create a Bone in my controller's graveyard.
+Script:
+T:Mode$ DamageTaken | ValidTarget$ Card.Self | TriggerDescription$ When CARDNAME takes damage, create a Bone in my controller's graveyard. | Execute$ TrigCreateBone
+SVar:TrigCreateBone:AB$ CreateToken | TokenScript$ Bone | Destination$ Graveyard

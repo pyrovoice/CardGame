@@ -216,7 +216,7 @@ func onTurnStart(skipFirstTurn = false):
 	opponent_turn_ended.emit()
 	await resolve_queue()
 
-func execute_move_card(cardData: CardData, destination_zone: GameZone.e, origin_zone_enum: GameZone.e = GameZone.e.UNKNOWN, index: int = -1) -> bool:
+func execute_move_card(cardData: CardData, destination_zone: GameZone.e, origin_zone_enum: GameZone.e = GameZone.e.UNKNOWN, index: int = -1, skip_death_replacement_check: bool = false) -> bool:
 	"""Centralized zone change system - handles all card movements with appropriate animations and triggers (MVC pattern)
 	
 	All costs and selections should be paid/made before calling this.
@@ -229,6 +229,7 @@ func execute_move_card(cardData: CardData, destination_zone: GameZone.e, origin_
 		destination_zone: Target zone enum (e.g., GameZone.e.GRAVEYARD_PLAYER)
 		origin_zone_enum: Source zone (if UNKNOWN, will be queried from game_data)
 		index: Optional array index for positioning in destination zone (-1 = end of array)
+		skip_death_replacement_check: If true, skip death replacement check (used when already checked by caller)
 	
 	Returns:
 		bool: True if move was successful, false otherwise
@@ -242,6 +243,42 @@ func execute_move_card(cardData: CardData, destination_zone: GameZone.e, origin_
 	var origin_zone = origin_zone_enum
 	if origin_zone == GameZone.e.UNKNOWN:
 		origin_zone = game_data.get_card_zone(cardData)
+	
+	# Check for death replacement effects when moving from battlefield to graveyard
+	var is_graveyard_dest = (destination_zone == GameZone.e.GRAVEYARD_PLAYER or destination_zone == GameZone.e.GRAVEYARD_OPPONENT)
+	var is_from_battlefield = GameZone.is_in_play(origin_zone)
+	
+	if not skip_death_replacement_check and is_from_battlefield and is_graveyard_dest:
+		print("  💀 [MOVE] Card dying from battlefield to graveyard - checking for replacement")
+		
+		# Build death event context
+		var death_context = {
+			"dying_card": cardData,
+			"from_zone": origin_zone
+		}
+		
+		# Check for death replacement effects
+		var replacements = ReplacementEffectRegistry._replacement_effects
+		for replacement_effect in replacements:
+			if replacement_effect.applies_to("Death", death_context, self):
+				print("  💀🔄 [DEATH] Replacement effect applies from ", replacement_effect.source_card_data.cardName)
+				var modified_context = replacement_effect.apply_modification(death_context, self)
+				
+				if modified_context.get("event_was_replaced", false):
+					# Execute the replacement effect (the SVar chain)
+					var svar_data = replacement_effect.modifications.get("svar_data")
+					if svar_data:
+						print("  💀🔄 [DEATH] Executing replacement effect")
+						var effect_type = EffectType.string_to_type(svar_data.get("effect_type", ""))
+						var effect_params = svar_data.get("parameters", {})
+						await EffectFactory.execute_effect(effect_type, effect_params, cardData, self)
+					
+					# Death was replaced - don't move to graveyard
+					print("  💀🔄 [DEATH] Death replaced, card not moved to graveyard")
+					return false
+		
+		# No replacement found - continue with normal death below
+		print("  💀 [DEATH] No replacement, proceeding with graveyard movement")
 	
 	# MVC Pattern: Update Model first (add to zone array), then animate View
 	game_data.move_card(cardData, destination_zone, index)
@@ -292,6 +329,46 @@ func check_effect_condition(condition: String, source_card_data: CardData) -> bo
 		_:
 			push_warning("Unknown effect condition: ", condition)
 			return true  # Unknown conditions default to passing
+
+func _process_creature_death(card_data: CardData):
+	"""Process a single creature death with replacement effect support.
+	
+	This is called by resolveStateBasedAction() for each dying creature.
+	Checks for death replacement effects before moving to graveyard.
+	"""
+	print("  💀 [DEATH] Processing death for ", card_data.cardName)
+	
+	# Build death event context for replacement effect checking
+	var death_context = {
+		"dying_card": card_data,
+		"from_zone": game_data.get_card_zone(card_data)
+	}
+	
+	# Check for death replacement effects
+	var replacements = ReplacementEffectRegistry._replacement_effects
+	for replacement_effect in replacements:
+		if replacement_effect.applies_to("Death", death_context, self):
+			print("  💀🔄 [DEATH] Replacement effect applies from ", replacement_effect.source_card_data.cardName)
+			var modified_context = replacement_effect.apply_modification(death_context, self)
+			
+			if modified_context.get("event_was_replaced", false):
+				# Execute the replacement effect (the SVar chain)
+				var svar_data = replacement_effect.modifications.get("svar_data")
+				if svar_data:
+					print("  💀🔄 [DEATH] Executing replacement effect")
+					var effect_type = EffectType.string_to_type(svar_data.get("effect_type", ""))
+					var effect_params = svar_data.get("parameters", {})
+					await EffectFactory.execute_effect(effect_type, effect_params, card_data, self)
+				
+				# Death was replaced - don't move to graveyard
+				print("  💀🔄 [DEATH] Death replaced, creature not moved to graveyard")
+				return
+	
+	# No replacement found - proceed with normal death to graveyard
+	print("  💀 [DEATH] No replacement, moving to graveyard")
+	var graveyard_zone = GameZone.e.GRAVEYARD_PLAYER if card_data.playerOwned else GameZone.e.GRAVEYARD_OPPONENT
+	# Call execute_move_card with skip_death_replacement_check=true since we already checked above
+	await execute_move_card(card_data, graveyard_zone, GameZone.e.UNKNOWN, -1, true)
 
 func recycle_card(card_data: CardData) -> bool:
 	"""Recycle a card from hand - removes it from game, grants gold, triggers event (Controller method)
@@ -670,6 +747,8 @@ func _executeSpellWithTargets(cardData: CardData, targets: Array[CardData]):
 		print("⚠️ Spell has no effects to execute: ", cardData.cardName)
 		return
 	
+	print("🔍 [SPELL] Total effects: ", spell_effects.size(), ", Total targets: ", targets.size())
+	
 	# Execute each spell effect with targets
 	var target_index = 0
 	for spell_effect in spell_effects:
@@ -677,19 +756,33 @@ func _executeSpellWithTargets(cardData: CardData, targets: Array[CardData]):
 		var effect_parameters = spell_effect.get("effect_parameters", {})
 		var effect_targets = []
 		
+		print("🔍 [SPELL] Effect ", target_index + 1, ": ", EffectType.type_to_string(effect_type))
+		print("  requires_target: ", Effect.requires_target(effect_parameters))
+		print("  current target_index: ", target_index)
+		
 		# Assign targets to effects that need them
 		if Effect.requires_target(effect_parameters) and target_index < targets.size():
 			effect_targets = [targets[target_index]]
 			target_index += 1
+			print("  ✅ Assigned target: ", effect_targets[0].cardName if effect_targets.size() > 0 else "none")
+		else:
+			print("  ⚠️ No target assigned")
 		
 		await _executeSpellEffectWithTargets(cardData, effect_type, effect_parameters, effect_targets)
 	
 	print("✨ Finished casting spell: ", cardData.cardName)
 
 func _executeSpellEffectWithTargets(cardData: CardData, effect_type: EffectType.Type, effect_parameters: Dictionary, targets: Array):
+	print("🔍 [SPELL EFFECT] Executing ", EffectType.type_to_string(effect_type))
+	print("  effect_parameters keys: ", effect_parameters.keys())
+	print("  targets count: ", targets.size())
+	
 	# For targeting effects, add targets to parameters
 	if targets.size() > 0:
 		effect_parameters["Targets"] = targets
+		print("  ✅ Added Targets to parameters: ", targets.map(func(t): return t.cardName if t else "null"))
+	
+	print("  effect_parameters after adding targets: ", effect_parameters.keys())
 	
 	# Execute the effect directly using EffectFactory
 	await EffectFactory.execute_effect(effect_type, effect_parameters, cardData, self)
@@ -974,15 +1067,25 @@ func resolveStateBasedAction():
 	var cards_in_play_data = game_data.get_cards_in_play()
 	print("🔍 [SBA] Checking ", cards_in_play_data.size(), " cards in play for state-based actions")
 	
+	# Phase 1: Collect all creatures that should die from lethal damage
+	var dying_creatures: Array[CardData] = []
 	for card_data in cards_in_play_data:
 		var damage = card_data.getDamage()
 		var power = card_data.power
 		
 		if damage > 0 && damage >= power:
-			print("  💀 [SBA] ", card_data.cardName, " is dead (damage: ", damage, " >= power: ", power, "), moving to graveyard")
-			var graveyard_zone = GameZone.e.GRAVEYARD_PLAYER if card_data.playerOwned else GameZone.e.GRAVEYARD_OPPONENT
-			await execute_move_card(card_data, graveyard_zone)
-			print("  ✅ [SBA] Finished moving ", card_data.cardName, " to graveyard")
+			print("  💀 [SBA] ", card_data.cardName, " is dead (damage: ", damage, " >= power: ", power, ")")
+			dying_creatures.append(card_data)
+	
+	# Phase 2: Process all deaths simultaneously (with replacement checks)
+	# Each death may be replaced - we handle them one by one but conceptually they die "at the same time"
+	for card_data in dying_creatures:
+		await _process_creature_death(card_data)
+	
+	# Phase 3: Triggers from deaths fire after all deaths are processed
+	# (Currently handled by _move_to_graveyard's CARD_DIED event)
+	if dying_creatures.size() > 0:
+		print("  ✅ [SBA] Finished processing ", dying_creatures.size(), " death(s)")
 	if game_data.player_life.getValue() <= 0:
 		get_tree().change_scene_to_file("res://MainMenu/scenes/MainMenu.tscn")
 	if game_data.player_points.getValue() >= 6:
@@ -1487,7 +1590,7 @@ func _getSpellTargetsIfRequired(card_data: CardData, preselected_targets: Array[
 		
 		# null = player cancelled; [] = confirmed with no selection (valid for optional)
 		if selected == null or (not is_optional and selected.is_empty()):
-			return null  # propagate cancellation
+			return []  # propagate cancellation
 		
 		if selected != null:
 			all_targets.append_array(selected)

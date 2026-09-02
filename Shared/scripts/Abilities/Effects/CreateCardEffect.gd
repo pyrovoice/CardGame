@@ -4,37 +4,33 @@ class_name CreateCardEffect
 ## Effect that creates a card from an archetype pool and adds it to hand
 
 func execute(parameters: Dictionary, source_card_data: CardData, game_context: Game) -> Array[CardData]:
-	var pool_string = parameters.get("Pool", "")
-	if pool_string.is_empty():
+	# pool, include_legendary, num_cards, and modif are already parsed by _parse_parameters()
+	if pool.is_empty():
 		print("❌ No Pool specified for card creation")
 		return []
 	
 	# Parse the pool — try archetype pool first, then named card pool
-	var archetype_enum = _parse_archetype_pool(pool_string)
+	var archetype_enum = _parse_archetype_pool(pool)
 	var card_pool: Array[CardData]
 	if archetype_enum != CardLoader.Archetype.UNKNOWN:
 		card_pool = CardLoaderAL.get_archetype_pool(archetype_enum)
 	else:
 		# Strip "Archetype." prefix and look up named pool
-		var pool_name = pool_string
-		if pool_string.begins_with("Archetype."):
-			pool_name = pool_string.substr(10)
+		var pool_name = pool
+		if pool.begins_with("Archetype."):
+			pool_name = pool.substr(10)
 		card_pool = CardLoaderAL.get_card_pool(pool_name)
 
 	if card_pool.is_empty():
-		print("⚠️ Card pool '", pool_string, "' is empty or unknown")
+		print("⚠️ Card pool '", pool, "' is empty or unknown")
 		return []
 	
 	# Filter out legendary cards unless explicitly included
-	var include_legendary = parameters.get("IncludeLegendary", false)
 	if not include_legendary:
 		card_pool = card_pool.filter(func(card: CardData): return not card.hasType(CardData.CardType.LEGENDARY))
 		if card_pool.is_empty():
-			print("⚠️ Archetype pool '", pool_string, "' has no non-legendary cards")
+			print("⚠️ Archetype pool '", pool, "' has no non-legendary cards")
 			return []
-	
-	# Get number of cards to create
-	var num_cards = int(parameters.get("Num", 1))
 	
 	var created: Array[CardData] = []
 	# Create the cards
@@ -56,11 +52,10 @@ func execute(parameters: Dictionary, source_card_data: CardData, game_context: G
 			continue
 		
 		# Apply modifiers if specified (e.g., "fleeting")
-		var modif = parameters.get("Modif", "")
 		if not modif.is_empty():
 			_apply_modifier_to_card(new_card_data, modif)
 		
-		print("✨ Created card '", new_card_data.cardName, "' from archetype '", pool_string, "' into hand")
+		print("✨ Created card '", new_card_data.cardName, "' from archetype '", pool, "' into hand")
 		created.append(new_card_data)
 
 	return created

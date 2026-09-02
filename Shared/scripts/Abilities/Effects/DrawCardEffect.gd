@@ -4,24 +4,17 @@ class_name DrawCardEffect
 ## Effect that draws cards
 
 func execute(parameters: Dictionary, source_card_data: CardData, game_context: Game) -> Array[CardData]:
-	# Check who should draw the card (default to "You" if not specified)
-	var defined_player = parameters.get("Defined", "You")
-	if defined_player != "You":
+	# defined and amount are already parsed by _parse_parameters()
+	if defined != "You":
 		print("⚡ Draw card triggered by: ", source_card_data.cardName)
-		print("  But effect is for: ", defined_player, " (not implemented for non-player)")
+		print("  But effect is for: ", defined, " (not implemented for non-player)")
 		return []
 	
-	# Get the number of cards to draw
-	var cards_to_draw = 1  # Default to 1
-	if parameters.has("NumCards"):
-		cards_to_draw = int(parameters.get("NumCards", "1"))
-	elif parameters.has("Amount"):
-		cards_to_draw = int(parameters.get("Amount", "1"))
-	elif parameters.has("CardsDrawn"):
-		cards_to_draw = int(parameters.get("CardsDrawn", "1"))
+	# amount holds the number of cards to draw
+	var cards_to_draw = amount
 	
 	print("⚡ Draw card triggered by: ", source_card_data.cardName)
-	print("  Drawing ", cards_to_draw, " card(s) for: ", defined_player)
+	print("  Drawing ", cards_to_draw, " card(s) for: ", defined)
 	
 	# Draw the specified number of cards
 	for i in range(cards_to_draw):

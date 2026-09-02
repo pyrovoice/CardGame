@@ -4,12 +4,9 @@ class_name PumpEffect
 ## Effect that increases/decreases a creature's power temporarily
 
 func execute(parameters: Dictionary, source_card_data: CardData, game_context: Game) -> Array[CardData]:
-	var power_bonus = parameters.get("PowerBonus", 0)
-	var valid_targets = parameters.get("ValidTargets", "Creature")
-	var duration = parameters.get("Duration", "EndOfTurn")
-	
+	# power_bonus, valid_targets, duration, and targets are already parsed by _parse_parameters()
 	# Effects expect targets to be resolved by the caller, or via Affected$ Card.Remembered.
-	var preselected_targets: Array = parameters.get("Targets", [])
+	var preselected_targets: Array = targets
 	if preselected_targets.is_empty():
 		preselected_targets.assign(Effect.resolve_affected(parameters))
 	if preselected_targets.is_empty():

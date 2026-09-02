@@ -9,9 +9,7 @@ class_name ReduceCostEffect
 ##   Amount (int, default 1) — how much to reduce the cost
 
 func execute(parameters: Dictionary, source_card_data: CardData, game_context: Game) -> Array[CardData]:
-	var amount: int = parameters.get("Amount", 1)
-	var defined: String = parameters.get("Defined", "")
-
+	# amount and defined are already parsed by _parse_parameters()
 	var target: CardData = _resolve_target(defined, game_context)
 	if not target:
 		push_error("ReduceCostEffect: could not resolve target for Defined$ '" + defined + "'")

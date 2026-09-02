@@ -2,10 +2,10 @@ extends Effect
 class_name CreateTokenEffect
 
 ## Effect that creates token creatures
-## Replacement effects should be handled at the ability level, not here
+## Token count, destination, and script are parsed automatically by Effect._parse_parameters()
 
 func execute(parameters: Dictionary, source_card_data: CardData, game_context: Game) -> Array[CardData]:
-	var token_script = parameters.get("TokenScript", "")
+	# token_script, num_cards, and dest_zone are already parsed by _parse_parameters()
 	if token_script.is_empty():
 		print("❌ No TokenScript specified for token creation")
 		return []
@@ -16,15 +16,9 @@ func execute(parameters: Dictionary, source_card_data: CardData, game_context: G
 		print("❌ Failed to load token: " + token_script)
 		return []
 	
-	# Get number of tokens to create (may have been modified by replacement effects)
-	var tokens_to_create = parameters.get("tokens_to_create", 1)
-	
 	var created: Array[CardData] = []
-	# Create the tokens
-	for i in range(tokens_to_create):
-		# Tokens enter the battlefield immediately on creation.
-		var dest_zone = GameZone.e.BATTLEFIELD_PLAYER if source_card_data.playerControlled else GameZone.e.BATTLEFIELD_OPPONENT
-
+	# Create the tokens (num_cards is already set from parsing)
+	for i in range(num_cards):
 		# Create token data + view + movement through the centralized creation path.
 		var token_data = game_context.createCardData(
 			token_template,
@@ -35,10 +29,12 @@ func execute(parameters: Dictionary, source_card_data: CardData, game_context: G
 			continue
 		token_data.isToken = true
 		
-		# Flip token face up (cards start face down by default)
-		var token_card = token_data.get_card_object()
-		if token_card:
-			token_card.setFlip(true)
+		# Flip token face up if going to battlefield (cards start face down by default)
+		# Tokens in graveyard/hand/deck should remain face down
+		if GameZone.is_in_play(dest_zone):
+			var token_card = token_data.get_card_object()
+			if token_card:
+				token_card.setFlip(true)
 		created.append(token_data)
 
 	return created
@@ -48,7 +44,7 @@ func validate_parameters(parameters: Dictionary) -> bool:
 
 func get_description(parameters: Dictionary) -> String:
 	var token_name = parameters.get("TokenScript", "Token")
-	var num_tokens = parameters.get("tokens_to_create", 1)
+	var num_tokens = parameters.get("NumCard", parameters.get("tokens_to_create", 1))
 	if num_tokens == 1:
 		return "Create a " + token_name + " token"
 	else:

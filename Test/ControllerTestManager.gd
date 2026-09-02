@@ -1889,6 +1889,227 @@ func test_death_trigger_adds_gold() -> bool:
 	print("✅ Death trigger test passed!")
 	return true
 
+func test_crumbling_zombie_death_replacement() -> bool:
+	"""Test Crumbling Zombie's death replacement effect:
+	When the zombie would die, it creates Upper half and Lower half tokens instead,
+	and the zombie itself is completely removed from the game (not sent to graveyard)."""
+	
+	print("=== Testing Crumbling Zombie Death Replacement ===")
+	
+	# Step 1: Create Crumbling Zombie on battlefield (loads with its replacement effect)
+	var zombie = createCardFromName("Crumbling Zombie", GameZone.e.BATTLEFIELD_PLAYER)
+	if not assert_test_not_null(zombie, "Crumbling Zombie should be created"):
+		return false
+	
+	# Step 2: Verify zombie is on battlefield initially
+	var initial_zone = game.game_data.get_card_zone(zombie)
+	if not assert_test_equal(initial_zone, GameZone.e.BATTLEFIELD_PLAYER, "Zombie should start on battlefield"):
+		return false
+	print("  ✅ Crumbling Zombie on battlefield")
+	
+	# Step 3: Count cards in play before death
+	var cards_before = game.game_data.get_cards_in_zone(GameZone.e.BATTLEFIELD_PLAYER).size()
+	print("  📊 Cards in play before death: ", cards_before)
+	
+	# Step 4: Deal lethal damage to the zombie (power = 2, so 2 damage is lethal)
+	print("  💀 Dealing lethal damage to Crumbling Zombie...")
+	zombie.receiveDamage(2)
+	print("  💀 Zombie now has ", zombie.getDamage(), " damage (power: ", zombie.power, ")")
+	
+	# Step 5: Run state-based actions to process the death
+	print("  💀 Running state-based actions...")
+	await game.resolveStateBasedAction()
+	await test_runner.get_tree().process_frame
+	await test_runner.get_tree().process_frame  # Extra frame for effects to resolve
+	
+	# Step 6: Verify the zombie is NOT in graveyard (replacement prevents normal death)
+	var graveyard_cards = game.game_data.get_cards_in_zone(GameZone.e.GRAVEYARD_PLAYER)
+	var zombie_in_graveyard = graveyard_cards.any(func(c): return c.cardName == "Crumbling Zombie")
+	if not assert_test_false(zombie_in_graveyard, "Zombie should NOT be in graveyard (replaced by tokens)"):
+		return false
+	print("  ✅ Zombie not in graveyard")
+	
+	# Step 6: Verify the zombie is not in any zone (completely removed)
+	var all_zones = [
+		GameZone.e.HAND_PLAYER,
+		GameZone.e.DECK_PLAYER,
+		GameZone.e.BATTLEFIELD_PLAYER,
+		GameZone.e.GRAVEYARD_PLAYER,
+		GameZone.e.EXILE_PLAYER
+	]
+	for zone in all_zones:
+		var cards_in_zone = game.game_data.get_cards_in_zone(zone)
+		var zombie_in_zone = cards_in_zone.any(func(c): return c.cardName == "Crumbling Zombie")
+		if zombie_in_zone:
+			print("  ❌ ERROR: Found zombie in zone ", GameZone.e.keys()[zone])
+			if not assert_test_false(zombie_in_zone, "Zombie should not exist in zone " + GameZone.e.keys()[zone]):
+				return false
+	print("  ✅ Zombie completely removed from game")
+	
+	# Step 7: Verify Upper half token is in play
+	var battlefield_cards = game.game_data.get_cards_in_zone(GameZone.e.BATTLEFIELD_PLAYER)
+	var upper_half = battlefield_cards.filter(func(c): return c.cardName == "Upper half")
+	if not assert_test_equal(upper_half.size(), 1, "Should have 1 Upper half token in play"):
+		print("  ❌ Expected 1 Upper half, found ", upper_half.size())
+		return false
+	print("  ✅ Upper half token created")
+	
+	# Step 8: Verify Lower half token is in play
+	var lower_half = battlefield_cards.filter(func(c): return c.cardName == "Lower half")
+	if not assert_test_equal(lower_half.size(), 1, "Should have 1 Lower half token in play"):
+		print("  ❌ Expected 1 Lower half, found ", lower_half.size())
+		return false
+	print("  ✅ Lower half token created")
+	
+	# Step 9: Verify both tokens are Zombies with 1 power
+	if upper_half.size() > 0:
+		var upper = upper_half[0]
+		if not assert_test_true(upper.hasType(CardData.CardType.CREATURE), "Upper half should be a Creature"):
+			return false
+		if not assert_test_equal(upper.power, 1, "Upper half should have 1 power"):
+			return false
+		if not assert_test_true("Zombie" in upper.subtypes, "Upper half should be a Zombie"):
+			return false
+	
+	if lower_half.size() > 0:
+		var lower = lower_half[0]
+		if not assert_test_true(lower.hasType(CardData.CardType.CREATURE), "Lower half should be a Creature"):
+			return false
+		if not assert_test_equal(lower.power, 1, "Lower half should have 1 power"):
+			return false
+		if not assert_test_true("Zombie" in lower.subtypes, "Lower half should be a Zombie"):
+			return false
+	print("  ✅ Both tokens are 1 power Zombie creatures")
+	
+	# Step 10: Verify final card count (original cards - zombie + 2 tokens)
+	var cards_after = game.game_data.get_cards_in_zone(GameZone.e.BATTLEFIELD_PLAYER).size()
+	var expected_count = cards_before - 1 + 2  # -1 zombie, +2 tokens
+	if not assert_test_equal(cards_after, expected_count, 
+		"Should have " + str(expected_count) + " cards in play (before: " + str(cards_before) + ", -1 zombie, +2 tokens)"):
+		print("  ❌ Expected ", expected_count, " cards, found ", cards_after)
+		return false
+	print("  ✅ Correct card count after replacement")
+	
+	print("✅ Crumbling Zombie death replacement test passed!")
+	return true
+
+func _make_death_draw_creature(card_name: String) -> CardData:
+	"""Build a creature template with a 'when I die, draw a card' triggered ability."""
+	var template = CardData.new()
+	template.cardName = card_name
+	template.playerControlled = true
+	template.playerOwned = true
+	template.addType(CardData.CardType.CREATURE)
+	var creature = game.createCardData(template, GameZone.e.BATTLEFIELD_PLAYER, true)
+
+	var death_ability = TriggeredAbility.new(
+		creature,
+		TriggeredAbility.GameEventType.CARD_DIED,
+		EffectType.Type.DRAW
+	)
+	death_ability.trigger_conditions[TriggeredAbility.TriggerCondition.VALID_CARD] = "Card.Self"
+	creature.triggered_abilities.append(death_ability)
+	death_ability.register_to_game(game)
+	return creature
+
+func test_simultaneous_deaths_replacements_and_triggers() -> bool:
+	"""Test that multiple simultaneous deaths are all handled correctly regardless of creation order:
+	- Two Crumbling Zombies (death replaced by splitting into Upper half/Lower half tokens)
+	- Two 'draw a card on death' creatures (normal death trigger)
+	All four take lethal damage in the same state-based-action pass, so they conceptually die
+	at the same time. Verifies replacements and triggers all resolve correctly for every permutation
+	of creation order."""
+
+	# Each entry is a distinct creation order for [zombie1, zombie2, drawer1, drawer2]
+	var permutations = [
+		["zombie1", "zombie2", "drawer1", "drawer2"],
+		["drawer1", "drawer2", "zombie1", "zombie2"],
+		["zombie1", "drawer1", "zombie2", "drawer2"],
+		["drawer1", "zombie1", "drawer2", "zombie2"],
+	]
+
+	for permutation_index in range(permutations.size()):
+		var order = permutations[permutation_index]
+		print("=== Simultaneous Deaths permutation ", permutation_index + 1, ": ", order, " ===")
+
+		# Fresh game instance per permutation so counts/gold aren't affected by prior runs
+		await test_runner.cleanup_game()
+		game = await test_runner.ensure_game_loaded()
+		game.game_view.headless = true
+		await test_runner.get_tree().process_frame
+
+		var cards_by_key: Dictionary = {}
+		for key in order:
+			match key:
+				"zombie1", "zombie2":
+					cards_by_key[key] = createCardFromName("Crumbling Zombie", GameZone.e.BATTLEFIELD_PLAYER)
+				"drawer1", "drawer2":
+					cards_by_key[key] = _make_death_draw_creature(key)
+
+		var zombie1: CardData = cards_by_key["zombie1"]
+		var zombie2: CardData = cards_by_key["zombie2"]
+		var drawer1: CardData = cards_by_key["drawer1"]
+		var drawer2: CardData = cards_by_key["drawer2"]
+
+		# Ensure the deck has enough cards for both drawers' death-triggered draws
+		for i in range(2):
+			var deck_filler = CardData.new()
+			deck_filler.cardName = "DeckFiller" + str(i)
+			deck_filler.addType(CardData.CardType.CREATURE)
+			game.createCardData(deck_filler, GameZone.e.DECK_PLAYER, true)
+
+		var hand_before = game.game_data.get_cards_in_zone(GameZone.e.HAND_PLAYER).size()
+
+		# Deal lethal damage to all four at once (power = 0 by default, so 1 damage each is lethal)
+		zombie1.receiveDamage(zombie1.power + 1)
+		zombie2.receiveDamage(zombie2.power + 1)
+		drawer1.receiveDamage(drawer1.power + 1)
+		drawer2.receiveDamage(drawer2.power + 1)
+
+		await game.resolveStateBasedAction()
+		await test_runner.get_tree().process_frame
+		await test_runner.get_tree().process_frame  # Extra frame for triggers/replacements to resolve
+
+		var battlefield_cards = game.game_data.get_cards_in_zone(GameZone.e.BATTLEFIELD_PLAYER)
+		var graveyard_cards = game.game_data.get_cards_in_zone(GameZone.e.GRAVEYARD_PLAYER)
+
+		# Zombies should be fully replaced: not in graveyard, not on battlefield
+		if not assert_test_false(battlefield_cards.has(zombie1) or graveyard_cards.has(zombie1),
+				"Permutation " + str(permutation_index + 1) + ": zombie1 should be completely removed"):
+			return false
+		if not assert_test_false(battlefield_cards.has(zombie2) or graveyard_cards.has(zombie2),
+				"Permutation " + str(permutation_index + 1) + ": zombie2 should be completely removed"):
+			return false
+
+		# Drawers should have died normally, moving to graveyard
+		if not assert_test_true(graveyard_cards.has(drawer1),
+				"Permutation " + str(permutation_index + 1) + ": drawer1 should be in graveyard"):
+			return false
+		if not assert_test_true(graveyard_cards.has(drawer2),
+				"Permutation " + str(permutation_index + 1) + ": drawer2 should be in graveyard"):
+			return false
+
+		# Each zombie splits into 1 Upper half + 1 Lower half => 2 zombies x 2 tokens = 4 tokens total
+		var upper_halves = battlefield_cards.filter(func(c): return c.cardName == "Upper half")
+		var lower_halves = battlefield_cards.filter(func(c): return c.cardName == "Lower half")
+		if not assert_test_equal(upper_halves.size(), 2,
+				"Permutation " + str(permutation_index + 1) + ": should have 2 Upper half tokens"):
+			return false
+		if not assert_test_equal(lower_halves.size(), 2,
+				"Permutation " + str(permutation_index + 1) + ": should have 2 Lower half tokens"):
+			return false
+
+		# Each drawer's death trigger should have drawn 1 card => hand grew by 2
+		var hand_after = game.game_data.get_cards_in_zone(GameZone.e.HAND_PLAYER).size()
+		if not assert_test_equal(hand_after, hand_before + 2,
+				"Permutation " + str(permutation_index + 1) + ": hand should grow by 2 (one draw per drawer death)"):
+			return false
+
+		print("  ✅ Permutation ", permutation_index + 1, " resolved correctly")
+
+	print("✅ Simultaneous deaths (replacements + triggers) test passed for all permutations!")
+	return true
+
 func _make_raw_card(card_name: String, colors: Array, rarity: CardData.Rarity, types: Array) -> CardData:
 	"""Create a raw CardData with color/rarity set, not registered in any game zone.
 	Use this when you need a template for CardLoader injection (e.g. deck builder tests).
@@ -2103,7 +2324,7 @@ func test_sub_ability_move_and_pump() -> bool:
 	"""Test a Death-from-the-Grave-style spell:
 	  Effect 1 (mandatory):  MoveCard — return target creature from Graveyard.Player to battlefield.
 	  Effect 2 (optional):   DealDamage — deal damage equal to that creature's power (Card.Remembered.Power)
-	                         to up to one opponent creature.
+							 to up to one opponent creature.
 	Exercises per-effect upfront targeting, zone-scoped ValidTargets, and the Card.Remembered.Power formula.
 	Two casts:
 	  Cast A — both targets provided → creature returns, opponent takes damage equal to moved creature's power.

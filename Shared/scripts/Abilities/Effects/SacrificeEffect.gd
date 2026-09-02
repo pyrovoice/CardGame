@@ -9,18 +9,12 @@ func execute(parameters: Dictionary, source_card_data: CardData, game_context: G
 	
 	var sacrificed: Array[CardData] = []
 
-	# Check if we have a specific target card (used by orphaned abilities from CreateDelayedEffect)
-	var target_card: CardData = parameters.get("TargetCard", null)
-	
+	# target_card, defined, valid_card, and num_cards are already parsed by _parse_parameters()
 	if target_card:
 		await _sacrifice_card(target_card, game_context)
 		sacrificed.append(target_card)
 	else:
 		# Otherwise, gather cards matching criteria
-		var defined: String = parameters.get("Defined", "")
-		var valid_cards: String = parameters.get("ValidCards", "Card.YouCtrl")
-		var num_cards: int = parameters.get("Num", 1)
-		
 		# Handle "Defined$ Self" - sacrifice the source card
 		if defined == "Self":
 			await _sacrifice_card(source_card_data, game_context)
@@ -32,10 +26,10 @@ func execute(parameters: Dictionary, source_card_data: CardData, game_context: G
 			if not affected.is_empty():
 				matching_cards = affected
 			else:
-				matching_cards = game_context._matches_card_filter(valid_cards)
+				matching_cards = game_context._matches_card_filter(valid_card)
 			
 			if matching_cards.is_empty():
-				print("⚠️ No valid cards to sacrifice matching: ", valid_cards)
+				print("⚠️ No valid cards to sacrifice matching: ", valid_card)
 				return []
 			
 			var cards_to_sacrifice = matching_cards.slice(0, min(num_cards, matching_cards.size()))

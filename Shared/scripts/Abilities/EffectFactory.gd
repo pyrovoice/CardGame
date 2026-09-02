@@ -42,9 +42,9 @@ static func create_effect(effect_type: EffectType.Type) -> Effect:
 		EffectType.Type.SACRIFICE:
 			return SacrificeEffect.new()
 		
-		EffectType.Type.RELIC_DURABILITY_TICK:
-			return RelicDurabilityEffect.new()
-		
+		EffectType.Type.REMOVE_CARD_FROM_PLAY:
+			return RemoveCardFromPlayEffect.new()
+	
 		EffectType.Type.ADD_GOLD:
 			return AddGoldEffect.new()
 		
@@ -57,6 +57,9 @@ static func create_effect(effect_type: EffectType.Type) -> Effect:
 		EffectType.Type.REDUCE_COST:
 			return ReduceCostEffect.new()
 		
+		EffectType.Type.RELIC_DURABILITY_TICK:
+			return RelicDurabilityEffect.new()
+		
 		_:
 			push_error("Unknown effect type: " + str(effect_type))
 			return null
@@ -68,6 +71,6 @@ static func execute_effect(effect_type: EffectType.Type, parameters: Dictionary,
 		if not effect.validate_parameters(parameters):
 			push_error("Invalid parameters for effect type: " + EffectType.type_to_string(effect_type))
 			return
-		await effect.run(parameters, source_card_data, game_context)
+		await effect.resolve(parameters, source_card_data, game_context)
 	else:
 		push_error("Failed to create effect for type: " + EffectType.type_to_string(effect_type))

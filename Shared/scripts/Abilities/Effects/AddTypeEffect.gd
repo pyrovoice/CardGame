@@ -7,13 +7,21 @@ class_name AddTypeEffect
 ##   2. ValidCard$ filter applied to all in-play cards (random or player choice per Choice$)
 
 func can_execute(parameters: Dictionary, source_card_data: CardData, game_context: Game) -> bool:
+	# Base class handles pre-selected targets, conditions, and ValidTargets checks
+	if not super.can_execute(parameters, source_card_data, game_context):
+		return false
+	
+	# Additional check: if ValidCard filter is used without pre-resolved targets,
+	# verify at least one valid card exists
 	if parameters.has("ValidCard") and not parameters.has("Targets"):
 		return _has_valid_affected_cards(parameters, game_context)
-	return super.can_execute(parameters, source_card_data, game_context)
+	
+	return true
 
 func execute(parameters: Dictionary, source_card_data: CardData, game_context: Game) -> Array[CardData]:
+	# targets, types, and duration are already parsed by _parse_parameters()
 	var target_cards: Array[CardData] = []
-	target_cards.assign(parameters.get("Targets", []))
+	target_cards.assign(targets)
 
 	# Fall back to Affected$ Card.Remembered if no pre-resolved targets
 	if target_cards.is_empty():
@@ -26,15 +34,12 @@ func execute(parameters: Dictionary, source_card_data: CardData, game_context: G
 		print("⚠️ AddTypeEffect: no targets resolved")
 		return []
 
-	var types_to_add = parameters.get("Types", "")
-	if types_to_add.is_empty():
+	if types.is_empty():
 		print("❌ No types specified for AddType effect")
 		return []
 
-	var duration = parameters.get("Duration", "Permanent")
-
 	for target_card_data in target_cards:
-		_add_types_to_card(target_card_data, types_to_add, duration)
+		_add_types_to_card(target_card_data, types, duration)
 
 	return target_cards
 

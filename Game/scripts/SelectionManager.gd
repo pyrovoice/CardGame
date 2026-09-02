@@ -158,6 +158,18 @@ func _get_container_zone_if_all_same(cards: Array[CardData]) -> Variant:
 	
 	return first_zone
 
+func _is_container_zone(zone: GameZone.e) -> bool:
+	"""Check if a zone is a container zone (hand, deck, graveyard) vs battlefield"""
+	return zone in [
+		GameZone.e.HAND_PLAYER,
+		GameZone.e.HAND_OPPONENT,
+		GameZone.e.DECK_PLAYER,
+		GameZone.e.DECK_OPPONENT,
+		GameZone.e.GRAVEYARD_PLAYER,
+		GameZone.e.GRAVEYARD_OPPONENT,
+		GameZone.e.EXTRA_DECK_PLAYER
+	]
+
 func _on_visualizer_card_clicked(card_data: CardData):
 	"""Handle card click from visualizer during selection"""
 	if not current_selection:
@@ -190,14 +202,17 @@ func _update_ui():
 	if not current_selection:
 		return
 	
+	var desc: String = ""
+	
 	# Custom confirm label takes priority over the auto-generated description
 	if not current_selection.request.confirm_text.is_empty():
 		if main_action_button:
 			main_action_button.text = current_selection.request.confirm_text
 			main_action_button.disabled = not current_selection.is_complete
+		desc = current_selection.request.confirm_text
 	else:
 		# Build description text with count
-		var desc = current_selection.get_requirement_description()
+		desc = current_selection.get_requirement_description()
 		desc += " (" + str(current_selection.selected_cards.size()) + "/" + str(current_selection.request.count) + ")"
 		if main_action_button:
 			main_action_button.text = desc

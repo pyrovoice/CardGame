@@ -126,13 +126,17 @@ func executeAbilityEffect(source_card_data: CardData, ability, game_context: Gam
 	# Check if the primary effect can execute (valid targets exist, conditions met).
 	# If it cannot and an alternativeResolve is set, run that instead.
 	var effect_for_check = EffectFactory.create_effect(effect_type_enum)
-	if effect_for_check and not effect_for_check.can_execute(resolved_parameters, source_card_data, game_context):
+	var can_exec = effect_for_check.can_execute(resolved_parameters, source_card_data, game_context) if effect_for_check else true
+	print("🔍 [ABILITY MGR] can_execute for ", EffectType.type_to_string(effect_type_enum), " = ", can_exec)
+	if effect_for_check and not can_exec:
 		var alt_type_str: String = resolved_parameters.get("alternativeResolve_effect_type", "")
 		if not alt_type_str.is_empty():
 			var alt_type = EffectType.string_to_type(alt_type_str)
 			var alt_params: Dictionary = resolved_parameters.get("alternativeResolve_parameters", {}).duplicate()
 			print("🔄 [ALTERNATIVE RESOLVE] '", EffectType.type_to_string(effect_type_enum), "' cannot execute, running '", alt_type_str, "'")
 			await EffectFactory.execute_effect(alt_type, alt_params, source_card_data, game_context)
+		else:
+			print("🚫 [ABILITY MGR] Effect cannot execute and no alternativeResolve - skipping")
 		return
 
 	# Apply replacement effects from the registry

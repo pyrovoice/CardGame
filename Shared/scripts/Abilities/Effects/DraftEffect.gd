@@ -10,17 +10,21 @@ class_name DraftEffect
 ##   SubAbility$          — SVar to run after a successful draft (the drafted card is remembered)
 
 func can_execute(parameters: Dictionary, source_card_data: CardData, game_context: Game) -> bool:
+	# Base class handles pre-selected targets, conditions, and ValidTargets checks
+	if not super.can_execute(parameters, source_card_data, game_context):
+		return false
+	
+	# Draft-specific check: pool must not be empty
 	return not _get_draft_pool(parameters).is_empty()
 
 func execute(parameters: Dictionary, source_card_data: CardData, game_context: Game) -> Array[CardData]:
+	# mandatory, archetype, and alternative_resolve are already parsed by _parse_parameters()
 	var pool = _get_draft_pool(parameters)
 
 	# Pick up to 3 unique cards at random for the draft window
 	pool.shuffle()
 	var choices: Array[CardData] = []
 	choices.assign(pool.slice(0, min(3, pool.size())))
-
-	var mandatory: bool = parameters.get("Mandatory", true)
 	var picker: CardChoicePicker = game_context.game_view.card_choice_picker
 
 	if not mandatory:
@@ -36,11 +40,9 @@ func execute(parameters: Dictionary, source_card_data: CardData, game_context: G
 
 	if chosen_index == -1:
 		# Player skipped — execute inline fallback if one is defined
-		var fallback_type_str: String = parameters.get("alternativeResolve_effect_type", "")
-		if not fallback_type_str.is_empty():
-			var fallback_type = EffectType.string_to_type(fallback_type_str)
-			var fallback_params: Dictionary = parameters.get("alternativeResolve_parameters", {})
-			await EffectFactory.execute_effect(fallback_type, fallback_params, source_card_data, game_context)
+		if not alternative_resolve_effect_type.is_empty():
+			var fallback_type = EffectType.string_to_type(alternative_resolve_effect_type)
+			await EffectFactory.execute_effect(fallback_type, alternative_resolve_parameters, source_card_data, game_context)
 		return []  # Skipped — sub-ability will not fire
 
 	# Create the chosen card template as a real card in the player's hand

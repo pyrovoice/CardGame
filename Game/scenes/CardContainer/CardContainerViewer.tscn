@@ -1,0 +1,26 @@
+[gd_scene load_steps=2 format=3 uid="uid://ih0ybxgkl64m"]
+
+[ext_resource type="Script" uid="uid://cyw1ca38xrrd4" path="res://CardContainerViewer.gd" id="1_sw236"]
+
+[node name="Node2D" type="Node2D"]
+script = ExtResource("1_sw236")
+
+[node name="Panel" type="Panel" parent="."]
+custom_minimum_size = Vector2(100, 100)
+offset_right = 1082.0
+offset_bottom = 383.0
+size_flags_horizontal = 3
+size_flags_vertical = 3
+
+[node name="ScrollContainer" type="ScrollContainer" parent="Panel"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="HBoxContainer" type="HBoxContainer" parent="Panel/ScrollContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3

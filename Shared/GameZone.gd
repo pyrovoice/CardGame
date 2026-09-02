@@ -19,6 +19,8 @@ enum e {
 	DECK_OPPONENT,
 	EXTRA_DECK_PLAYER,
 	RECYCLE_ZONE,
+	EXILE_PLAYER,
+	EXILE_OPPONENT,
 	
 	UNKNOWN
 }
@@ -125,4 +127,3 @@ static func matches_zone_filter(zone: e, filter: String) -> bool:
 		_:
 			push_warning("Unknown zone filter: " + filter)
 			return false
-

@@ -22,9 +22,13 @@ enum Type {
 	MOVE_CARD,  # Move card from one zone to another
 	SWITCH_POSITIONS,  # Switch positions between two cards (Elusive)
 	SACRIFICE,  # Sacrifice permanents (move to owner's graveyard)
+	REMOVE_CARD_FROM_PLAY,  # Completely remove a card from the game (not to any zone)
 	
 	# Relic mechanics
 	RELIC_DURABILITY_TICK,  # Decrement relic durability; sacrifice at zero
+	
+	# State-based event that can be intercepted by replacement effects
+	DEATH,  # A permanent would die (move from battlefield to graveyard)
 	
 	# Draft effects
 	DRAFT,  # Draft a card from an archetype pool to hand
@@ -74,8 +78,12 @@ static func type_to_string(effect_type: Type) -> String:
 			return "SwitchPositions"
 		Type.SACRIFICE:
 			return "Sacrifice"
+		Type.REMOVE_CARD_FROM_PLAY:
+			return "RemoveCardFromPlay"
 		Type.RELIC_DURABILITY_TICK:
 			return "RelicDurabilityTick"
+		Type.DEATH:
+			return "Death"
 		Type.DRAFT:
 			return "Draft"
 		Type.ADD_GOLD:
@@ -131,8 +139,12 @@ static func string_to_type(effect_string: String) -> Type:
 			return Type.SWITCH_POSITIONS
 		"Sacrifice":
 			return Type.SACRIFICE
+		"RemoveCardFromPlay":
+			return Type.REMOVE_CARD_FROM_PLAY
 		"RelicDurabilityTick":
 			return Type.RELIC_DURABILITY_TICK
+		"Death":
+			return Type.DEATH
 		"Draft":
 			return Type.DRAFT
 		"AddGold":

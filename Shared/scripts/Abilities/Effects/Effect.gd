@@ -4,6 +4,70 @@ class_name Effect
 ## Base class for all ability effects
 ## Each effect type should extend this and implement execute()
 
+# ─── Parsed Parameters (Instance Variables) ──────────────────────────────────
+# These are set by _parse_parameters() before execute() runs.
+# Child classes can directly use these instead of parsing parameters dict.
+
+## Common zone parameters
+var dest_zone: GameZone.e
+var origin_zone: GameZone.e
+
+## Quantity parameters
+var num_cards: int
+var amount: int
+var num_damage: int
+
+## Selection parameters
+var choice_type: String
+var valid_card: String
+var affected: String
+var defined: String
+var targets: Array[CardData]
+
+## Effect configuration
+var condition: String
+var duration: String
+var mandatory: bool
+
+## Token/card creation
+var token_script: String
+var pool: String
+var archetype: String
+
+## Targeting
+var valid_targets: String
+var target: String
+
+## Modification
+var power_bonus: int
+var types: String
+var keyword: String
+
+## Nested effects
+var sub_ability_effect_type: String
+var sub_ability_parameters: Dictionary
+
+## Card creation parameters
+var include_legendary: bool
+var modif: String
+
+## Delayed effect parameters
+var trigger_event
+var nested_effect_type
+var nested_parameters: Dictionary
+
+## Specific targeting
+var target_card: CardData
+var triggered_card_data: CardData
+
+## Position switching
+var switch_with: String
+var only_same_location: bool
+
+## Alternative resolution
+var alternative_resolve_effect_type: String
+var alternative_resolve_parameters: Dictionary
+
 ## Execute the effect and return the cards it acted on.
 ## Return an empty array to signal the effect was suppressed (player skipped, condition not met,
 ## not enough resources, etc.) — the sub-ability chain will NOT fire in that case.
@@ -14,9 +78,19 @@ func execute(parameters: Dictionary, source_card_data: CardData, game_context: G
 	push_error("Effect.execute() must be implemented by subclass")
 	return []
 
-## Runner — called by EffectFactory instead of execute() directly.
-## Handles the full lifecycle: declare selections → execute → remember → sub-ability.
-func run(parameters: Dictionary, source_card_data: CardData, game_context: Game) -> void:
+## Resolve the full effect lifecycle: parse → declare selections → execute → remember → sub-ability.
+## Called by EffectFactory instead of execute() directly.
+func resolve(parameters: Dictionary, source_card_data: CardData, game_context: Game) -> void:
+	# Always parse parameters fresh for each resolution (effects can be reused)
+	_parse_parameters(parameters, source_card_data, game_context)
+	
+	# Check if the effect can execute (valid targets, conditions met)
+	if not can_execute(parameters, source_card_data, game_context):
+		var effect_script = get_script()
+		var effect_name = effect_script.resource_path.get_file().get_basename() if effect_script else "UnknownEffect"
+		print("🚫 [EFFECT] ", effect_name, " cannot execute - skipping effect and sub-ability")
+		return
+	
 	# Fulfil any declared selections before execute() so effects need not call game_context for UI
 	var requests: Array = declare_selections(parameters, source_card_data, game_context)
 	for request: SelectionRequest in requests:
@@ -50,6 +124,75 @@ func declare_selections(parameters: Dictionary, source_card_data: CardData, game
 func get_description(parameters: Dictionary) -> String:
 	return "Generic effect"
 
+## Parse all parameters from the dictionary into instance variables.
+## Called by run() before execute(). Sets defaults for any missing parameters.
+## Child classes should NOT override this - all parsing is centralized here.
+func _parse_parameters(parameters: Dictionary, source_card_data: CardData, game_context: Game) -> void:
+	# Zone parameters
+	var destination_str: String = parameters.get("Destination", "Battlefield")
+	dest_zone = parse_destination(destination_str, source_card_data.playerControlled)
+	print("🔍 [PARSE] Destination '", destination_str, "' for ", "player" if source_card_data.playerControlled else "opponent", "-controlled card → zone ", dest_zone, " (", GameZone.e.keys()[dest_zone] if dest_zone < GameZone.e.size() else "INVALID", ")")
+	
+	var origin_str: String = parameters.get("Origin", "Graveyard.Player")
+	origin_zone = parse_destination(origin_str, source_card_data.playerControlled)
+	print("🔍 [PARSE] Origin '", origin_str, "' for ", "player" if source_card_data.playerControlled else "opponent", "-controlled card → zone ", origin_zone, " (", GameZone.e.keys()[origin_zone] if origin_zone < GameZone.e.size() else "INVALID", ")")
+	
+	# Quantity parameters (handle various names)
+	num_cards = resolve_numeric(parameters.get("NumCard", parameters.get("Num", parameters.get("tokens_to_create", 1))))
+	amount = resolve_numeric(parameters.get("Amount", parameters.get("NumCards", 1)))
+	num_damage = resolve_numeric(parameters.get("NumDamage", 0))
+	
+	# Selection parameters
+	choice_type = parameters.get("Choice", "Random")
+	valid_card = parameters.get("ValidCard", parameters.get("ValidCards", "Card"))
+	affected = parameters.get("Affected", "")
+	defined = parameters.get("Defined", "You")
+	targets.assign(parameters.get("Targets", []))
+	
+	# Effect configuration
+	condition = parameters.get("Condition", "")
+	duration = parameters.get("Duration", "Permanent")
+	mandatory = parameters.get("Mandatory", true)
+	
+	# Token/card creation
+	token_script = parameters.get("TokenScript", "")
+	pool = parameters.get("Pool", "")
+	archetype = parameters.get("Archetype", "")
+	
+	# Targeting
+	valid_targets = parameters.get("ValidTargets", "Any")
+	target = parameters.get("Target", "")
+	
+	# Modification
+	power_bonus = resolve_numeric(parameters.get("PowerBonus", 0))
+	types = parameters.get("Types", "")
+	keyword = parameters.get("KW", "")
+	
+	# Nested effects
+	sub_ability_effect_type = parameters.get("subAbility_effect_type", "")
+	sub_ability_parameters = parameters.get("subAbility_parameters", {})
+	
+	# Card creation parameters
+	include_legendary = parameters.get("IncludeLegendary", false)
+	modif = parameters.get("Modif", "")
+	
+	# Delayed effect parameters
+	trigger_event = parameters.get("TriggerEvent", null)
+	nested_effect_type = parameters.get("NestedEffectType", null)
+	nested_parameters = parameters.get("NestedParameters", {})
+	
+	# Specific targeting
+	target_card = parameters.get("TargetCard", null)
+	triggered_card_data = parameters.get("TriggeredCardData", null)
+	
+	# Position switching
+	switch_with = parameters.get("SwitchWith", "")
+	only_same_location = parameters.get("OnlySameLocation", true)
+	
+	# Alternative resolution
+	alternative_resolve_effect_type = parameters.get("alternativeResolve_effect_type", "")
+	alternative_resolve_parameters = parameters.get("alternativeResolve_parameters", {})
+
 ## Check if an effect requires selecting a target based on its parameters
 ## @param parameters: Dictionary - Effect parameters to check
 ## @return: bool - True if effect has ValidTargets parameter (requires targeting)
@@ -64,14 +207,25 @@ static func requires_target(parameters: Dictionary) -> bool:
 ## Override in subclasses for effects that have optional targets or conditions.
 ## @return: bool - True (default) means "go ahead and execute"
 func can_execute(parameters: Dictionary, source_card_data: CardData, game_context: Game) -> bool:
-	# Check mandatory Condition$ if specified
-	var condition: String = parameters.get("Condition", "")
+	# Parse parameters to access instance variables for checking
+	_parse_parameters(parameters, source_card_data, game_context)
+	
+	# If targets are pre-selected (e.g., via spell targeting), bypass zone/validation checks
+	if not targets.is_empty():
+		return true
+	
+	# Check mandatory Condition$ if specified (use parsed instance variable)
 	if not condition.is_empty() and not game_context.check_effect_condition(condition, source_card_data):
+		print("🚫 [CAN_EXECUTE] Condition failed: ", condition)
 		return false
 
 	# If the effect specified ValidTargets, require that targets were actually resolved
-	if parameters.has("ValidTargets") and parameters.get("Targets", []).is_empty():
-		return false
+	if parameters.has("ValidTargets"):
+		var targets_in_params = parameters.get("Targets", [])
+		print("🔍 [CAN_EXECUTE] ValidTargets present, checking Targets: ", targets_in_params.size(), " targets")
+		if targets_in_params.is_empty():
+			print("🚫 [CAN_EXECUTE] No targets provided for effect with ValidTargets")
+			return false
 
 	return true
 
@@ -127,6 +281,51 @@ static func resolve_numeric(value) -> int:
 		push_warning("Effect.resolve_numeric: unknown formula '" + str(value) + "', defaulting to 0")
 		return 0
 	return 0
+
+## Parse a Destination$ parameter into a specific GameZone enum value.
+## Takes into account the controller of the source card to determine player vs opponent zones.
+##
+## Supported destinations:
+##   "Battlefield" → BATTLEFIELD_PLAYER or BATTLEFIELD_OPPONENT
+##   "Battlefield.Player" → BATTLEFIELD_PLAYER (explicit)
+##   "Battlefield.Opponent" → BATTLEFIELD_OPPONENT (explicit)
+##   "Graveyard" → GRAVEYARD_PLAYER or GRAVEYARD_OPPONENT
+##   "Hand" → HAND_PLAYER or HAND_OPPONENT
+##   "Deck" → DECK_PLAYER or DECK_OPPONENT
+##   "ExtraDeck" → EXTRA_DECK_PLAYER (opponent extra deck not typically used)
+##
+## @param destination_str: String - The destination zone name (e.g., "Graveyard" or "Graveyard.Player")
+## @param is_player_controlled: bool - Whether the source card is player controlled (used when no explicit suffix)
+## @return: GameZone.e - The specific zone enum value
+static func parse_destination(destination_str: String, is_player_controlled: bool) -> GameZone.e:
+	# Handle explicit .Player / .Opponent / .Controller suffix
+	var explicit_player: bool = is_player_controlled
+	var zone_name: String = destination_str
+	
+	if destination_str.ends_with(".Player"):
+		explicit_player = true  # Absolute: always player zones
+		zone_name = destination_str.substr(0, destination_str.length() - 7)  # Remove ".Player"
+	elif destination_str.ends_with(".Opponent"):
+		explicit_player = not is_player_controlled  # Relative: opponent of controller
+		zone_name = destination_str.substr(0, destination_str.length() - 9)  # Remove ".Opponent"
+	elif destination_str.ends_with(".Controller"):
+		explicit_player = is_player_controlled  # Relative: same as controller
+		zone_name = destination_str.substr(0, destination_str.length() - 11)  # Remove ".Controller"
+	
+	match zone_name:
+		"Battlefield":
+			return GameZone.e.BATTLEFIELD_PLAYER if explicit_player else GameZone.e.BATTLEFIELD_OPPONENT
+		"Graveyard":
+			return GameZone.e.GRAVEYARD_PLAYER if explicit_player else GameZone.e.GRAVEYARD_OPPONENT
+		"Hand":
+			return GameZone.e.HAND_PLAYER if explicit_player else GameZone.e.HAND_OPPONENT
+		"Deck":
+			return GameZone.e.DECK_PLAYER if explicit_player else GameZone.e.DECK_OPPONENT
+		"ExtraDeck":
+			return GameZone.e.EXTRA_DECK_PLAYER if explicit_player else GameZone.e.EXTRA_DECK_PLAYER
+		_:
+			push_warning("Effect.parse_destination: unknown destination '" + destination_str + "', defaulting to Battlefield")
+			return GameZone.e.BATTLEFIELD_PLAYER if explicit_player else GameZone.e.BATTLEFIELD_OPPONENT
 
 ## Return all in-play cards matching ValidCard$, selected per Choice$/NumCard$.
 ## Choice$ Random (default) picks without UI; Choice$ Player triggers selection UI.

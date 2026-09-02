@@ -641,15 +641,22 @@ func parse_replacement_effect(replacement_text: String, svar_effects: Dictionary
 			replacement_conditions["ActiveZones"] = part.substr(13)
 		elif part.begins_with("ValidToken$"):
 			replacement_conditions["ValidToken"] = part.substr(12)
+		elif part.begins_with("ValidCard$"):
+			replacement_conditions["ValidCard"] = part.substr(11)
 		elif part.begins_with("ReplaceWith$"):
 			effect_name = part.substr(13)
 		elif part.begins_with("Description$"):
 			description = part.substr(13)
 	
 	# Get effect parameters from SVar
+	var original_effect_name = effect_name  # Preserve the SVar name before it gets overwritten
 	if effect_name in svar_effects:
 		var svar_data = svar_effects[effect_name]
 		effect_parameters = svar_data.get("parameters", {})
+		# Embed the SVar's own SubAbility$ chain (e.g. CreateToken -> SubAbility CreateToken -> ...)
+		_embed_sub_ability_chain(effect_parameters, svar_effects)
+		# Store the complete SVar data so a full-substitution replacement can execute the chain
+		effect_parameters["svar_data"] = svar_data
 		# Use the effect type from SVar
 		if not svar_data.get("effect_type", "").is_empty():
 			effect_name = svar_data["effect_type"]
@@ -657,10 +664,10 @@ func parse_replacement_effect(replacement_text: String, svar_effects: Dictionary
 	# Validate event type before converting
 	if not _is_valid_effect_type(event_type):
 		push_error("❌ [CARD LOAD ERROR] Invalid event type '" + event_type + "' in replacement effect for card: " + card_data.cardName)
-		push_error("   Valid types: DealDamage, Pump, Draw, CreateToken, CreateCard, Cast, AddType, AddKeyword, MoveCard, SwitchPositions, etc.")
+		push_error("   Valid types: Death, DealDamage, Pump, Draw, CreateToken, CreateCard, Cast, AddType, AddKeyword, MoveCard, SwitchPositions, etc.")
 		return null
 	
-	# Replacement abilities are keyed by the event they replace (e.g., CreateToken).
+	# Replacement abilities are keyed by the event they replace (e.g., CreateToken, Death)
 	var effect_type = EffectType.string_to_type(event_type)
 	
 	# Build conditions with event type
@@ -669,9 +676,13 @@ func parse_replacement_effect(replacement_text: String, svar_effects: Dictionary
 	
 	# Build modifications from effect parameters
 	var modifications = effect_parameters.duplicate()
+	# Store the original SVar name to execute (not the resolved effect_type)
+	modifications["effect_name"] = original_effect_name
 	
-	# Create the appropriate ReplacementEffect based on effect type
-	var replacement_effect_instance = _create_replacement_effect(card_data, effect_name, conditions, modifications)
+	# Create the appropriate ReplacementEffect based on the event being replaced.
+	# CreateToken uses an in-place parameter modifier; every other event uses a full
+	# substitution (cancel the original event, run the ReplaceWith$ SVar chain instead).
+	var replacement_effect_instance = _create_replacement_effect(card_data, event_type, conditions, modifications)
 	if not replacement_effect_instance:
 		push_error("Failed to create replacement effect for ", effect_name)
 		return null
@@ -685,22 +696,23 @@ func parse_replacement_effect(replacement_text: String, svar_effects: Dictionary
 	
 	return ability
 
-# Helper to create appropriate ReplacementEffect instance based on effect type
-func _create_replacement_effect(source: CardData, effect_type_str: String, conditions: Dictionary, modifications: Dictionary) -> ReplacementEffect:
-	"""Create the appropriate ReplacementEffect subclass based on effect type"""
+# Helper to create appropriate ReplacementEffect instance based on the event being replaced
+func _create_replacement_effect(source: CardData, event_type_str: String, conditions: Dictionary, modifications: Dictionary) -> ReplacementEffect:
+	"""Create the appropriate ReplacementEffect subclass based on the event being replaced.
+	CreateToken uses an in-place parameter modifier (e.g. Goblin Emblem's "create one more").
+	Every other event uses a full substitution: cancel the event and run the ReplaceWith$ SVar chain instead."""
 	var effect: ReplacementEffect = null
 	
-	match effect_type_str:
-		"ReplaceToken":
+	match event_type_str:
+		"CreateToken":
 			effect = ReplaceTokenEffect.new(source, conditions, modifications)
 		_:
-			print("⚠️ Unknown replacement effect type: ", effect_type_str)
-			return null
+			effect = ReplaceEventEffect.new(source, conditions, modifications)
 	
 	# Validate parameters
 	if not effect.validate_parameters(modifications):
-		print("⚠️ Invalid parameters for ", effect_type_str)
-		return null
+			print("⚠️ Invalid parameters for ", event_type_str)
+			return null
 	
 	return effect
 

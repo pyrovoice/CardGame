@@ -1,0 +1,10 @@
+Name:Crumbling Zombie
+ManaCost:2
+Power:2
+Types:Creature Zombie
+Script:
+R:Event$ Death | ValidCard$ Card.Self | ActiveZones$ Battlefield | ReplaceWith$ SplitIntoHalves | Description$ If I would die, I split into Upper half and Lower half instead
+SVar:SplitIntoHalves$ CreateToken | TokenScript$ Upper half | SubAbility$ SplitLowerHalf
+SVar:SplitLowerHalf$ CreateToken | TokenScript$ Lower half | SubAbility$ RemoveZombie
+SVar:RemoveZombie$ RemoveCardFromPlay | Defined$ Self
+CardText:If I would die, I split into Upper half and Lower half instead.

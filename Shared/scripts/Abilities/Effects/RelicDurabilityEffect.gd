@@ -10,14 +10,16 @@ func execute(_parameters: Dictionary, source_card_data: CardData, game_context: 
 	# Re-check type at resolution time: the card may have lost the Relic type between
 	# trigger and resolution (e.g., another effect removed the type this same turn).
 	if not source_card_data.hasType(CardData.CardType.RELIC):
+		print("⚠️ [RELIC] ", source_card_data.cardName, " is not a Relic at resolution time")
 		return []
 	
+	print("⏬ [RELIC] ", source_card_data.cardName, " durability: ", source_card_data.durability, " → ", source_card_data.durability - 1)
 	source_card_data.durability -= 1
 	
 	if source_card_data.durability <= 0:
 		print("💥 [RELIC] ", source_card_data.cardName, " durability depleted — sacrificing")
 		var sacrifice = SacrificeEffect.new()
-		await sacrifice.execute({"Defined": "Self"}, source_card_data, game_context)
+		await sacrifice.resolve({"Defined": "Self"}, source_card_data, game_context)
 
 	return []
 

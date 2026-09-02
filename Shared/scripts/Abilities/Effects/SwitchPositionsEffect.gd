@@ -5,9 +5,7 @@ class_name SwitchPositionsEffect
 ## Used by the Elusive keyword
 
 func execute(parameters: Dictionary, source_card_data: CardData, game_context: Game) -> Array[CardData]:
-	var switch_with = parameters.get("SwitchWith", "")
-	var only_same_location = parameters.get("OnlySameLocation", true)
-	
+	# switch_with, only_same_location, and triggered_card_data are already parsed by _parse_parameters()
 	print("🔄 [SWITCH] ", source_card_data.cardName, " switching positions with: ", switch_with)
 	
 	# Verify source card is in a combat zone
@@ -20,7 +18,7 @@ func execute(parameters: Dictionary, source_card_data: CardData, game_context: G
 	var target_card_data: CardData = null
 	
 	if switch_with == "TriggeredCard":
-		target_card_data = parameters.get("TriggeredCardData", null)
+		target_card_data = triggered_card_data
 		if not target_card_data:
 			print("⚠️ No TriggeredCardData in parameters")
 			return []

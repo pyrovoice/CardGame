@@ -1,0 +1,3 @@
+Name:Lower half
+Types:Creature Zombie
+Power:1

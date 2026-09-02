@@ -10,15 +10,15 @@ class_name SelectionRequest
 ##   var result = await game_context.start_card_selection()   ← reads SelectionRequest.current
 ##
 ## Effect.declare_selections() builds and returns SelectionRequest objects normally;
-## Effect.run() assigns each one to SelectionRequest.current before calling start_card_selection().
+## Effect.resolve() assigns each one to SelectionRequest.current before calling start_card_selection().
 ##
-## Injected result (when fulfilled by Effect.run()):
+## Injected result (when fulfilled by Effect.resolve()):
 ##   null   → player pressed Cancel / skipped
 ##   []     → player confirmed with no card selected  (binary "yes")
 ##   [...]  → player selected specific cards
 
 # ── Global singleton ──────────────────────────────────────────────────────────
-## The currently-active request.  Set by reset() or by Effect.run() before each call.
+## The currently-active request.  Set by reset() or by Effect.resolve() before each call.
 static var current: SelectionRequest = null
 
 ## Clear all fields, assign self as current, and return self for chaining.

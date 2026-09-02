@@ -7,7 +7,7 @@ class_name AddGoldEffect
 ##   Amount (int, optional): How much gold to add. Default: 1
 
 func execute(parameters: Dictionary, source_card_data: CardData, game_context: Game) -> Array[CardData]:
-	var amount = parameters.get("Amount", 1)
+	# amount is already parsed by _parse_parameters()
 	if source_card_data.playerControlled:
 		game_context.game_data.player_gold.value += amount
 	else:

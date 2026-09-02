@@ -5,15 +5,13 @@ class_name AddKeywordEffect
 ## Expects targets to be pre-resolved and passed in parameters["Targets"]
 
 func execute(parameters: Dictionary, _source_card_data: CardData, game_context: Game) -> Array[CardData]:
-	var keyword = parameters.get("KW", "")
-	var duration = parameters.get("Duration", "Permanent")
-	
+	# keyword, duration, and targets are already parsed by _parse_parameters()
 	if keyword.is_empty():
 		print("❌ No keyword specified for AddKeyword effect")
 		return []
 	
 	# Effects do not resolve/select targets; caller must provide them.
-	var target_cards: Array = parameters.get("Targets", [])
+	var target_cards: Array = targets
 	
 	if target_cards.is_empty():
 		print("⚠️ AddKeywordEffect missing pre-resolved Targets")

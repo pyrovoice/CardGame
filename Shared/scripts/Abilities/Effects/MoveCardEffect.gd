@@ -8,46 +8,31 @@ func execute(parameters: Dictionary, source_card_data: CardData, game_context: G
 	print("  Parameters: ", parameters)
 	print("  Source card: ", source_card_data.cardName)
 	
-	var origin_zone_str: String = parameters.get("Origin", "Graveyard.Player")
-	var destination_zone_str: String = parameters.get("Destination", "Graveyard.Opponent")
-	var defined: String = parameters.get("Defined", "")
-	var condition: String = parameters.get("Condition", "")
-	
+	# condition, defined, origin_zone, dest_zone, and targets are already parsed by _parse_parameters()
 	print("  Defined parameter: '", defined, "' (length: ", defined.length(), ")")
-	print("  Origin: ", origin_zone_str)
-	print("  Destination: ", destination_zone_str)
+	print("  Origin zone enum: ", origin_zone)
+	print("  Destination zone enum: ", dest_zone)
 	
 	# Check condition using controller method
-	if condition and not game_context.check_effect_condition(condition, source_card_data):
+	if not condition.is_empty() and not game_context.check_effect_condition(condition, source_card_data):
 		print("  ❌ Condition check failed, returning early")
 		return []
 	
 	# Affected$ Card.Remembered — operate on remembered cards, bypassing zone filtering
 	var affected = Effect.resolve_affected(parameters)
 	if not affected.is_empty():
-		var from_player_perspective = source_card_data.playerControlled
-		var destination_zone_enum: GameZone.e = game_context.game_data.parse_zone_string_to_enum(destination_zone_str, from_player_perspective)
-		if destination_zone_enum == GameZone.e.UNKNOWN:
-			push_error("MoveCardEffect: invalid destination zone: ", destination_zone_str)
-			return []
 		var moved: Array[CardData] = []
 		for card in affected:
-			await game_context.execute_move_card(card, destination_zone_enum)
+			await game_context.execute_move_card(card, dest_zone)
 			moved.append(card)
 		return moved
 	
 	# Pre-selected Targets (from upfront spell targeting via ValidTgts$) —
 	# move each specific card to the destination, regardless of its current zone.
-	var preselected_targets: Array = parameters.get("Targets", [])
-	if not preselected_targets.is_empty():
-		var from_player_perspective = source_card_data.playerControlled
-		var destination_zone_enum: GameZone.e = game_context.game_data.parse_zone_string_to_enum(destination_zone_str, from_player_perspective)
-		if destination_zone_enum == GameZone.e.UNKNOWN:
-			push_error("MoveCardEffect: invalid destination zone: ", destination_zone_str)
-			return []
+	if not targets.is_empty():
 		var moved: Array[CardData] = []
-		for card in preselected_targets:
-			await game_context.execute_move_card(card, destination_zone_enum)
+		for card in targets:
+			await game_context.execute_move_card(card, dest_zone)
 			moved.append(card)
 		return moved
 	
@@ -55,83 +40,96 @@ func execute(parameters: Dictionary, source_card_data: CardData, game_context: G
 	var from_player_perspective = source_card_data.playerControlled
 	print("  From player perspective: ", from_player_perspective)
 	
-	# Parse zone strings to GameZone.e enums using GameData method
-	var origin_zone_enum: GameZone.e = game_context.game_data.parse_zone_string_to_enum(origin_zone_str, from_player_perspective)
-	var destination_zone_enum: GameZone.e = game_context.game_data.parse_zone_string_to_enum(destination_zone_str, from_player_perspective)
+	print("  Origin zone enum: ", origin_zone, " (", GameZone.e.keys()[origin_zone] if origin_zone < GameZone.e.size() else "INVALID", ")")
+	print("  Destination zone enum: ", dest_zone, " (", GameZone.e.keys()[dest_zone] if dest_zone < GameZone.e.size() else "INVALID", ")")
 	
-	print("  Origin zone enum: ", origin_zone_enum, " (", GameZone.e.keys()[origin_zone_enum] if origin_zone_enum < GameZone.e.size() else "INVALID", ")")
-	print("  Destination zone enum: ", destination_zone_enum, " (", GameZone.e.keys()[destination_zone_enum] if destination_zone_enum < GameZone.e.size() else "INVALID", ")")
-	
-	if origin_zone_enum == GameZone.e.UNKNOWN or destination_zone_enum == GameZone.e.UNKNOWN:
-		push_error("Invalid zones: ", origin_zone_str, " -> ", destination_zone_str)
+	if origin_zone == GameZone.e.UNKNOWN or dest_zone == GameZone.e.UNKNOWN:
+		push_error("Invalid zones detected")
 		print("  ❌ Invalid zones detected, returning early")
 		return []
 	
 	# Handle "Defined$ Self" - move the source card itself
 	if defined == "Self":
 		print("📦 [MOVE DEBUG] Moving self: ", source_card_data.cardName)
-		print("  Origin: ", origin_zone_str, " (", origin_zone_enum, ")")
-		print("  Destination: ", destination_zone_str, " (", destination_zone_enum, ")")
+		print("  Origin zone enum: ", origin_zone)
+		print("  Destination zone enum: ", dest_zone)
 		print("  Current zone before move: ", game_context.game_data.get_card_zone(source_card_data))
 		
-		await game_context.execute_move_card(source_card_data, destination_zone_enum, origin_zone_enum)
+		await game_context.execute_move_card(source_card_data, dest_zone, origin_zone)
 		
 		print("  Current zone after move: ", game_context.game_data.get_card_zone(source_card_data))
 		print("  Card in graveyard? ", game_context.game_data.get_cards_in_zone(GameZone.e.GRAVEYARD_PLAYER).has(source_card_data))
 		return [source_card_data]
 	
 	# Get cards from origin zone using GameData
-	var origin_cards: Array[CardData] = game_context.game_data.get_cards_in_zone(origin_zone_enum)
+	var origin_cards: Array[CardData] = game_context.game_data.get_cards_in_zone(origin_zone)
 	
 	# Filter and select cards using base class method
 	var selected_cards = await filter_and_select_cards(
 		origin_cards,
 		parameters,
-		origin_zone_str,
+		GameZone.e.keys()[origin_zone],
 		"Move Card",
 		source_card_data,
 		game_context
 	)
 	
 	if selected_cards.is_empty():
-		print("⚠️ No cards selected from ", origin_zone_str)
+		print("⚠️ No cards selected from origin zone")
 		return []
 	
 	# Move all selected cards
 	for selected_card in selected_cards:
-		print("📦 ", source_card_data.cardName, " moves ", selected_card.cardName, " from ", origin_zone_str, " to ", destination_zone_str)
-		await game_context.execute_move_card(selected_card, destination_zone_enum, origin_zone_enum)
+		print("📦 ", source_card_data.cardName, " moves ", selected_card.cardName, " to destination")
+		await game_context.execute_move_card(selected_card, dest_zone, origin_zone)
 	
 	return selected_cards
 
 func can_execute(parameters: Dictionary, source_card_data: CardData, game_context: Game) -> bool:
 	"""Returns false when no valid cards exist in the origin zone (or condition fails)."""
-	var condition: String = parameters.get("Condition", "")
-	if condition and not game_context.check_effect_condition(condition, source_card_data):
+	print("🔍 [MOVE CAN_EXECUTE] Called with parameters: ", parameters.keys())
+	print("  Has Targets in parameters: ", parameters.has("Targets"))
+	if parameters.has("Targets"):
+		print("  Targets count: ", parameters.get("Targets", []).size())
+	
+	# Base class handles pre-selected targets, conditions, and parsing
+	var super_result = super.can_execute(parameters, source_card_data, game_context)
+	print("🔍 [MOVE CAN_EXECUTE] super.can_execute returned: ", super_result)
+	print("  targets instance var size: ", targets.size())
+	print("  defined: '", defined, "'")
+	print("  origin_zone: ", origin_zone)
+	
+	if not super_result:
 		return false
 
-	var defined: String = parameters.get("Defined", "")
+	# If base class returned true and we have pre-selected targets, we're good
+	if not targets.is_empty():
+		print("  ✅ Pre-selected targets exist - returning true")
+		return true
+
 	if defined == "Self":
+		print("  ✅ Self move - returning true")
 		return true  # Moving self is always a valid action
 
-	var origin_zone_str: String = parameters.get("Origin", "Graveyard.Player")
-	var from_player_perspective: bool = source_card_data.playerControlled
-	var origin_zone_enum: GameZone.e = game_context.game_data.parse_zone_string_to_enum(origin_zone_str, from_player_perspective)
-
-	if origin_zone_enum == GameZone.e.UNKNOWN:
+	if origin_zone == GameZone.e.UNKNOWN:
+		print("  ❌ Unknown origin zone - returning false")
 		return false
 
-	var origin_cards: Array[CardData] = game_context.game_data.get_cards_in_zone(origin_zone_enum)
-	var valid_card_filter: String = parameters.get("ValidCard", "")
+	var origin_cards: Array[CardData] = game_context.game_data.get_cards_in_zone(origin_zone)
+	print("  origin_cards count: ", origin_cards.size())
 
-	if valid_card_filter.is_empty():
-		return not origin_cards.is_empty()
+	if valid_card.is_empty():
+		var result = not origin_cards.is_empty()
+		print("  No ValidCard filter, result: ", result)
+		return result
 
-	var criteria = GameUtility.parseCriteria(valid_card_filter)
+	var criteria = GameUtility.parseCriteria(valid_card)
 	for card in origin_cards:
 		if GameUtility.matchesCardDataCriteria(card, criteria):
+			print("  ✅ Found matching card - returning true")
 			return true
 
+	print("  ❌ No matching cards found - returning false")
 	return false
 
 func validate_parameters(parameters: Dictionary) -> bool:

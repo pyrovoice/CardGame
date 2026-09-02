@@ -1,0 +1,3 @@
+Name:Upper half
+Types:Creature Zombie
+Power:1

@@ -8,11 +8,7 @@ class_name CreateDelayedEffectEffect
 func execute(parameters: Dictionary, source_card_data: CardData, game_context: Game) -> Array[CardData]:
 	print("⏰ [CREATE DELAYED EFFECT] Creating delayed effect from ", source_card_data.cardName)
 	
-	# Get pre-parsed data from CardLoader
-	var trigger_event: TriggeredAbility.GameEventType = parameters.get("TriggerEvent", TriggeredAbility.GameEventType.END_OF_TURN)
-	var nested_effect_type: EffectType.Type = parameters.get("NestedEffectType", EffectType.Type.NONE)
-	var nested_parameters: Dictionary = parameters.get("NestedParameters", {})
-	
+	# trigger_event, nested_effect_type, nested_parameters, and targets are already parsed by _parse_parameters()
 	if nested_effect_type == EffectType.Type.NONE:
 		push_error("CreateDelayedEffect: No nested effect specified")
 		return []
@@ -21,12 +17,11 @@ func execute(parameters: Dictionary, source_card_data: CardData, game_context: G
 	var effect_parameters: Dictionary = nested_parameters.duplicate()
 	
 	# Handle spell targets - if this spell targeted something, pass it to the delayed effect
-	var spell_targets = parameters.get("Targets", [])
-	if spell_targets is Array and spell_targets.size() > 0:
-		if spell_targets.size() == 1:
-			effect_parameters["TargetCard"] = spell_targets[0]
+	if targets.size() > 0:
+		if targets.size() == 1:
+			effect_parameters["TargetCard"] = targets[0]
 		else:
-			effect_parameters["TargetCards"] = spell_targets
+			effect_parameters["TargetCards"] = targets
 	
 	print("  Trigger Event: ", trigger_event)
 	print("  Wrapped Effect: ", EffectType.type_to_string(nested_effect_type))
