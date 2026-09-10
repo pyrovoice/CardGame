@@ -1,0 +1,23 @@
+{
+	"name": "Necromancer",
+	"lieutenants": {
+		"aggro": [
+			{ "card": "Opp1", "count": 3 },
+			{ "card": "Grave Whisperer", "count": 2 },
+			{ "card": "Crumbling Zombie", "count": 4 }
+		],
+		"control": [
+			{ "card": "Opp2", "count": 2 },
+			{ "card": "Opp3", "count": 3 }
+		],
+		"combo": [
+			{ "card": "Opp1", "count": 1 },
+			{ "card": "Opp2", "count": 1 },
+			{ "card": "Opp3", "count": 1 }
+		]
+	},
+	"commander": {
+		"name": "The Necromancer",
+		"cards": []
+	}
+}

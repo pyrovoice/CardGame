@@ -1,0 +1,5 @@
+Name:Goblin mindthief
+ManaCost:2
+Types:Creature Goblin
+Power:1
+CardText:Whenever CARDNAME deals combat damage to the opponent, if that opponent refilled, draw a card.
