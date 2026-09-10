@@ -24,6 +24,8 @@ var current_turn: SignalInt
 # Deck configurations
 var playerDeckList: DeckList
 var opponentDeckList: DeckList
+var encounter_deck_list: EncounterDeckList  # Aggro/Control/Combo Lieutenant decks + Commander deck
+var lieutenant_datas: Array[LieutenantData] = []
 
 # === CARD TRACKING (Data Model) ===
 # Unified zone tracking - all zones use the same pattern (PRIVATE: use get_cards_in_zone())
@@ -43,6 +45,12 @@ func _init():
 	# Initialize empty deck lists (will be populated in game.gd)
 	playerDeckList = DeckList.new([])
 	opponentDeckList = DeckList.new([])
+	encounter_deck_list = EncounterDeckList.new()
+	lieutenant_datas = [
+		LieutenantData.new("aggro", GameZone.e.DECK_AGGRO),
+		LieutenantData.new("control", GameZone.e.DECK_CONTROL),
+		LieutenantData.new("combo", GameZone.e.DECK_COMBO),
+	]
 	
 	# Initialize all zone arrays
 	for zone in GameZone.e.values():
@@ -126,11 +134,27 @@ func reset_game():
 		c.player_capture_threshold.setValue(10)
 		c.opponent_capture_threshold.setValue(10)
 	reset_combat_resolution_flags()
+	
+	# New combat: reset each Lieutenant's since-last-conquest refill counter
+	for lieutenant in lieutenant_datas:
+		lieutenant.reset_since_last_conquest()
 
 func reset_combat_resolution_flags():
 	"""Reset all combat resolution flags at start of turn"""
 	for c in combatLocationDatas:
 		c.isCombatResolved.setValue(false)
+
+func get_lieutenant_data(zone: GameZone.e) -> LieutenantData:
+	for lieutenant in lieutenant_datas:
+		if lieutenant.deck_zone == zone:
+			return lieutenant
+	return null
+
+func get_lieutenant_data_by_role(role: String) -> LieutenantData:
+	for lieutenant in lieutenant_datas:
+		if lieutenant.role == role:
+			return lieutenant
+	return null
 
 func setOpponentGold():
 	opponent_gold.setValue(danger_level.getValue())

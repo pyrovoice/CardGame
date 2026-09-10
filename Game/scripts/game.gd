@@ -116,6 +116,8 @@ func _ready() -> void:
 		game_data.playerDeckList.deck_cards = deck_list.deck_cards
 		game_data.playerDeckList.extra_deck_cards = deck_list.extra_deck_cards
 		game_data.opponentDeckList.deck_cards = _build_default_opponent_deck()
+		# TODO: Replace with encounter selection once one exists; Necromancer is the only encounter for now.
+		game_data.encounter_deck_list = EncounterDeckList.load_from_file("res://DeckData/Opponents/Necromancer.json")
 		# Register persistent archetype abilities
 		ArchetypeEffectLibrary.create_and_register(DeckConfigAL.current_archetype_id, self)
 	else:
@@ -165,6 +167,9 @@ func populate_decks():
 	replenish_deck_zone(GameZone.e.DECK_PLAYER, 2)
 	replenish_deck_zone(GameZone.e.EXTRA_DECK_PLAYER)
 	replenish_deck_zone(GameZone.e.DECK_OPPONENT)
+	replenish_deck_zone(GameZone.e.DECK_AGGRO)
+	replenish_deck_zone(GameZone.e.DECK_CONTROL)
+	replenish_deck_zone(GameZone.e.DECK_COMBO)
 
 func _build_default_opponent_deck() -> Array[CardData]:
 	# TODO: Replace with OpponentData system
@@ -201,6 +206,7 @@ func onTurnStart(skipFirstTurn = false):
 		await resolve_unresolved_combats()
 		# Trigger end of turn phase (cards will clean up their own temporary effects)
 		await trigger_phase("EndOfTurn")
+		_refill_decks_at_end_of_turn()
 		game_data.start_new_turn()
 		reset_all_card_turn_tracking()
 		# Untap all player cards at start of turn
@@ -1055,12 +1061,27 @@ func _handle_location_captured(combatZone: CombatZone, captured_by_player: bool)
 	if captured_by_player:
 		game_data.add_player_points(1)
 		game_data.get_combat_zone_data(combatZone).player_capture_threshold.value += 5
+		# The Lieutenant defending this location was conquered - reset their refill counter
+		var role = _lieutenant_role_for_combat_zone(combatZone)
+		var lieutenant = game_data.get_lieutenant_data_by_role(role)
+		if lieutenant:
+			lieutenant.reset_since_last_conquest()
 	else:
 		game_data.damage_player(1)
 		game_data.add_gold(1)
 		game_data.get_combat_zone_data(combatZone).opponent_capture_threshold.value += 5
 		
 	game_data.reset_combat_zone_data(combatZone)
+
+func _lieutenant_role_for_combat_zone(combatZone: CombatZone) -> String:
+	"""Map a combat location to its Lieutenant role: index 0=aggro (left), 1=control (middle), 2=combo (right)"""
+	var zone_index = game_view.get_combat_zones().find(combatZone)
+	match zone_index:
+		0: return "aggro"
+		1: return "control"
+		2: return "combo"
+		_: return ""
+
 
 func resolveStateBasedAction():
 	# Query GameData for all cards in play (MVC pattern)
@@ -1092,15 +1113,37 @@ func resolveStateBasedAction():
 		get_tree().change_scene_to_file("res://MainMenu/scenes/MainMenu.tscn")
 	_check_locations_capture()
 	# Check and highlight castable cards
-	updateDecks()
 	highlightCastableCards()
 
-func updateDecks():
+func _refill_decks_at_end_of_turn():
+	"""Refill the player's deck and each Lieutenant's deck once low, called at end of turn.
+	Only the player's refill raises the danger level; Lieutenant refills just refill and are tracked."""
 	if game_data.get_cards_in_zone(GameZone.e.DECK_PLAYER).size() <= game_data.playerDeckList.deck_cards.size():
 		replenish_deck_zone(GameZone.e.DECK_PLAYER)
+		game_data.increase_danger_level()
 	
 	if game_data.get_cards_in_zone(GameZone.e.DECK_OPPONENT).size() <= game_data.opponentDeckList.deck_cards.size():
 		replenish_deck_zone(GameZone.e.DECK_OPPONENT)
+	
+	for lieutenant in game_data.lieutenant_datas:
+		var deck_list = _lieutenant_deck_list_for_zone(lieutenant.deck_zone)
+		if game_data.get_cards_in_zone(lieutenant.deck_zone).size() <= deck_list.deck_cards.size():
+			replenish_deck_zone(lieutenant.deck_zone)
+			lieutenant.record_refill()
+
+func _lieutenant_deck_list_for_zone(zone_name: GameZone.e) -> DeckList:
+	match zone_name:
+		GameZone.e.DECK_AGGRO:
+			return game_data.encounter_deck_list.aggro_deck
+		GameZone.e.DECK_CONTROL:
+			return game_data.encounter_deck_list.control_deck
+		GameZone.e.DECK_COMBO:
+			return game_data.encounter_deck_list.combo_deck
+		GameZone.e.DECK_COMMANDER:
+			return game_data.encounter_deck_list.commander_deck
+		_:
+			push_error("_lieutenant_deck_list_for_zone: Unsupported zone " + str(zone_name))
+			return DeckList.new([])
 
 func replenish_deck_zone(zone_name: GameZone.e, copies: int = 1):
 	var card_templates: Array[CardData] = []
@@ -1115,6 +1158,9 @@ func replenish_deck_zone(zone_name: GameZone.e, copies: int = 1):
 			is_player_owned = true
 		GameZone.e.DECK_OPPONENT:
 			card_templates = game_data.opponentDeckList.deck_cards
+			is_player_owned = false
+		GameZone.e.DECK_AGGRO, GameZone.e.DECK_CONTROL, GameZone.e.DECK_COMBO, GameZone.e.DECK_COMMANDER:
+			card_templates = _lieutenant_deck_list_for_zone(zone_name).deck_cards
 			is_player_owned = false
 		_:
 			push_error("replenish_deck_zone: Unsupported deck zone " + str(zone_name))

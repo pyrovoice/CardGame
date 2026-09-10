@@ -2535,3 +2535,66 @@ func test_recycle_spell_sub_ability() -> bool:
 
 	print("✅ Recycle SubAbility test passed!")
 	return true
+
+func test_player_deck_refill_end_of_turn() -> bool:
+	"""Test that the player's deck refills only at end of turn (not before) and that
+	the refill raises the danger level."""
+	print("=== Testing Player Deck Refill at End of Turn ===")
+
+	# Step 1: Build a small deck list (6 cards) and assign it as the player's deck
+	var deck_templates: Array[CardData] = []
+	for i in range(6):
+		var tpl = CardData.new()
+		tpl.cardName = "RefillTestCard" + str(i)
+		tpl.addType(CardData.CardType.CREATURE)
+		deck_templates.append(tpl)
+	game.game_data.playerDeckList.deck_cards = deck_templates
+
+	# Step 2: Fill the deck zone with one full copy of the deck list
+	game.game_data.get_cards_in_zone(GameZone.e.DECK_PLAYER).clear()
+	game.replenish_deck_zone(GameZone.e.DECK_PLAYER)
+
+	var full_deck_size = game.game_data.get_cards_in_zone(GameZone.e.DECK_PLAYER).size()
+	if not assert_test_equal(full_deck_size, 6, "Deck should start with 6 cards (a full copy)"):
+		return false
+
+	# Step 3: Draw half the deck
+	var half = full_deck_size / 2
+	await game.drawCard(half, true)
+
+	var deck_size_after_draw = game.game_data.get_cards_in_zone(GameZone.e.DECK_PLAYER).size()
+	if not assert_test_equal(deck_size_after_draw, full_deck_size - half,
+			"Deck should have half its cards remaining after drawing"):
+		return false
+	print("  ✅ Drew half the deck, ", deck_size_after_draw, " cards remain")
+
+	# Step 4: Ensure refill has NOT happened yet - the deck should still just be the remainder
+	if not assert_test_equal(game.game_data.get_cards_in_zone(GameZone.e.DECK_PLAYER).size(), deck_size_after_draw,
+			"Refill should not occur before end of turn"):
+		return false
+	print("  ✅ Refill not yet triggered before end of turn")
+
+	# Step 5: Record danger level before ending the turn
+	var danger_before = game.game_data.danger_level.getValue()
+
+	# Step 6: Finish the turn - triggers the end-of-turn refill check
+	await game.onTurnStart()
+	await test_runner.get_tree().process_frame
+
+	# Step 7: Verify refill happened - remainder + a fresh full copy, minus the 3 cards drawn at new turn's start
+	var deck_size_after_turn = game.game_data.get_cards_in_zone(GameZone.e.DECK_PLAYER).size()
+	var expected_deck_size = deck_size_after_draw + full_deck_size - 3
+	if not assert_test_equal(deck_size_after_turn, expected_deck_size,
+			"Deck should have been refilled with a full extra copy (minus the 3 cards drawn for the new turn)"):
+		return false
+	print("  ✅ Deck refilled: ", deck_size_after_turn, " cards")
+
+	# Step 8: Verify danger increased by 2: +1 for normal turn progression, +1 for the player's deck refill
+	var danger_after = game.game_data.danger_level.getValue()
+	if not assert_test_equal(danger_after, danger_before + 2,
+			"Danger should increase by 2 (turn progression + player deck refill)"):
+		return false
+	print("  ✅ Danger increased accordingly: ", danger_before, " -> ", danger_after)
+
+	print("✅ Player deck refill test passed!")
+	return true

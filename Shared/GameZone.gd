@@ -17,6 +17,10 @@ enum e {
 	GRAVEYARD_OPPONENT,
 	DECK_PLAYER,
 	DECK_OPPONENT,
+	DECK_AGGRO,
+	DECK_CONTROL,
+	DECK_COMBO,
+	DECK_COMMANDER,
 	EXTRA_DECK_PLAYER,
 	RECYCLE_ZONE,
 	EXILE_PLAYER,
@@ -42,6 +46,10 @@ static func get_as_string(zone: e) -> String:
 		e.GRAVEYARD_OPPONENT: return "graveyard_opponent"
 		e.DECK_PLAYER: return "deck_player"
 		e.DECK_OPPONENT: return "deck_opponent"
+		e.DECK_AGGRO: return "deck_aggro"
+		e.DECK_CONTROL: return "deck_control"
+		e.DECK_COMBO: return "deck_combo"
+		e.DECK_COMMANDER: return "deck_commander"
 		e.EXTRA_DECK_PLAYER: return "extra_deck_player"
 		e.RECYCLE_ZONE: return "recycle_zone"
 		_: return "unknown"
@@ -74,6 +82,9 @@ static func parse_trigger_zones(zone_str: String) -> Array:
 			"Deck":
 				zones.append(e.DECK_PLAYER)
 				zones.append(e.DECK_OPPONENT)
+				zones.append(e.DECK_AGGRO)
+				zones.append(e.DECK_CONTROL)
+				zones.append(e.DECK_COMBO)
 			"ExtraDeck":
 				zones.append(e.EXTRA_DECK_PLAYER)
 			_:
@@ -104,7 +115,7 @@ static func is_player_zone(zone: e) -> bool:
 static func is_opponent_zone(zone: e) -> bool:
 	return zone in [e.HAND_OPPONENT, e.BATTLEFIELD_OPPONENT, e.COMBAT_OPPONENT_1,
 					e.COMBAT_OPPONENT_2, e.COMBAT_OPPONENT_3, e.GRAVEYARD_OPPONENT,
-					e.DECK_OPPONENT]
+					e.DECK_OPPONENT, e.DECK_AGGRO, e.DECK_CONTROL, e.DECK_COMBO, e.DECK_COMMANDER]
 
 # Helper to check if a zone matches a zone string filter (for trigger conditions)
 static func matches_zone_filter(zone: e, filter: String) -> bool:
@@ -121,7 +132,7 @@ static func matches_zone_filter(zone: e, filter: String) -> bool:
 		"Graveyard":
 			return zone in [e.GRAVEYARD_PLAYER, e.GRAVEYARD_OPPONENT]
 		"Deck":
-			return zone in [e.DECK_PLAYER, e.DECK_OPPONENT]
+			return zone in [e.DECK_PLAYER, e.DECK_OPPONENT, e.DECK_AGGRO, e.DECK_CONTROL, e.DECK_COMBO]
 		"ExtraDeck":
 			return zone == e.EXTRA_DECK_PLAYER
 		_:
