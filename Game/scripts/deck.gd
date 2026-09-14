@@ -15,16 +15,19 @@ func _ready():
 func get_card_count() -> int:
 	if zone_name == GameZone.e.UNKNOWN or not get_parent():
 		return 0
-	var game = get_parent() as Game
+	var game = _find_game()
 	if game and game.game_data:
-		match zone_name:
-			GameZone.e.DECK_PLAYER:
-				return game.game_data.get_cards_in_zone(GameZone.e.DECK_PLAYER).size()
-			GameZone.e.DECK_OPPONENT:
-				return game.game_data.get_cards_in_zone(GameZone.e.DECK_OPPONENT).size()
-			GameZone.e.EXTRA_DECK_PLAYER:
-				return game.game_data.get_cards_in_zone(GameZone.e.EXTRA_DECK_PLAYER).size()
+		return game.game_data.get_cards_in_zone(zone_name).size()
 	return 0
+
+func _find_game() -> Game:
+	# Player/opponent decks are direct children of Game; per-Lieutenant decks sit inside a combat zone
+	var node: Node = self
+	while node:
+		if node is Game:
+			return node
+		node = node.get_parent()
+	return null
 
 # Override update_size to adjust the height of the CardMesh based on GameData card count
 func update_size():

@@ -85,7 +85,7 @@ func canPayCard(card_data: CardData) -> bool:
 		return false
 	
 	var base_cost = card_data.goldCost
-	var can_afford_base = current_game.game_data.has_gold(base_cost, card_data.playerControlled)
+	var can_afford_base = current_game.game_data.has_gold(base_cost, card_data)
 	
 	# First check if card can be afforded at base cost
 	if can_afford_base:
@@ -104,7 +104,7 @@ func canPayCard(card_data: CardData) -> bool:
 				var valid_targets = getValidReplaceTargets(card_data, cost_data)
 				for target_data in valid_targets:
 					var replace_cost = calculateReplaceCost(card_data, target_data)
-					if current_game.game_data.has_gold(replace_cost, card_data.playerControlled):
+					if current_game.game_data.has_gold(replace_cost, card_data):
 						# At least one Replace target makes it affordable
 						return true
 				break
@@ -205,7 +205,7 @@ func canPayCardData(card_data: CardData) -> bool:
 		return false
 	
 	# Check gold cost
-	if not current_game.game_data.has_gold(card_data.goldCost, card_data.playerControlled):
+	if not current_game.game_data.has_gold(card_data.goldCost, card_data):
 		return false
 	
 	# Check additional costs
@@ -235,8 +235,8 @@ func tryPayCard(card_data: CardData, selected_additional_cards_data: Array[CardD
 	var gold_cost = calculateActualCost(card_data, selected_additional_cards_data)
 	
 	# Check if we can afford it
-	if not current_game.game_data.has_gold(gold_cost, card_data.playerControlled):
-		var current_gold = current_game.game_data.player_gold.getValue() if card_data.playerControlled else current_game.game_data.opponent_gold.getValue()
+	if not current_game.game_data.has_gold(gold_cost, card_data):
+		var current_gold = current_game.game_data.get_gold_pool(card_data).getValue()
 		print("❌ Not enough gold! Need: ", gold_cost, " Have: ", current_gold)
 		return result
 	

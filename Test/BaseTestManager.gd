@@ -227,12 +227,10 @@ func addCardToHand(card: Card):
 	game.game_data.add_card_to_zone(card.cardData, GameZone.e.HAND_PLAYER)
 	GameUtility.reparentWithoutMoving(card, game.game_view.player_hand)
 
-func addCardToBattlefield(card: Card, player_side: bool = true):
-	"""Helper to add card to battlefield"""
-	var zone = GameZone.e.BATTLEFIELD_PLAYER if player_side else GameZone.e.BATTLEFIELD_OPPONENT
-	var target_base = game.game_view.player_base if player_side else game.game_view.opponent_base
-	game.game_data.add_card_to_zone(card.cardData, zone)
-	GameUtility.reparentWithoutMoving(card, target_base)
+func addCardToBattlefield(card: Card):
+	"""Helper to add card to the player's battlefield (opponent has no battlefield staging area)"""
+	game.game_data.add_card_to_zone(card.cardData, GameZone.e.BATTLEFIELD_PLAYER)
+	GameUtility.reparentWithoutMoving(card, game.game_view.player_base)
 	
 func addCardToExtraDeck(card: CardData):
 	card.playerOwned = true

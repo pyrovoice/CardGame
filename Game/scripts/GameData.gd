@@ -14,7 +14,7 @@ var player_life: SignalInt
 var player_shield: SignalInt
 var player_points: SignalInt
 var player_gold: SignalInt
-var opponent_gold: SignalInt
+var commander_gold: SignalInt  # Gold pool for Commander-owned cards (not tied to a Lieutenant)
 var recycling_remaining: SignalInt
 var combatLocationDatas: Array[CombatLocationData] = []
 # Game state using SignalInt
@@ -37,7 +37,7 @@ func _init():
 	player_shield = SignalInt.new(3)
 	player_points = SignalInt.new(0)
 	player_gold = SignalInt.new(3)  # Starting gold
-	opponent_gold = SignalInt.new(0)
+	commander_gold = SignalInt.new(0)
 	recycling_remaining = SignalInt.new(3)  # Recycling uses per turn
 	danger_level = SignalInt.new(3)
 	current_turn = SignalInt.new(1)
@@ -47,9 +47,9 @@ func _init():
 	opponentDeckList = DeckList.new([])
 	encounter_deck_list = EncounterDeckList.new()
 	lieutenant_datas = [
-		LieutenantData.new("aggro", GameZone.e.DECK_AGGRO),
-		LieutenantData.new("control", GameZone.e.DECK_CONTROL),
-		LieutenantData.new("combo", GameZone.e.DECK_COMBO),
+		LieutenantData.new("aggro", GameZone.e.DECK_AGGRO, GameZone.e.HAND_AGGRO),
+		LieutenantData.new("control", GameZone.e.DECK_CONTROL, GameZone.e.HAND_CONTROL),
+		LieutenantData.new("combo", GameZone.e.DECK_COMBO, GameZone.e.HAND_COMBO),
 	]
 	
 	# Initialize all zone arrays
@@ -84,17 +84,24 @@ func add_gold(amount: int):
 	"""Add gold to the player's resources"""
 	player_gold.value += amount
 
-func spend_gold(amount: int, playerOwned) -> bool:
-	"""Spend gold if player has enough, returns true if successful"""
-	var gold = player_gold if playerOwned else opponent_gold
+func spend_gold(amount: int, card_data: CardData) -> bool:
+	"""Spend gold from the appropriate pool for this card if enough is available, returns true if successful"""
+	var gold = get_gold_pool(card_data)
 	if gold.getValue() >= amount:
 		gold.setValue(gold.getValue() - amount)
 		return true
 	return false
 
-func has_gold(amount: int, playerOwned) -> bool:
-	"""Check if player has enough gold"""
-	return player_gold.getValue() >= amount if playerOwned else opponent_gold.getValue() >= amount
+func has_gold(amount: int, card_data: CardData) -> bool:
+	"""Check if the appropriate pool for this card has enough gold"""
+	return get_gold_pool(card_data).getValue() >= amount
+
+func get_gold_pool(card_data: CardData) -> SignalInt:
+	"""Resolve which gold pool a card pays from: the player, its owning Lieutenant, or the Commander"""
+	if card_data.playerControlled:
+		return player_gold
+	var lieutenant = get_lieutenant_data_by_role(card_data.lieutenant_role)
+	return lieutenant.gold if lieutenant else commander_gold
 
 func start_new_turn():
 	"""Start a new turn and increase danger level"""
@@ -157,7 +164,10 @@ func get_lieutenant_data_by_role(role: String) -> LieutenantData:
 	return null
 
 func setOpponentGold():
-	opponent_gold.setValue(danger_level.getValue())
+	"""Give each Lieutenant (and the Commander) a fresh budget equal to the danger level for the turn"""
+	for lieutenant in lieutenant_datas:
+		lieutenant.gold.setValue(danger_level.getValue())
+	commander_gold.setValue(danger_level.getValue())
 
 func debug_player_resources():
 	"""Debug function to print current player resources"""
@@ -198,9 +208,8 @@ func reset_combat_zone_data(combat_zone):
 func get_cards_in_play() -> Array[CardData]:
 	var result: Array[CardData] = []
 	
-	# Add battlefield cards
+	# Add player battlefield cards (opponent cards have no battlefield staging area - they live in combat zones)
 	result.append_array(get_cards_in_zone(GameZone.e.BATTLEFIELD_PLAYER))
-	result.append_array(get_cards_in_zone(GameZone.e.BATTLEFIELD_OPPONENT))
 	
 	# Add combat zone cards
 	for zone in [GameZone.e.COMBAT_PLAYER_1, GameZone.e.COMBAT_PLAYER_2, GameZone.e.COMBAT_PLAYER_3,
@@ -379,13 +388,12 @@ func parse_zone_string_to_enum(zone_str: String, from_player_perspective: bool) 
 		"Hand.Player":
 			return GameZone.e.HAND_PLAYER
 		"Hand.Opponent":
-			return GameZone.e.HAND_OPPONENT
+			# Ambiguous across the 3 Lieutenant hands - falls back to the Commander's hand
+			return GameZone.e.HAND_COMMANDER
 		"ExtraDeck.Player":
 			return GameZone.e.EXTRA_DECK_PLAYER
 		"Battlefield.Player", "PlayerBase":
 			return GameZone.e.BATTLEFIELD_PLAYER
-		"Battlefield.Opponent":
-			return GameZone.e.BATTLEFIELD_OPPONENT
 		_:
 			push_error("Unknown zone string: ", zone_str, " (resolved to: ", resolved_zone, ")")
 			return GameZone.e.UNKNOWN
@@ -399,7 +407,7 @@ func serialize() -> Dictionary:
 			"shield": player_shield.value,
 			"points": player_points.value,
 			"gold": player_gold.value,
-			"opponent_gold": opponent_gold.value,
+			"commander_gold": commander_gold.value,
 			"danger_level": danger_level.value,
 			"current_turn": current_turn.value
 		},
@@ -429,7 +437,7 @@ func duplicate_state() -> GameData:
 	copy.player_shield.value = player_shield.value
 	copy.player_points.value = player_points.value
 	copy.player_gold.value = player_gold.value
-	copy.opponent_gold.value = opponent_gold.value
+	copy.commander_gold.value = commander_gold.value
 	copy.danger_level.value = danger_level.value
 	copy.current_turn.value = current_turn.value
 	
@@ -446,9 +454,11 @@ func print_game_state() -> void:
 	print("Turn: ", current_turn.value, " | Danger: ", danger_level.value)
 	print("")
 	print("Player Hand: ", get_cards_in_zone(GameZone.e.HAND_PLAYER).size(), " cards")
-	print("Opponent Hand: ", get_cards_in_zone(GameZone.e.HAND_OPPONENT).size(), " cards")
+	print("Aggro Hand: ", get_cards_in_zone(GameZone.e.HAND_AGGRO).size(), " cards")
+	print("Control Hand: ", get_cards_in_zone(GameZone.e.HAND_CONTROL).size(), " cards")
+	print("Combo Hand: ", get_cards_in_zone(GameZone.e.HAND_COMBO).size(), " cards")
+	print("Commander Hand: ", get_cards_in_zone(GameZone.e.HAND_COMMANDER).size(), " cards")
 	print("Player Battlefield: ", get_cards_in_zone(GameZone.e.BATTLEFIELD_PLAYER).size(), " cards")
-	print("Opponent Battlefield: ", get_cards_in_zone(GameZone.e.BATTLEFIELD_OPPONENT).size(), " cards")
 	print("Player Graveyard: ", get_cards_in_zone(GameZone.e.GRAVEYARD_PLAYER).size(), " cards")
 	print("Opponent Graveyard: ", get_cards_in_zone(GameZone.e.GRAVEYARD_OPPONENT).size(), " cards")
 	print("Total Zones: ", _cards_by_zone.size())

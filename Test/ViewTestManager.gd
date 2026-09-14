@@ -444,7 +444,7 @@ func test_death_from_the_grave_targeting() -> bool:
 	opp_tpl.cardName = "TestOpponentCreature"
 	opp_tpl.addType(CardData.CardType.CREATURE)
 	opp_tpl._power = 5  # Survives 3 damage
-	var opp = game.createCardData(opp_tpl, GameZone.e.BATTLEFIELD_OPPONENT, false)
+	var opp = game.createCardData(opp_tpl, GameZone.e.COMBAT_OPPONENT_1, false)
 
 	var spell_tpl = CardData.new()
 	spell_tpl.cardName = "Test Death From The Grave"

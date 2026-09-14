@@ -107,7 +107,8 @@ static func get_zone_from_string(game: Game, zone: String, from_perspective_of_p
 		"Hand.Player":
 			return game.game_view.player_hand
 		"Hand.Opponent":
-			return game.game_view.opponent_hand
+			# Ambiguous across the 3 Lieutenant hands - falls back to the Commander's hand
+			return game.game_view.commander_hand
 		"PlayerBase":
 			return game.game_view.player_base
 		"ExtraDeck.Player":
@@ -148,7 +149,6 @@ static func getControllerCards(game: Game, playerSide = true) -> Array[Card]:
 		]
 	else:
 		zones = [
-			GameZone.e.BATTLEFIELD_OPPONENT,
 			GameZone.e.COMBAT_OPPONENT_1,
 			GameZone.e.COMBAT_OPPONENT_2,
 			GameZone.e.COMBAT_OPPONENT_3

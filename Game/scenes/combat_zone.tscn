@@ -4,6 +4,8 @@
 [ext_resource type="PackedScene" uid="uid://c1gh53ivxrt74" path="res://Game/scenes/locationFill.tscn" id="3_cu80e"]
 [ext_resource type="PackedScene" uid="uid://cj3soc5hs2x1t" path="res://Game/scenes/grid_container.tscn" id="4_lqy10"]
 [ext_resource type="PackedScene" uid="uid://bjxoru03if1kc" path="res://Game/scenes/ResolveFightButton.tscn" id="4_pjxud"]
+[ext_resource type="PackedScene" uid="uid://b23h2nqcsg3ha" path="res://Game/scenes/card_hand.tscn" id="5_lieutenanthand"]
+[ext_resource type="PackedScene" uid="uid://dnt4p0i1i5qk1" path="res://Game/scenes/Deck.tscn" id="6_lieutenantdeck"]
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_ulpi2"]
 size = Vector3(5.7229004, 0.05, 2.2816162)
@@ -50,3 +52,9 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.5698426, 0, 0.39582643)
 
 [node name="OpponentSide" parent="." instance=ExtResource("4_lqy10")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.57, 0, -0.452)
+
+[node name="LieutenantHand" parent="." instance=ExtResource("5_lieutenanthand")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.3, -1.4)
+
+[node name="LieutenantDeck" parent="." instance=ExtResource("6_lieutenantdeck")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.8, 0.02, -1.4)

@@ -40,6 +40,7 @@ var cardArt: Texture2D
 # Controller and ownership properties
 var playerControlled: bool  # Whether this card is controlled by the player
 var playerOwned: bool       # Whether this card is owned by the player
+var lieutenant_role: String = ""  # Which opponent Lieutenant owns this card ("aggro", "control", "combo"), empty if not applicable
 var card_object: WeakRef  # Reference to Card object (using WeakRef to avoid cycles)
 var hasAttackedThisTurn: bool = false  # Track if the card attacked this turn
 var isTapped: bool = false  # Track if the card is currently tapped

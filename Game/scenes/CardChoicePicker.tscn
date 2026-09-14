@@ -1,4 +1,4 @@
-[gd_scene load_steps=3 format=3 uid="uid://kxt24mjfk68d"]
+[gd_scene format=3 uid="uid://kxt24mjfk68d"]
 
 [ext_resource type="Script" uid="uid://hup5tuyb8p7q" path="res://Game/scenes/card_choice_picker.gd" id="1_wdilp"]
 [ext_resource type="PackedScene" uid="uid://d3lfyqqnp8p75" path="res://Shared/scenes/Card2D.tscn" id="2_68nm6"]

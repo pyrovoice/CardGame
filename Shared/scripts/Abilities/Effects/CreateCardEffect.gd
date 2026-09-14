@@ -35,8 +35,13 @@ func execute(parameters: Dictionary, source_card_data: CardData, game_context: G
 	var created: Array[CardData] = []
 	# Create the cards
 	for i in range(num_cards):
-		# Add to appropriate hand
-		var dest_zone = GameZone.e.HAND_PLAYER if source_card_data.playerControlled else GameZone.e.HAND_OPPONENT
+		# Add to appropriate hand - opponent cards go to their owning Lieutenant's hand (or the Commander's if none)
+		var dest_zone: GameZone.e
+		if source_card_data.playerControlled:
+			dest_zone = GameZone.e.HAND_PLAYER
+		else:
+			var lieutenant = game_context.game_data.get_lieutenant_data_by_role(source_card_data.lieutenant_role)
+			dest_zone = lieutenant.hand_zone if lieutenant else GameZone.e.HAND_COMMANDER
 
 		# Pick a random card from the pool
 		var random_index = randi() % card_pool.size()

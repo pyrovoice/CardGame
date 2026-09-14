@@ -27,7 +27,7 @@ func activateAbility(source_card_data: CardData, activated_ability: ActivatedAbi
 	
 	# Execute payment: spend gold
 	if payment_info.gold_to_pay > 0:
-		if not game_context.game_data.spend_gold(payment_info.gold_to_pay, source_card_data.playerControlled):
+		if not game_context.game_data.spend_gold(payment_info.gold_to_pay, source_card_data):
 			print("❌ Failed to spend gold for activation")
 			return false
 	
@@ -195,7 +195,7 @@ func shouldReplacementEffectApply(replacement_ability: ReplacementAbility, effec
 			if not GameZone.is_in_play(replacement_source_zone):
 				return false
 		elif active_zones == "Hand":
-			if replacement_source_zone not in [GameZone.e.HAND_PLAYER, GameZone.e.HAND_OPPONENT]:
+			if not GameZone.is_hand_zone(replacement_source_zone):
 				return false
 		# Add other zones as needed
 	
@@ -226,7 +226,7 @@ func _isZoneConditionMet(zone_condition: String, actual_zone: GameZone.e) -> boo
 		"Battlefield":
 			return GameZone.is_in_play(actual_zone)
 		"Hand":
-			return actual_zone in [GameZone.e.HAND_PLAYER, GameZone.e.HAND_OPPONENT]
+			return GameZone.is_hand_zone(actual_zone)
 		"Graveyard":
 			return actual_zone in [GameZone.e.GRAVEYARD_PLAYER, GameZone.e.GRAVEYARD_OPPONENT]
 		"Deck":

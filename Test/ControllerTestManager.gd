@@ -315,18 +315,18 @@ func test_deck_card_opponent_control():
 	addCardToDeck(test_card_data, false)  # Add to opponent deck
 	
 	# Get initial opponent hand count
-	var initial_hand_count = game.game_data.get_cards_in_zone(GameZone.e.HAND_OPPONENT).size()
+	var initial_hand_count = game.game_data.get_cards_in_zone(GameZone.e.HAND_COMMANDER).size()
 	
 	# Draw one card from opponent deck
 	await game.drawCard(1, false)
 	
 	# Verify opponent hand increased by one
-	var actual_hand_count = game.game_data.get_cards_in_zone(GameZone.e.HAND_OPPONENT).size()
+	var actual_hand_count = game.game_data.get_cards_in_zone(GameZone.e.HAND_COMMANDER).size()
 	if not assert_test_equal(actual_hand_count, initial_hand_count + 1, "Opponent hand should increase by one"):
 		return false
 	
 	# Get the newly drawn card data (last card in opponent hand data)
-	var drawn_card_data = game.game_data.get_cards_in_zone(GameZone.e.HAND_OPPONENT)[-1]
+	var drawn_card_data = game.game_data.get_cards_in_zone(GameZone.e.HAND_COMMANDER)[-1]
 	if not assert_test_not_null(drawn_card_data, "Should have drawn a card to opponent hand"):
 		return false
 	
@@ -584,8 +584,7 @@ func test_tap_system() -> bool:
 	var test_card = createCardFromName("Punglynd Hersir", GameZone.e.HAND_PLAYER)
 	
 	# Add it to player base using proper game flow
-	var dest_zone = GameZone.e.BATTLEFIELD_PLAYER if test_card.playerControlled else GameZone.e.BATTLEFIELD_OPPONENT
-	await game.execute_move_card(test_card, dest_zone)
+	await game.execute_move_card(test_card, GameZone.e.BATTLEFIELD_PLAYER)
 	await game.resolveStateBasedAction()
 	
 	# Test 1: Card should start untapped
@@ -1036,7 +1035,7 @@ func test_activated_ability_sacrifice_controller_filter() -> bool:
 	opponent_card.playerControlled = false
 	opponent_card.playerOwned = false
 	opponent_card.addType(CardData.CardType.CREATURE)
-	game.game_data.add_card_to_zone(opponent_card, GameZone.e.BATTLEFIELD_OPPONENT)
+	game.game_data.add_card_to_zone(opponent_card, GameZone.e.COMBAT_OPPONENT_1)
 
 	activated_ability.activation_costs[0]["count"] = 2
 	if not assert_test_false(CardPaymentManagerAL.canPayCosts(activated_ability.activation_costs, source_card), "Should not count opponent creatures toward sacrifice costs"):
@@ -1162,16 +1161,16 @@ func test_move_effect() -> bool:
 	
 	# Step 2: Create Grave Whisperer card (has Strike trigger with Move effect)
 	# Create as opponent-controlled since it's an opponent card
-	var grave_whisperer = createCardFromName("Grave Whisperer", GameZone.e.HAND_OPPONENT, false)
-	game.game_data.opponent_gold.setValue(99)
+	var grave_whisperer = createCardFromName("Grave Whisperer", GameZone.e.HAND_COMMANDER, false)
+	game.game_data.commander_gold.setValue(99)
 	
 	# Step 3: Add to hand first, then play it to trigger enter effects
-	await game.tryPlayCard(grave_whisperer, GameZone.e.BATTLEFIELD_OPPONENT)
+	await game.tryPlayCard(grave_whisperer, GameZone.e.COMBAT_OPPONENT_1)
 	
 	# Wait for scene tree to update
 	await test_runner.get_tree().process_frame
 	
-	if not assert_test_equal(game.game_data.get_cards_in_zone(GameZone.e.BATTLEFIELD_OPPONENT).size(), 1, "Should have 1 card in play"):
+	if not assert_test_equal(game.game_data.get_cards_in_zone(GameZone.e.COMBAT_OPPONENT_1).size(), 1, "Should have 1 card in play"):
 		return false
 	
 	# Step 4: Verify initial graveyard state
@@ -2370,7 +2369,7 @@ func test_sub_ability_move_and_pump() -> bool:
 	opp_tpl.cardName = "TestOpponentCreature"
 	opp_tpl.addType(CardData.CardType.CREATURE)
 	opp_tpl._power = 5
-	var opp = game.createCardData(opp_tpl, GameZone.e.BATTLEFIELD_OPPONENT, false)
+	var opp = game.createCardData(opp_tpl, GameZone.e.COMBAT_OPPONENT_1, false)
 
 	if not assert_test_true(game.game_data.get_cards_in_zone(GameZone.e.GRAVEYARD_PLAYER).has(gc),
 			"Graveyard creature should start in graveyard"):

@@ -8,6 +8,16 @@ class_name CombatZone
 @onready var resolve_fight_button: ResolveFightButton = $Button
 @onready var ally_side: GridContainer3D = $AllySide
 @onready var opponent_side: GridContainer3D = $OpponentSide
+@onready var lieutenant_hand: CardHand = $LieutenantHand
+@onready var lieutenant_deck: Deck = $LieutenantDeck
+
+func get_lieutenant_hand() -> CardHand:
+	"""The hand belonging to the Lieutenant assigned to this location"""
+	return lieutenant_hand
+
+func get_lieutenant_deck() -> Deck:
+	"""The deck belonging to the Lieutenant assigned to this location"""
+	return lieutenant_deck
 
 func _ready() -> void:
 	# Connect to child changes for both sides

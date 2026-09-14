@@ -20,7 +20,7 @@ class_name GameView
 # Zone container references
 @onready var player_hand: CardHand = $PlayerHand
 @onready var extra_hand: CardHand = $ExtraHand
-@onready var opponent_hand: CardHand = $OpponentHand
+@onready var commander_hand: CardHand = $CommanderHand
 @onready var player_base: PlayerBase = $playerBase
 @onready var deck: Deck = $Deck
 @onready var deck_opponent: Deck = $DeckOpponent
@@ -28,7 +28,6 @@ class_name GameView
 @onready var graveyard: Graveyard = $graveyard
 @onready var graveyard_opponent: Graveyard = $graveyardOpponent
 var combat_zones: Array[CombatZone] = []
-@onready var opponentbase: PlayerBase = $opponentbase
 @onready var recycle_area: Area3D = $recycleArea
 @onready var card_choice_picker: CardChoicePicker = $UI/CardChoicePicker
 
@@ -108,18 +107,17 @@ func create_card_view(card_data: CardData, zone: GameZone.e = GameZone.e.UNKNOWN
 			zone_container.add_child(card)
 			
 			# Arrange hand when adding cards to hand zones (for non-draw effects like CreateCard)
-			if zone == GameZone.e.HAND_PLAYER or zone == GameZone.e.HAND_OPPONENT:
+			if zone_container is CardHand:
 				# Cards in player hand should be face-up
 				if zone == GameZone.e.HAND_PLAYER and card_data:
 					card_data.is_facedown = false
 					card.updateDisplay()
-				if zone_container is CardHand:
-					zone_container.arrange_cards_fan(([card] as Array[Card]))
+				zone_container.arrange_cards_fan(([card] as Array[Card]))
 		else:
 			game.add_child(card)
 		
 		# Set card size based on zone: cards in hand are big, everywhere else is small
-		if zone != GameZone.e.HAND_PLAYER and zone != GameZone.e.HAND_OPPONENT:
+		if not (zone_container is CardHand):
 			card.getAnimator().make_small()
 	
 	# Connect to highlight manager AFTER card is in tree so @onready variables are initialized
@@ -131,6 +129,10 @@ func create_card_view(card_data: CardData, zone: GameZone.e = GameZone.e.UNKNOWN
 func _is_container_zone(zone: GameZone.e) -> bool:
 	return zone == GameZone.e.DECK_PLAYER or \
 		zone == GameZone.e.DECK_OPPONENT or \
+		zone == GameZone.e.DECK_AGGRO or \
+		zone == GameZone.e.DECK_CONTROL or \
+		zone == GameZone.e.DECK_COMBO or \
+		zone == GameZone.e.DECK_COMMANDER or \
 		zone == GameZone.e.GRAVEYARD_PLAYER or \
 		zone == GameZone.e.GRAVEYARD_OPPONENT or \
 		zone == GameZone.e.EXTRA_DECK_PLAYER
@@ -175,8 +177,8 @@ func move_card_to_zone(card_data: CardData, target_zone: GameZone.e, duration: f
 
 	var final_local_target = local_target_offset
 	if final_local_target == Vector3.INF:
-		if target_zone == GameZone.e.BATTLEFIELD_PLAYER or target_zone == GameZone.e.BATTLEFIELD_OPPONENT:
-			var base = player_base if target_zone == GameZone.e.BATTLEFIELD_PLAYER else opponentbase
+		if target_zone == GameZone.e.BATTLEFIELD_PLAYER:
+			var base = player_base
 
 			if turn_face_up:
 				card.setFlip(true)
@@ -213,20 +215,30 @@ func get_zone_container(zone: GameZone.e) -> Node:
 	match zone:
 		GameZone.e.HAND_PLAYER:
 			return player_hand
-		GameZone.e.HAND_OPPONENT:
-			return opponent_hand
+		GameZone.e.HAND_COMMANDER:
+			return commander_hand
+		GameZone.e.HAND_AGGRO:
+			return combat_zones[0].get_lieutenant_hand() if combat_zones.size() > 0 else null
+		GameZone.e.HAND_CONTROL:
+			return combat_zones[1].get_lieutenant_hand() if combat_zones.size() > 1 else null
+		GameZone.e.HAND_COMBO:
+			return combat_zones[2].get_lieutenant_hand() if combat_zones.size() > 2 else null
 		GameZone.e.BATTLEFIELD_PLAYER:
 			return player_base
-		GameZone.e.BATTLEFIELD_OPPONENT:
-			return opponentbase
 		GameZone.e.GRAVEYARD_PLAYER:
 			return graveyard
 		GameZone.e.GRAVEYARD_OPPONENT:
 			return graveyard_opponent
 		GameZone.e.DECK_PLAYER:
 			return deck
-		GameZone.e.DECK_OPPONENT:
+		GameZone.e.DECK_OPPONENT, GameZone.e.DECK_COMMANDER:
 			return deck_opponent
+		GameZone.e.DECK_AGGRO:
+			return combat_zones[0].get_lieutenant_deck() if combat_zones.size() > 0 else null
+		GameZone.e.DECK_CONTROL:
+			return combat_zones[1].get_lieutenant_deck() if combat_zones.size() > 1 else null
+		GameZone.e.DECK_COMBO:
+			return combat_zones[2].get_lieutenant_deck() if combat_zones.size() > 2 else null
 		GameZone.e.EXTRA_DECK_PLAYER:
 			return extra_deck
 		GameZone.e.COMBAT_PLAYER_1, GameZone.e.COMBAT_OPPONENT_1:
@@ -238,6 +250,15 @@ func get_zone_container(zone: GameZone.e) -> Node:
 		_:
 			push_error("GameView.get_zone_container: Unknown zone: " + str(zone))
 			return null
+
+func _deck_zone_for_hand(hand_zone: GameZone.e) -> GameZone.e:
+	"""Map a hand zone to the deck zone cards are drawn from into it"""
+	match hand_zone:
+		GameZone.e.HAND_PLAYER: return GameZone.e.DECK_PLAYER
+		GameZone.e.HAND_AGGRO: return GameZone.e.DECK_AGGRO
+		GameZone.e.HAND_CONTROL: return GameZone.e.DECK_CONTROL
+		GameZone.e.HAND_COMBO: return GameZone.e.DECK_COMBO
+		_: return GameZone.e.DECK_OPPONENT
 
 ## Animate card draw from deck to hand
 func animate_draw_card(card_data: CardData, deck_position: Vector3, hand_position: Vector3, delay: float = 0.0, should_flip: bool = true) -> void:
@@ -281,7 +302,7 @@ func animate_deck_to_hand(card_data: CardData, dest_zone: GameZone.e) -> void:
 		return
 	
 	# Get deck position for animation origin
-	var deck_container = deck if dest_zone == GameZone.e.HAND_PLAYER else deck_opponent
+	var deck_container = get_zone_container(_deck_zone_for_hand(dest_zone)) as Deck
 	var origin_pos = deck_container.global_position
 	
 	# Set card properties
@@ -486,15 +507,23 @@ func set_zone_names() -> void:
 	extra_deck.zone_name = GameZone.e.EXTRA_DECK_PLAYER
 	graveyard.zone_name = GameZone.e.GRAVEYARD_PLAYER
 	graveyard_opponent.zone_name = GameZone.e.GRAVEYARD_OPPONENT
+	if combat_zones.size() > 0:
+		combat_zones[0].get_lieutenant_deck().zone_name = GameZone.e.DECK_AGGRO
+	if combat_zones.size() > 1:
+		combat_zones[1].get_lieutenant_deck().zone_name = GameZone.e.DECK_CONTROL
+	if combat_zones.size() > 2:
+		combat_zones[2].get_lieutenant_deck().zone_name = GameZone.e.DECK_COMBO
 
-## Get next empty location on battlefield
-func get_next_battlefield_location(is_player: bool = true) -> Vector3:
-	return player_base.getNextEmptyLocation() if is_player else opponentbase.getNextEmptyLocation()
+## Get next empty location on battlefield (opponent has no battlefield staging area)
+func get_next_battlefield_location() -> Vector3:
+	return player_base.getNextEmptyLocation()
 
 ## Update deck visual size
 func update_deck_visuals() -> void:
 	deck.update_size()
 	deck_opponent.update_size()
+	for combat_zone in combat_zones:
+		combat_zone.get_lieutenant_deck().update_size()
 
 ## Get graveyard for player or opponent
 func get_graveyard(is_player: bool) -> Graveyard:
@@ -593,12 +622,12 @@ func animate_combat_strike(attacker: Card, defender: Card) -> void:
 
 ## Create and animate card views for drawing cards from deck
 ## Returns array of created Card views (empty in headless mode)
-func create_and_animate_drawn_cards(cards_to_draw: Array[CardData], is_player: bool) -> Array[Card]:
+func create_and_animate_drawn_cards(cards_to_draw: Array[CardData], is_player: bool, target_hand: CardHand = null, source_deck: Deck = null) -> Array[Card]:
 	if headless:
 		return []
 	
-	var hand = player_hand if is_player else opponent_hand
-	var _deck = deck if is_player else deck_opponent
+	var hand = target_hand if target_hand else (player_hand if is_player else commander_hand)
+	var _deck = source_deck if source_deck else (deck if is_player else deck_opponent)
 	var deck_position = _deck.global_position
 	var card_views: Array[Card] = []
 	

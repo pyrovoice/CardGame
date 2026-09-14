@@ -26,7 +26,9 @@ func setup_game_data(data: GameData):
 	game_data.player_gold.value_changed.connect(_on_player_gold_changed)
 	game_data.danger_level.value_changed.connect(_on_danger_level_changed)
 	game_data.current_turn.value_changed.connect(_on_turn_changed)
-	game_data.opponent_gold.value_changed.connect(_on_opponent_gold_changed)
+	game_data.commander_gold.value_changed.connect(_on_opponent_gold_changed)
+	for lieutenant in game_data.lieutenant_datas:
+		lieutenant.gold.value_changed.connect(_on_opponent_gold_changed)
 	# Initial UI update
 	_update_all_ui()
 
@@ -39,6 +41,7 @@ func _update_all_ui():
 		_on_player_gold_changed(game_data.player_gold.value, game_data.player_gold.value)
 		_on_danger_level_changed(game_data.danger_level.value, game_data.danger_level.value)
 		_on_turn_changed(game_data.current_turn.value, game_data.current_turn.value)
+		_on_opponent_gold_changed(0.0, 0.0)
 
 func _on_player_life_changed(new_value: float, _old_value: float):
 	"""Update player life display"""
@@ -61,9 +64,13 @@ func _on_player_gold_changed(new_value: float, old_value: float):
 	if player_gold:
 		player_gold.text = str(int(new_value))
 	print("Player Gold: ", old_value, " -> ", new_value)
-func _on_opponent_gold_changed(new_value: float, _old_value: float):
-	if opponent_gold:
-		opponent_gold.text = str(int(new_value))
+func _on_opponent_gold_changed(_new_value: float, _old_value: float):
+	"""Display the combined gold across all Lieutenants and the Commander"""
+	if opponent_gold and game_data:
+		var total = game_data.commander_gold.value
+		for lieutenant in game_data.lieutenant_datas:
+			total += lieutenant.gold.value
+		opponent_gold.text = str(int(total))
 		
 func _on_danger_level_changed(new_value: float, _old_value: float):
 	"""Update danger level display"""

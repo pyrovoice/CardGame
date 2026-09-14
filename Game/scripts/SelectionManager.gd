@@ -160,11 +160,13 @@ func _get_container_zone_if_all_same(cards: Array[CardData]) -> Variant:
 
 func _is_container_zone(zone: GameZone.e) -> bool:
 	"""Check if a zone is a container zone (hand, deck, graveyard) vs battlefield"""
-	return zone in [
-		GameZone.e.HAND_PLAYER,
-		GameZone.e.HAND_OPPONENT,
+	return GameZone.is_hand_zone(zone) or zone in [
 		GameZone.e.DECK_PLAYER,
 		GameZone.e.DECK_OPPONENT,
+		GameZone.e.DECK_AGGRO,
+		GameZone.e.DECK_CONTROL,
+		GameZone.e.DECK_COMBO,
+		GameZone.e.DECK_COMMANDER,
 		GameZone.e.GRAVEYARD_PLAYER,
 		GameZone.e.GRAVEYARD_OPPONENT,
 		GameZone.e.EXTRA_DECK_PLAYER

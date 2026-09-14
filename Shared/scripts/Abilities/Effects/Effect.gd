@@ -286,11 +286,11 @@ static func resolve_numeric(value) -> int:
 ## Takes into account the controller of the source card to determine player vs opponent zones.
 ##
 ## Supported destinations:
-##   "Battlefield" → BATTLEFIELD_PLAYER or BATTLEFIELD_OPPONENT
+##   "Battlefield" → BATTLEFIELD_PLAYER (player) or COMBAT_OPPONENT_1 (opponent has no battlefield staging area)
 ##   "Battlefield.Player" → BATTLEFIELD_PLAYER (explicit)
-##   "Battlefield.Opponent" → BATTLEFIELD_OPPONENT (explicit)
+##   "Battlefield.Opponent" → COMBAT_OPPONENT_1 (explicit; opponent cards go straight to combat)
 ##   "Graveyard" → GRAVEYARD_PLAYER or GRAVEYARD_OPPONENT
-##   "Hand" → HAND_PLAYER or HAND_OPPONENT
+##   "Hand" → HAND_PLAYER or HAND_COMMANDER (opponent hand cards belong to a specific Lieutenant; this role-agnostic helper falls back to the Commander's hand)
 ##   "Deck" → DECK_PLAYER or DECK_OPPONENT
 ##   "ExtraDeck" → EXTRA_DECK_PLAYER (opponent extra deck not typically used)
 ##
@@ -314,18 +314,19 @@ static func parse_destination(destination_str: String, is_player_controlled: boo
 	
 	match zone_name:
 		"Battlefield":
-			return GameZone.e.BATTLEFIELD_PLAYER if explicit_player else GameZone.e.BATTLEFIELD_OPPONENT
+			# Opponent has no battlefield staging area - permanents go straight to combat
+			return GameZone.e.BATTLEFIELD_PLAYER if explicit_player else GameZone.e.COMBAT_OPPONENT_1
 		"Graveyard":
 			return GameZone.e.GRAVEYARD_PLAYER if explicit_player else GameZone.e.GRAVEYARD_OPPONENT
 		"Hand":
-			return GameZone.e.HAND_PLAYER if explicit_player else GameZone.e.HAND_OPPONENT
+			return GameZone.e.HAND_PLAYER if explicit_player else GameZone.e.HAND_COMMANDER
 		"Deck":
 			return GameZone.e.DECK_PLAYER if explicit_player else GameZone.e.DECK_OPPONENT
 		"ExtraDeck":
 			return GameZone.e.EXTRA_DECK_PLAYER if explicit_player else GameZone.e.EXTRA_DECK_PLAYER
 		_:
 			push_warning("Effect.parse_destination: unknown destination '" + destination_str + "', defaulting to Battlefield")
-			return GameZone.e.BATTLEFIELD_PLAYER if explicit_player else GameZone.e.BATTLEFIELD_OPPONENT
+			return GameZone.e.BATTLEFIELD_PLAYER if explicit_player else GameZone.e.COMBAT_OPPONENT_1
 
 ## Return all in-play cards matching ValidCard$, selected per Choice$/NumCard$.
 ## Choice$ Random (default) picks without UI; Choice$ Player triggers selection UI.

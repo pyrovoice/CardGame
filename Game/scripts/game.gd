@@ -154,7 +154,6 @@ func setupGame():
 	populate_decks()
 	
 	await drawCard(5, true)
-	await drawCard(3, false)
 	
 	# Debug: Verify MVC state
 	print("🎮 [MVC DEBUG] GameData state after setup:")
@@ -215,8 +214,9 @@ func onTurnStart(skipFirstTurn = false):
 		# Trigger beginning of turn phase
 		await trigger_phase("BeginningOfTurn")
 		await drawCard(3)
-	@warning_ignore("integer_division")
-	await drawCard(game_data.danger_level.getValue()/3, false)
+	# Each Lieutenant draws its own hand for the turn
+	for lieutenant in game_data.lieutenant_datas:
+		await drawLieutenantCards(lieutenant, 3)
 	game_data.setOpponentGold()
 	await opponent_ai.execute_main_phase()
 	opponent_turn_ended.emit()
@@ -295,14 +295,14 @@ func execute_move_card(cardData: CardData, destination_zone: GameZone.e, origin_
 	# Route to specific movement handlers for animations and triggers
 	# Check for specific zone transition patterns
 	if (origin_zone == GameZone.e.DECK_PLAYER and destination_zone == GameZone.e.HAND_PLAYER) or \
-	   (origin_zone == GameZone.e.DECK_OPPONENT and destination_zone == GameZone.e.HAND_OPPONENT):
+	   (origin_zone == GameZone.e.DECK_COMMANDER and destination_zone == GameZone.e.HAND_COMMANDER):
 		await _move_deck_to_hand(cardData, destination_zone)
 	elif GameZone.is_battlefield_zone(destination_zone):
 		await _move_to_battlefield(cardData, destination_zone)
 	elif destination_zone == GameZone.e.GRAVEYARD_PLAYER or destination_zone == GameZone.e.GRAVEYARD_OPPONENT:
 		await _move_to_graveyard(cardData, destination_zone, origin_zone)
-	elif GameZone.is_battlefield_zone(origin_zone) and GameZone.is_combat_zone(destination_zone):
-		await _move_base_to_combat(cardData, destination_zone, index)
+	elif GameZone.is_combat_zone(destination_zone) and not GameZone.is_combat_zone(origin_zone):
+		await _move_base_to_combat(cardData, destination_zone, index, origin_zone)
 	elif GameZone.is_combat_zone(origin_zone) and GameZone.is_battlefield_zone(destination_zone):
 		await _move_combat_to_base(cardData, destination_zone, origin_zone_node)
 	else:
@@ -487,23 +487,33 @@ func _move_to_graveyard(card_data: CardData, dest_zone: GameZone.e, origin_zone:
 	# Clean up Card view
 	game_view.destroy_card_view(card_data)
 
-func _move_base_to_combat(card_data: CardData, destination_zone: GameZone.e, targetPosition: int):
-	"""Handle PlayerBase to Combat - attack movement (MVC pattern)
+func _move_base_to_combat(card_data: CardData, destination_zone: GameZone.e, targetPosition: int, origin_zone: GameZone.e):
+	"""Handle entering combat - from the player's battlefield (attack) or directly from hand/effects
+	(opponent cards have no battlefield staging area, so they enter combat directly)
 	
 	Args:
 		card_data: The card to move
 		destination_zone: The combat zone enum the card is moving to
 		targetPosition: The index position in the combat zone array
+		origin_zone: The zone the card is moving from
 	
 	The card has already been added to the zone array by execute_move_card.
 	"""
+	var entering_play = not GameZone.is_in_play(origin_zone)
 	
 	# View: Animate to combat (await the animation)
 	await game_view.animate_card_to_combat(card_data, destination_zone, targetPosition)
 	
 	# Emit zone change signal
-	var origin_zone = GameZone.e.BATTLEFIELD_PLAYER if card_data.playerControlled else GameZone.e.BATTLEFIELD_OPPONENT
 	card_changed_zones.emit(card_data, origin_zone, destination_zone)
+	
+	if entering_play:
+		# Card skipped the battlefield entirely (e.g. opponent creature) - trigger entered-play here instead
+		await emit_game_event(TriggeredAbility.GameEventType.CARD_ENTERED_PLAY, card_data)
+		for ability in card_data.static_abilities:
+			ability.apply_to_game(self)
+		for ability in card_data.replacement_abilities:
+			ability.apply_to_game(self)
 
 func _move_combat_to_base(card_data: CardData, dest_zone: GameZone.e, origin_zone_node: Node):
 	"""Handle Combat to PlayerBase - retreat movement"""
@@ -635,7 +645,7 @@ func _try_move_from_combat(card_data: CardData, target_location: Node3D) -> void
 
 func _canPlayCard(source_zone: GameZone.e) -> bool:
 	"""Check if cards can be played from this zone"""
-	return source_zone in [GameZone.e.HAND_PLAYER, GameZone.e.HAND_OPPONENT, GameZone.e.EXTRA_DECK_PLAYER]
+	return GameZone.is_hand_zone(source_zone) or source_zone == GameZone.e.EXTRA_DECK_PLAYER
 
 func tryPlayCard(card_data: CardData, destination_zone: GameZone.e = GameZone.e.UNKNOWN, pre_selections: SelectionManager.CardPlaySelections = null, pay_cost = true) -> void:
 	"""Play a card from hand/extra deck to battlefield or combat
@@ -660,7 +670,7 @@ func tryPlayCard(card_data: CardData, destination_zone: GameZone.e = GameZone.e.
 	
 	# Determine destination zone if not specified
 	if destination_zone == GameZone.e.UNKNOWN:
-		destination_zone = GameZone.e.BATTLEFIELD_PLAYER if card_data.playerControlled else GameZone.e.BATTLEFIELD_OPPONENT
+		destination_zone = GameZone.e.BATTLEFIELD_PLAYER if card_data.playerControlled else _default_combat_zone_for_opponent_card(card_data)
 	
 	print("✅ [TRYPLAYCARD] Passed initial checks, proceeding with card play")
 	
@@ -676,19 +686,13 @@ func tryPlayCard(card_data: CardData, destination_zone: GameZone.e = GameZone.e.
 	# Get Card view object for animations (only if needed)
 	var card: Card = null
 	var correct_hand = null
-	if source_zone == GameZone.e.HAND_PLAYER or source_zone == GameZone.e.HAND_OPPONENT or source_zone == GameZone.e.EXTRA_DECK_PLAYER:
+	if GameZone.is_hand_zone(source_zone) or source_zone == GameZone.e.EXTRA_DECK_PLAYER:
 		# Get Card view for animation (only required in non-headless mode)
 		card = card_data.get_card_object()
 		
 		# In headless mode or when Card view doesn't exist, skip animations
 		if card and not game_view.headless:
-			if card_data.playerControlled:
-				if source_zone == GameZone.e.HAND_PLAYER:
-					correct_hand = game_view.player_hand
-				elif source_zone == GameZone.e.EXTRA_DECK_PLAYER:
-					correct_hand = game_view.extra_hand
-			else:
-				correct_hand = game_view.opponent_hand
+			correct_hand = game_view.get_zone_container(source_zone)
 			
 			current_casting_card = card
 			casting_card_original_parent = correct_hand
@@ -716,26 +720,39 @@ func tryPlayCard(card_data: CardData, destination_zone: GameZone.e = GameZone.e.
 		return
 	
 	# Execute the card play with all collected selections
-	await tryPayAndSelectsForCardPlay(card_data, selection_data, pay_cost)
+	await tryPayAndSelectsForCardPlay(card_data, selection_data, pay_cost, destination_zone)
 
 	# Clear casting state after successful play
 	current_casting_card = null
 	casting_card_original_parent = null
 
-	# If playing directly to combat, handle combat entry
-	if GameZone.is_combat_zone(destination_zone):
+	# Player creatures enter their battlefield first, then take a second hop into combat if requested.
+	# Opponent creatures have no battlefield staging area - they already entered combat directly.
+	if card_data.playerControlled and GameZone.is_combat_zone(destination_zone):
 		await execute_move_card(card_data, destination_zone)
 
-func _executeCardPlay(cardData: CardData, spell_targets: Array[CardData]):
+func _default_combat_zone_for_opponent_card(cardData: CardData) -> GameZone.e:
+	"""Fallback combat zone for opponent cards played without an explicit combat destination, based on their Lieutenant's assigned location"""
+	var index := 0
+	match cardData.lieutenant_role:
+		"control": index = 1
+		"combo": index = 2
+		_: index = 0
+	return (GameZone.e.COMBAT_OPPONENT_1 + index) as GameZone.e
+
+func _executeCardPlay(cardData: CardData, spell_targets: Array[CardData], destination_zone: GameZone.e = GameZone.e.UNKNOWN):
 	# Handle spells differently - they cast their effects then go to graveyard
 	if cardData.hasType(CardData.CardType.SPELL):
 		await _executeSpellWithTargets(cardData, spell_targets)
 		# Move spell to graveyard after effects resolve using centralized movement system
 		var graveyard_zone = GameZone.e.GRAVEYARD_PLAYER if cardData.playerOwned else GameZone.e.GRAVEYARD_OPPONENT
 		await execute_move_card(cardData, graveyard_zone)
+	elif cardData.playerControlled:
+		# Player permanents always enter their battlefield staging area first
+		await execute_move_card(cardData, GameZone.e.BATTLEFIELD_PLAYER)
 	else:
-		# Non-spell cards enter the battlefield normally
-		var dest_zone = GameZone.e.BATTLEFIELD_PLAYER if cardData.playerControlled else GameZone.e.BATTLEFIELD_OPPONENT
+		# Opponent permanents have no battlefield staging area - they go straight to their assigned combat zone
+		var dest_zone = destination_zone if GameZone.is_combat_zone(destination_zone) else _default_combat_zone_for_opponent_card(cardData)
 		await execute_move_card(cardData, dest_zone)
 	await resolveStateBasedAction()
 
@@ -822,7 +839,8 @@ func _executeSpellDamageWithTargets(card: Card, parameters: Dictionary, targets:
 func drawCard(howMany: int = 1, player = true):
 	# MVC Pattern: Update Model → Update Views → Trigger Events
 	
-	var zone_name = GameZone.e.HAND_PLAYER if player else GameZone.e.HAND_OPPONENT
+	# Non-player draws land in the Commander's hand (Lieutenants draw via drawLieutenantCards instead)
+	var zone_name = GameZone.e.HAND_PLAYER if player else GameZone.e.HAND_COMMANDER
 	
 	# Model: Get top N cards from GameData deck zone
 	var deck_zone = GameZone.e.DECK_PLAYER if player else GameZone.e.DECK_OPPONENT
@@ -843,6 +861,30 @@ func drawCard(howMany: int = 1, player = true):
 	# Emit CARD_DRAWN game event for all drawn cards
 	await emit_game_event(TriggeredAbility.GameEventType.CARD_DRAWN, cards_to_draw)
 	
+	await resolveStateBasedAction()
+
+func drawLieutenantCards(lieutenant: LieutenantData, howMany: int = 3):
+	"""Draw cards for a single Lieutenant from their own deck into their own hand, tagged with their role"""
+	var deck_cards = game_data.get_cards_in_zone(lieutenant.deck_zone)
+	var cards_to_draw = deck_cards.slice(0, min(howMany, deck_cards.size()))
+
+	if cards_to_draw.is_empty():
+		print("⚠️ No cards to draw from ", lieutenant.role, "'s deck")
+		return
+
+	# Model: Move cards to the Lieutenant's own hand zone, tagging their owning Lieutenant
+	for card_data in cards_to_draw:
+		card_data.lieutenant_role = lieutenant.role
+		game_data.move_card(card_data, lieutenant.hand_zone)
+
+	# View: Create and animate card views, drawing from and into this Lieutenant's own deck/hand
+	var lieutenant_hand = game_view.get_zone_container(lieutenant.hand_zone) as CardHand
+	var lieutenant_deck = game_view.get_zone_container(lieutenant.deck_zone) as Deck
+	await game_view.create_and_animate_drawn_cards(cards_to_draw, false, lieutenant_hand, lieutenant_deck)
+
+	# Emit CARD_DRAWN game event for all drawn cards
+	await emit_game_event(TriggeredAbility.GameEventType.CARD_DRAWN, cards_to_draw)
+
 	await resolveStateBasedAction()
 
 func resolveCombats():
@@ -1306,8 +1348,10 @@ func _on_right_click(target: Node3D):
 	if target is CardContainer:
 		game_view.show_container_visualizer(target as CardContainer)
 	elif target is Card:
+		var card := target as Card
+		print("🖱️ Right-clicked ", card.cardData.cardName if card.cardData else "unknown card", " at ", card.get_path())
 		# Normal right-click behavior (show popup)
-		showCardPopup(target as Card)
+		showCardPopup(card)
 	elif target == null:
 		# Clicked on nothing - hide popups
 		game_view.hide_container_visualizer()
@@ -1659,7 +1703,7 @@ func _resolve_spell_target_pool(valid_targets_str: String) -> Array[CardData]:
 		"Graveyard.Player", "Graveyard.Opponent",
 		"Hand.Player", "Hand.Opponent",
 		"Deck.Player", "Deck.Opponent",
-		"Battlefield.Player", "Battlefield.Opponent",
+		"Battlefield.Player",
 	]
 	
 	var matched_zone = false
@@ -1687,7 +1731,7 @@ func _resolve_spell_target_pool(valid_targets_str: String) -> Array[CardData]:
 			result.append(card)
 	return result
 
-func tryPayAndSelectsForCardPlay(card_data: CardData, selection_data: SelectionManager.CardPlaySelections, pay_cost: bool = true):
+func tryPayAndSelectsForCardPlay(card_data: CardData, selection_data: SelectionManager.CardPlaySelections, pay_cost: bool = true, destination_zone: GameZone.e = GameZone.e.UNKNOWN):
 	"""Execute card play with all selections already collected"""
 	# Validate that the card data is valid
 	if not card_data:
@@ -1697,7 +1741,7 @@ func tryPayAndSelectsForCardPlay(card_data: CardData, selection_data: SelectionM
 	# Skip payment if pay_cost is false (e.g., casting from deck via effect)
 	if not pay_cost:
 		print("💫 Skipping payment for card (cast via effect)")
-		await _executeCardPlay(card_data, [])
+		await _executeCardPlay(card_data, [], destination_zone)
 		return
 	
 	# Pay costs first - selection_data stores CardData
@@ -1719,7 +1763,7 @@ func tryPayAndSelectsForCardPlay(card_data: CardData, selection_data: SelectionM
 		
 		# Verify we can afford the Replace cost
 		var replace_cost = CardPaymentManagerAL.calculateReplaceCost(card_data, replace_target_data)
-		if not game_data.has_gold(replace_cost, card_data.playerControlled):
+		if not game_data.has_gold(replace_cost, card_data):
 			print("❌ Cannot afford Replace cost: ", replace_cost)
 			return
 	
@@ -1735,7 +1779,7 @@ func tryPayAndSelectsForCardPlay(card_data: CardData, selection_data: SelectionM
 		return
 	
 	# Execute payment: spend gold
-	if not game_data.spend_gold(payment_info.gold_cost, card_data.playerControlled):
+	if not game_data.spend_gold(payment_info.gold_cost, card_data):
 		print("❌ Failed to spend gold")
 		return
 	
@@ -1753,7 +1797,7 @@ func tryPayAndSelectsForCardPlay(card_data: CardData, selection_data: SelectionM
 		else:
 			print("⚠️ Skipping invalid spell target")
 	
-	await _executeCardPlay(card_data, valid_spell_targets)
+	await _executeCardPlay(card_data, valid_spell_targets, destination_zone)
 
 func _startAdditionalCostSelection(card_data: CardData, additional_costs: Array[Dictionary], preselected_cards: Array[CardData] = []) -> Array[CardData]:
 	"""Start the selection process for paying additional costs and return selected cards"""
