@@ -266,7 +266,7 @@ func execute_move_card(cardData: CardData, destination_zone: GameZone.e, origin_
 		# Check for death replacement effects
 		var replacements = ReplacementEffectRegistry._replacement_effects
 		for replacement_effect in replacements:
-			if replacement_effect.applies_to("Death", death_context, self):
+			if replacement_effect.applies_to(EffectType.Type.DEATH, death_context, self):
 				print("  💀🔄 [DEATH] Replacement effect applies from ", replacement_effect.source_card_data.cardName)
 				var modified_context = replacement_effect.apply_modification(death_context, self)
 				
@@ -297,14 +297,12 @@ func execute_move_card(cardData: CardData, destination_zone: GameZone.e, origin_
 	if (origin_zone == GameZone.e.DECK_PLAYER and destination_zone == GameZone.e.HAND_PLAYER) or \
 	   (origin_zone == GameZone.e.DECK_COMMANDER and destination_zone == GameZone.e.HAND_COMMANDER):
 		await _move_deck_to_hand(cardData, destination_zone)
-	elif GameZone.is_battlefield_zone(destination_zone):
-		await _move_to_battlefield(cardData, destination_zone)
-	elif destination_zone == GameZone.e.GRAVEYARD_PLAYER or destination_zone == GameZone.e.GRAVEYARD_OPPONENT:
-		await _move_to_graveyard(cardData, destination_zone, origin_zone)
 	elif GameZone.is_combat_zone(destination_zone) and not GameZone.is_combat_zone(origin_zone):
 		await _move_base_to_combat(cardData, destination_zone, index, origin_zone)
-	elif GameZone.is_combat_zone(origin_zone) and GameZone.is_battlefield_zone(destination_zone):
-		await _move_combat_to_base(cardData, destination_zone, origin_zone_node)
+	elif GameZone.is_battlefield_zone(destination_zone):
+		await _move_to_battlefield(cardData, destination_zone, origin_zone)
+	elif destination_zone == GameZone.e.GRAVEYARD_PLAYER or destination_zone == GameZone.e.GRAVEYARD_OPPONENT:
+		await _move_to_graveyard(cardData, destination_zone, origin_zone)
 	else:
 		await _move_generic(cardData, destination_zone, origin_zone, origin_zone_node)
 	
@@ -353,7 +351,7 @@ func _process_creature_death(card_data: CardData):
 	# Check for death replacement effects
 	var replacements = ReplacementEffectRegistry._replacement_effects
 	for replacement_effect in replacements:
-		if replacement_effect.applies_to("Death", death_context, self):
+		if replacement_effect.applies_to(EffectType.Type.DEATH, death_context, self):
 			print("  💀🔄 [DEATH] Replacement effect applies from ", replacement_effect.source_card_data.cardName)
 			var modified_context = replacement_effect.apply_modification(death_context, self)
 			
@@ -439,12 +437,17 @@ func _move_deck_to_hand(card_data: CardData, dest_zone: GameZone.e):
 	# Trigger card_drawn event
 	card_drawn.emit([card_data], card_data.playerControlled)
 
-func _move_to_battlefield(card_data: CardData, dest_zone: GameZone.e):
-	"""Handle any zone to battlefield - entering play (MVC pattern)"""
+func _move_to_battlefield(card_data: CardData, dest_zone: GameZone.e, origin_zone: GameZone.e = GameZone.e.UNKNOWN):
+	"""Handle any zone to Camp - entering play, or retreating from combat back to Camp (MVC pattern)"""
 	# Note: GameData already updated by execute_move_card
+	var entering_play = not GameZone.is_in_play(origin_zone)
 	
-	# View: Animate to battlefield (GameView handles card creation, parenting, and positioning)
+	# View: Animate to Camp (GameView handles card creation, parenting, and positioning)
 	await game_view.animate_card_to_battlefield(card_data, dest_zone)
+	
+	if not entering_play:
+		# Card was already in play (e.g. retreating from combat) - no re-entry triggers
+		return
 	
 	# Trigger card entered play
 	await emit_game_event(TriggeredAbility.GameEventType.CARD_ENTERED_PLAY, card_data)
@@ -515,18 +518,6 @@ func _move_base_to_combat(card_data: CardData, destination_zone: GameZone.e, tar
 		for ability in card_data.replacement_abilities:
 			ability.apply_to_game(self)
 
-func _move_combat_to_base(card_data: CardData, dest_zone: GameZone.e, origin_zone_node: Node):
-	"""Handle Combat to PlayerBase - retreat movement"""
-	var dest = game_view.get_zone_container(dest_zone)
-	if not dest:
-		push_error("_move_combat_to_base: Could not find battlefield container")
-		return
-	
-	# View: Animate back to base
-	await game_view.animate_card_to_base(card_data, dest_zone)
-	
-	card_changed_zones.emit(card_data, origin_zone_node, dest)
-
 func _move_generic(card_data: CardData, dest_zone: GameZone.e, origin_zone: GameZone.e, origin_zone_node: Node):
 	"""Handle any other zone transitions with generic animation (MVC pattern)"""
 	var dest = game_view.get_zone_container(dest_zone)
@@ -575,8 +566,8 @@ func tryMoveCard(card_data: CardData, target_location: Node3D) -> void:
 	if target_location:
 		dest_zone = _get_target_zone(target_location)
 	else:
-		# Default to PlayerBase if no target specified
-		dest_zone = GameZone.e.BATTLEFIELD_PLAYER
+		# Default to the player's Camp at location 1 if no target specified
+		dest_zone = GameZone.e.LOCATION_1_PLAYER_CAMP
 	
 	# Handle movement based on source zone
 	match source_zone:
@@ -592,20 +583,20 @@ func tryMoveCard(card_data: CardData, target_location: Node3D) -> void:
 			
 			# Playing from hand/extra deck
 			if dest_zone == GameZone.e.UNKNOWN:
-				# Default to battlefield if target is not recognized
-				dest_zone = GameZone.e.BATTLEFIELD_PLAYER
+				# Default to the player's Camp at location 1 if target is not recognized
+				dest_zone = GameZone.e.LOCATION_1_PLAYER_CAMP
 			
 			# Try to play the card to the destination zone
 			tryPlayCard(card_data, dest_zone)
 		
-		GameZone.e.BATTLEFIELD_PLAYER:
-			await _try_move_from_battlefield(card_data, target_location)
+		GameZone.e.LOCATION_1_PLAYER_CAMP, GameZone.e.LOCATION_2_PLAYER_CAMP, GameZone.e.LOCATION_3_PLAYER_CAMP:
+			await _try_move_from_camp(card_data, target_location)
 		
 		GameZone.e.COMBAT_PLAYER_1, GameZone.e.COMBAT_PLAYER_2, GameZone.e.COMBAT_PLAYER_3:
 			await _try_move_from_combat(card_data, target_location)
 
-func _try_move_from_battlefield(card_data: CardData, target_location: Node3D) -> void:
-	"""Handle user-initiated movement from battlefield to combat"""
+func _try_move_from_camp(card_data: CardData, target_location: Node3D) -> void:
+	"""Handle user-initiated movement from a player's Camp into combat"""
 	if not target_location is CombatZone:
 		return
 	
@@ -631,17 +622,26 @@ func _try_move_from_battlefield(card_data: CardData, target_location: Node3D) ->
 	await execute_move_card(card_data, dest_zone)
 
 func _try_move_from_combat(card_data: CardData, target_location: Node3D) -> void:
-	"""Handle user-initiated movement from combat zone (retreat)"""
-	if target_location is PlayerBase:
-		# Retreat from combat to base
-		if can_card_move(card_data):
-			# Tap card for movement
-			card_data.tap()
-			
-			# Move using centralized system
-			await execute_move_card(card_data, GameZone.e.BATTLEFIELD_PLAYER)
-	else:
+	"""Handle user-initiated movement from combat zone back to Camp (retreat)"""
+	var dest_zone := GameZone.e.UNKNOWN
+	if target_location is GridContainer3D:
+		var parent = target_location.get_parent()
+		if parent is CombatZone and target_location == (parent as CombatZone).ally_camp:
+			var zone_index = game_view.get_combat_zones().find(parent)
+			if zone_index >= 0:
+				dest_zone = GameZone.camp_zone_for(zone_index, true)
+	
+	if dest_zone == GameZone.e.UNKNOWN:
 		print("❌ Cannot move card from combat to that location")
+		return
+	
+	# Retreat from combat to Camp
+	if can_card_move(card_data):
+		# Tap card for movement
+		card_data.tap()
+		
+		# Move using centralized system
+		await execute_move_card(card_data, dest_zone)
 
 func _canPlayCard(source_zone: GameZone.e) -> bool:
 	"""Check if cards can be played from this zone"""
@@ -670,7 +670,7 @@ func tryPlayCard(card_data: CardData, destination_zone: GameZone.e = GameZone.e.
 	
 	# Determine destination zone if not specified
 	if destination_zone == GameZone.e.UNKNOWN:
-		destination_zone = GameZone.e.BATTLEFIELD_PLAYER if card_data.playerControlled else _default_combat_zone_for_opponent_card(card_data)
+		destination_zone = GameZone.e.LOCATION_1_PLAYER_CAMP if card_data.playerControlled else _default_combat_zone_for_opponent_card(card_data)
 	
 	print("✅ [TRYPLAYCARD] Passed initial checks, proceeding with card play")
 	
@@ -726,11 +726,6 @@ func tryPlayCard(card_data: CardData, destination_zone: GameZone.e = GameZone.e.
 	current_casting_card = null
 	casting_card_original_parent = null
 
-	# Player creatures enter their battlefield first, then take a second hop into combat if requested.
-	# Opponent creatures have no battlefield staging area - they already entered combat directly.
-	if card_data.playerControlled and GameZone.is_combat_zone(destination_zone):
-		await execute_move_card(card_data, destination_zone)
-
 func _default_combat_zone_for_opponent_card(cardData: CardData) -> GameZone.e:
 	"""Fallback combat zone for opponent cards played without an explicit combat destination, based on their Lieutenant's assigned location"""
 	var index := 0
@@ -748,11 +743,14 @@ func _executeCardPlay(cardData: CardData, spell_targets: Array[CardData], destin
 		var graveyard_zone = GameZone.e.GRAVEYARD_PLAYER if cardData.playerOwned else GameZone.e.GRAVEYARD_OPPONENT
 		await execute_move_card(cardData, graveyard_zone)
 	elif cardData.playerControlled:
-		# Player permanents always enter their battlefield staging area first
-		await execute_move_card(cardData, GameZone.e.BATTLEFIELD_PLAYER)
+		# Player permanents always join their Camp at the target location - never straight into combat
+		var location_zone = destination_zone if GameZone.is_battlefield_zone(destination_zone) else GameZone.e.LOCATION_1_PLAYER_CAMP
+		var dest_zone = GameZone.camp_zone_for_combat(location_zone)
+		await execute_move_card(cardData, dest_zone)
 	else:
-		# Opponent permanents have no battlefield staging area - they go straight to their assigned combat zone
-		var dest_zone = destination_zone if GameZone.is_combat_zone(destination_zone) else _default_combat_zone_for_opponent_card(cardData)
+		# Opponent permanents also join their Camp at the target location (or their Lieutenant's default location)
+		var location_zone = destination_zone if GameZone.is_battlefield_zone(destination_zone) else _default_combat_zone_for_opponent_card(cardData)
+		var dest_zone = GameZone.camp_zone_for_combat(location_zone)
 		await execute_move_card(cardData, dest_zone)
 	await resolveStateBasedAction()
 
@@ -906,6 +904,27 @@ func resolve_unresolved_combats():
 	
 	playerControlLock.removeLock(lock)
 
+func start_combat_for_zone(combat_zone_enum: GameZone.e) -> void:
+	"""First phase of the two-click combat flow for a location: move every creature from the
+	opponent's Camp at this location into the active combat grid. The player's Camp is left
+	untouched - the player manually moves their own creatures in and out during this phase."""
+	var location_index = GameZone.location_index_of(combat_zone_enum)
+	if location_index < 0:
+		return
+	
+	var combat_zone_view = game_view.get_zone_container(GameZone.combat_zone_for(location_index, true)) as CombatZone
+	if combat_zone_view:
+		var cld = game_data.get_combat_zone_data(combat_zone_view)
+		if cld:
+			if cld.isCombatStarted:
+				return
+			cld.isCombatStarted = true
+	
+	var opponent_camp_zone = GameZone.camp_zone_for(location_index, false)
+	var opponent_combat_zone = GameZone.combat_zone_for(location_index, false)
+	for card_data in game_data.get_cards_in_zone(opponent_camp_zone).duplicate():
+		await execute_move_card(card_data, opponent_combat_zone)
+
 func resolve_combat_for_zone(combat_zone_enum: GameZone.e):
 	
 	# Convert to player zone to get the view object (combat zones share the same physical location)
@@ -944,9 +963,11 @@ func _get_all_player_card_data() -> Array[CardData]:
 	var all_cards: Array[CardData] = []
 	
 	# Query GameData for player-controlled cards in play zones
-	# (battlefield + combat zones, excluding hand/deck)
+	# (Camp + combat zones, excluding hand/deck)
 	var player_zones = [
-		GameZone.e.BATTLEFIELD_PLAYER,
+		GameZone.e.LOCATION_1_PLAYER_CAMP,
+		GameZone.e.LOCATION_2_PLAYER_CAMP,
+		GameZone.e.LOCATION_3_PLAYER_CAMP,
 		GameZone.e.COMBAT_PLAYER_1,
 		GameZone.e.COMBAT_PLAYER_2,
 		GameZone.e.COMBAT_PLAYER_3
@@ -960,34 +981,34 @@ func _get_all_player_card_data() -> Array[CardData]:
 func _get_target_zone(target_location: Node3D) -> GameZone.e:
 	"""Convert a 3D node location to a GameZone enum
 	
-	Note: For CombatZone, this returns a placeholder. The actual zone (player/opponent side)
-	is determined in tryMoveCard based on the card's controller.
+	Note: For a bare CombatZone hit, this returns the location's Camp zone for the player
+	(cards land in Camp by default). Dropping directly on a specific GridContainer3D
+	(AllySide/OpponentSide/AllyCamp/OpponentCamp) targets that exact grid.
 	"""
 	if not target_location:
 		return GameZone.e.UNKNOWN
 	
 	if target_location is CombatZone:
-		# Return player combat zone as placeholder - actual side determined by card controller
+		# Bare CombatZone hit - default to the player's Camp at this location
 		var zone_index = game_view.get_combat_zones().find(target_location)
 		if zone_index >= 0:
-			return (GameZone.e.COMBAT_PLAYER_1 + zone_index) as GameZone.e
+			return GameZone.camp_zone_for(zone_index, true)
 		return GameZone.e.UNKNOWN
 	elif target_location is GridContainer3D:
-		# GridContainer3D used in CombatZone after refactor (for tests)
 		var parent = target_location.get_parent()
 		if parent is CombatZone:
 			var combat_zone = parent as CombatZone
 			var zone_index = game_view.get_combat_zones().find(combat_zone)
 			if zone_index >= 0:
-				# Determine if it's ally or opponent side
-				var is_ally_side = (target_location == combat_zone.ally_side)
-				if is_ally_side:
-					return (GameZone.e.COMBAT_PLAYER_1 + zone_index) as GameZone.e
-				else:
-					return (GameZone.e.COMBAT_OPPONENT_1 + zone_index) as GameZone.e
+				if target_location == combat_zone.ally_side:
+					return GameZone.combat_zone_for(zone_index, true)
+				elif target_location == combat_zone.opponent_side:
+					return GameZone.combat_zone_for(zone_index, false)
+				elif target_location == combat_zone.ally_camp:
+					return GameZone.camp_zone_for(zone_index, true)
+				elif target_location == combat_zone.opponent_camp:
+					return GameZone.camp_zone_for(zone_index, false)
 		return GameZone.e.UNKNOWN
-	elif target_location is PlayerBase:
-		return GameZone.e.BATTLEFIELD_PLAYER  # TODO: distinguish player/opponent
 	elif target_location == game_view.player_hand:
 		return GameZone.e.HAND_PLAYER
 	elif target_location == game_view.recycle_area:
@@ -1032,51 +1053,120 @@ func resolveCombatInZone(combat_zone: GameZone.e):
 	for card_data in opponent_cards:
 		await emit_game_event(TriggeredAbility.GameEventType.ATTACK_DECLARED, card_data)
 	
-	# Step 3: Resolve each slot's combat (match by index)
-	var max_slots = max(player_cards.size(), opponent_cards.size())
-	for slot_index in range(max_slots):
-		var player_card_data = player_cards[slot_index] if slot_index < player_cards.size() else null
-		var opponent_card_data = opponent_cards[slot_index] if slot_index < opponent_cards.size() else null
+	# Step 3: Assign each side's creatures consecutive combat columns based on size (Giant = 2),
+	# then resolve one column at a time so each creature strikes exactly once, hitting every
+	# opposing creature whose columns overlap its own.
+	var player_entries = _assign_combat_columns(player_cards)
+	var opponent_entries = _assign_combat_columns(opponent_cards)
+	var max_columns = max(_entries_end(player_entries), _entries_end(opponent_entries))
+	
+	var resolved: Array[CardData] = []
+	for column in range(max_columns):
+		var player_entry = _entry_at_column(player_entries, column)
+		if player_entry and player_entry["card"] not in resolved:
+			resolved.append(player_entry["card"])
+			var targets = _find_overlapping(player_entry, opponent_entries)
+			await _resolve_creature_combat(player_entry["card"], targets, true, combatZone)
 		
-		if not player_card_data and not opponent_card_data:
-			continue
-		
-		var player_damage = player_card_data.power if player_card_data else 0
-		var opponent_damage = opponent_card_data.power if opponent_card_data else 0
-		
-		# Combat strike animations and damage
-		if player_card_data and opponent_card_data:
-			# Both cards strike each other
-			var player_card = player_card_data.get_card_object()
-			var opponent_card = opponent_card_data.get_card_object()
-			if player_card and opponent_card:
-				game_view.animate_combat_strike(player_card, opponent_card)
-			
-			# Emit strike events for triggered abilities
-			await emit_game_event(TriggeredAbility.GameEventType.STRIKE, player_card_data)
-			await emit_game_event(TriggeredAbility.GameEventType.STRIKE, opponent_card_data)
-			
-			# Apply damage
-			player_card_data.receiveDamage(opponent_damage)
-			opponent_card_data.receiveDamage(player_damage)
-			# Corrupted on-hit: 50% chance to spread Corrupted to the attacker
-			if opponent_damage > 0 and "Corrupted" in player_card_data.keywords:
-				CorruptedKeyword.on_combat_received(player_card_data, opponent_card_data, self)
-			if player_damage > 0 and "Corrupted" in opponent_card_data.keywords:
-				CorruptedKeyword.on_combat_received(opponent_card_data, player_card_data, self)
-		elif player_card_data and not opponent_card_data:
-			# Player attacks location directly
-			await emit_game_event(TriggeredAbility.GameEventType.STRIKE, player_card_data)
-			if combatZone:
-				_apply_damage_to_location(player_damage, true, combatZone)
-		elif opponent_card_data and not player_card_data:
-			# Opponent attacks location directly
-			await emit_game_event(TriggeredAbility.GameEventType.STRIKE, opponent_card_data)
-			if combatZone:
-				_apply_damage_to_location(opponent_damage, false, combatZone)
+		var opponent_entry = _entry_at_column(opponent_entries, column)
+		if opponent_entry and opponent_entry["card"] not in resolved:
+			resolved.append(opponent_entry["card"])
+			var targets2 = _find_overlapping(opponent_entry, player_entries)
+			await _resolve_creature_combat(opponent_entry["card"], targets2, false, combatZone)
 	
 	await resolveStateBasedAction()
 	resolve_queue()
+	
+	# Combat is over: return every surviving creature to its controller's Camp and clear the fighting grid
+	for card_data in game_data.get_cards_in_zone(player_zone).duplicate():
+		await execute_move_card(card_data, GameZone.camp_zone_for_combat(player_zone))
+	for card_data in game_data.get_cards_in_zone(opponent_zone).duplicate():
+		await execute_move_card(card_data, GameZone.camp_zone_for_combat(opponent_zone))
+	
+	if combatZone:
+		var cld = game_data.get_combat_zone_data(combatZone)
+		if cld:
+			cld.isCombatStarted = false
+
+func _assign_combat_columns(cards: Array) -> Array:
+	"""Assign consecutive combat columns to each card based on its combat size (Giant occupies 2)"""
+	var result = []
+	var cursor = 0
+	for card_data in cards:
+		var width = card_data.get_combat_size()
+		result.append({"card": card_data, "start": cursor, "end": cursor + width})
+		cursor += width
+	return result
+
+func _entries_end(entries: Array) -> int:
+	return entries[-1]["end"] if entries.size() > 0 else 0
+
+func _entry_at_column(entries: Array, column: int):
+	for entry in entries:
+		if entry["start"] <= column and column < entry["end"]:
+			return entry
+	return null
+
+func _find_overlapping(entry: Dictionary, other_entries: Array) -> Array[CardData]:
+	"""Every card in other_entries whose column range overlaps entry's column range"""
+	var result: Array[CardData] = []
+	for other in other_entries:
+		if entry["start"] < other["end"] and other["start"] < entry["end"]:
+			result.append(other["card"])
+	return result
+
+func _resolve_creature_combat(attacker: CardData, targets: Array[CardData], attacker_is_player: bool, combatZone: CombatZone):
+	"""Resolve a single creature's one-time strike: full damage to every overlapping opponent,
+	or the location (subject to Defender interception) if nothing overlaps it."""
+	await emit_game_event(TriggeredAbility.GameEventType.STRIKE, attacker)
+	
+	if targets.is_empty():
+		var blocking_card = _check_defender_replacement(attacker, combatZone)
+		if blocking_card:
+			await _resolve_defender_block(attacker, blocking_card)
+		elif combatZone:
+			_apply_damage_to_location(attacker.power, attacker_is_player, combatZone)
+		return
+	
+	var attacker_card = attacker.get_card_object()
+	var attacker_damage = attacker.power
+	for target in targets:
+		var target_card = target.get_card_object()
+		if attacker_card and target_card:
+			await game_view.animate_combat_strike(attacker_card, target_card)
+		
+		target.receiveDamage(attacker_damage)
+		# Corrupted on-hit: 50% chance to spread Corrupted to whoever dealt the damage
+		if attacker_damage > 0 and "Corrupted" in target.keywords:
+			CorruptedKeyword.on_combat_received(target, attacker, self)
+
+func _check_defender_replacement(attacking_card: CardData, combatZone: CombatZone) -> CardData:
+	"""Check registered replacement effects for a Defender willing to block an otherwise-unblocked attack.
+	Returns the blocking CardData, or null if the attack should hit the location as usual."""
+	if not combatZone:
+		return null
+	var context = {
+		"attacking_card": attacking_card,
+		"combat_zone": combatZone,
+	}
+	for replacement_effect in ReplacementEffectRegistry._replacement_effects:
+		if replacement_effect.applies_to(EffectType.Type.CREATURE_ATTACK, context, self):
+			var modified_context = replacement_effect.apply_modification(context, self)
+			if modified_context.get("event_was_replaced", false):
+				return modified_context.get("blocking_card")
+	return null
+
+func _resolve_defender_block(attacker: CardData, defender: CardData):
+	"""Resolve a Defender intercepting an otherwise-unblocked attack: both cards trade damage"""
+	await emit_game_event(TriggeredAbility.GameEventType.STRIKE, defender)
+	
+	var attacker_card = attacker.get_card_object()
+	var defender_card = defender.get_card_object()
+	if attacker_card and defender_card:
+		await game_view.animate_combat_strike(attacker_card, defender_card)
+	
+	attacker.receiveDamage(defender.power)
+	defender.receiveDamage(attacker.power)
 
 func _apply_damage_to_location(damage: int, is_player_damage: bool, combatZone: CombatZone):
 	if damage <= 0:
@@ -1397,7 +1487,13 @@ func _on_left_click(objectUnderMouse):
 		var zone_index = game_view.get_combat_zones().find(combat_zone_view)
 		if zone_index >= 0:
 			var combat_zone_enum := (GameZone.e.COMBAT_PLAYER_1 + zone_index) as GameZone.e
-			resolve_combat_for_zone(combat_zone_enum)
+			var cld = game_data.get_combat_zone_data(combat_zone_view)
+			if cld and not cld.isCombatStarted:
+				# First click: start combat - opponent Camp creatures move into the fight
+				await start_combat_for_zone(combat_zone_enum)
+			else:
+				# Second click: resolve combat as normal
+				resolve_combat_for_zone(combat_zone_enum)
 	elif objectUnderMouse == game_view.extra_deck:
 		_toggleExtraDeckView()
 
@@ -1762,7 +1858,7 @@ func tryPayAndSelectsForCardPlay(card_data: CardData, selection_data: SelectionM
 			return
 		
 		# Verify we can afford the Replace cost
-		var replace_cost = CardPaymentManagerAL.calculateReplaceCost(card_data, replace_target_data)
+		var replace_cost = CardPaymentManagerAL.calculateActualCost(card_data, [replace_target_data], destination_zone)
 		if not game_data.has_gold(replace_cost, card_data):
 			print("❌ Cannot afford Replace cost: ", replace_cost)
 			return
@@ -1773,7 +1869,7 @@ func tryPayAndSelectsForCardPlay(card_data: CardData, selection_data: SelectionM
 		selected_cards_data.append(selection_data.replace_target)
 	
 	# Calculate payment requirements using CardPaymentManager
-	var payment_info = CardPaymentManagerAL.tryPayCard(card_data, selected_cards_data)
+	var payment_info = CardPaymentManagerAL.tryPayCard(card_data, selected_cards_data, destination_zone)
 	if not payment_info.success:
 		print("❌ Failed to calculate payment for card")
 		return

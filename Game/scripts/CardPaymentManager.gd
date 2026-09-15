@@ -76,7 +76,9 @@ func canPayCosts(costs: Array[Dictionary], source_card_data: CardData) -> bool:
 	
 	return true
 
-func canPayCard(card_data: CardData) -> bool:
+func canPayCard(card_data: CardData, destination_zone: GameZone.e = GameZone.e.UNKNOWN) -> bool:
+	"""Check if the card is castable at the given destination, or - if none given - at ANY valid
+	destination (including combat zones that would grant a location-based discount)."""
 	if not card_data or not current_game:
 		return false
 	
@@ -84,32 +86,53 @@ func canPayCard(card_data: CardData) -> bool:
 	if not canMeetCastingConditions(card_data):
 		return false
 	
-	var base_cost = card_data.goldCost
-	var can_afford_base = current_game.game_data.has_gold(base_cost, card_data)
+	if destination_zone != GameZone.e.UNKNOWN:
+		return _canPayCardForZone(card_data, destination_zone)
 	
-	# First check if card can be afforded at base cost
-	if can_afford_base:
-		# Convert additional costs to cost array format and check if they can be paid
-		var cost_array = _convertAdditionalCostsToCostArray(card_data.additionalCosts, true)
-		if cost_array.size() > 0:
-			return canPayCosts(cost_array, card_data)
+	if _canPayCardForZone(card_data, GameZone.e.UNKNOWN):
 		return true
 	
-	# If not affordable at base cost, check if Replace can make it affordable
-	# Replace is an optional alternative casting method, but only valid if at least one target makes it affordable
+	if hasCastDiscount(card_data):
+		for zone in _combatZonesFor(card_data):
+			if _canPayCardForZone(card_data, zone):
+				return true
+	
+	return false
+
+func canPayCardAtBaseCost(card_data: CardData) -> bool:
+	"""Castable ignoring any location-based discount (i.e. at its printed cost, wherever it ends up)"""
+	if not card_data or not current_game:
+		return false
+	if not canMeetCastingConditions(card_data):
+		return false
+	return _canPayCardForZone(card_data, GameZone.e.UNKNOWN)
+
+func _canPayCardForZone(card_data: CardData, zone: GameZone.e) -> bool:
+	"""Castability check for one specific destination zone (UNKNOWN = no location bonus considered)"""
+	if _canAffordAt(card_data, [], zone):
+		var cost_array = _convertAdditionalCostsToCostArray(card_data.additionalCosts, true)
+		if cost_array.is_empty() or canPayCosts(cost_array, card_data):
+			return true
+	
+	# Replace is an optional alternative casting method - try every valid target at this destination
 	if hasReplaceOption(card_data):
-		# Check if any Replace target would make the cost affordable
 		for cost_data in card_data.additionalCosts:
 			if cost_data.get("cost_type", "") == "Replace":
-				var valid_targets = getValidReplaceTargets(card_data, cost_data)
-				for target_data in valid_targets:
-					var replace_cost = calculateReplaceCost(card_data, target_data)
-					if current_game.game_data.has_gold(replace_cost, card_data):
-						# At least one Replace target makes it affordable
+				for target_data in getValidReplaceTargets(card_data, cost_data):
+					if _canAffordAt(card_data, [target_data], zone):
 						return true
 				break
 	
 	return false
+
+func _canAffordAt(card_data: CardData, selected_cards_data: Array[CardData], zone: GameZone.e) -> bool:
+	var cost = calculateActualCost(card_data, selected_cards_data, zone)
+	return current_game.game_data.has_gold(cost, card_data)
+
+func _combatZonesFor(card_data: CardData) -> Array:
+	if card_data.playerControlled:
+		return [GameZone.e.COMBAT_PLAYER_1, GameZone.e.COMBAT_PLAYER_2, GameZone.e.COMBAT_PLAYER_3]
+	return [GameZone.e.COMBAT_OPPONENT_1, GameZone.e.COMBAT_OPPONENT_2, GameZone.e.COMBAT_OPPONENT_3]
 
 func _convertAdditionalCostsToCostArray(additional_costs: Array[Dictionary], skip_replace: bool = false) -> Array[Dictionary]:
 	"""Convert additional costs (SacrificePermanent, Replace) to unified cost array format"""
@@ -214,7 +237,7 @@ func canPayCardData(card_data: CardData) -> bool:
 	
 	return true
 
-func tryPayCard(card_data: CardData, selected_additional_cards_data: Array[CardData] = []) -> Dictionary:
+func tryPayCard(card_data: CardData, selected_additional_cards_data: Array[CardData] = [], destination_zone: GameZone.e = GameZone.e.UNKNOWN) -> Dictionary:
 	"""Calculate payment requirements for a card (gold + additional costs)
 	
 	Returns Dictionary with:
@@ -231,8 +254,8 @@ func tryPayCard(card_data: CardData, selected_additional_cards_data: Array[CardD
 	if not card_data or not current_game:
 		return result
 	
-	# Calculate the actual gold cost (may be reduced by Replace)
-	var gold_cost = calculateActualCost(card_data, selected_additional_cards_data)
+	# Calculate the actual gold cost (every applicable cost reduction stacks - Replace, CastDiscount, etc.)
+	var gold_cost = calculateActualCost(card_data, selected_additional_cards_data, destination_zone)
 	
 	# Check if we can afford it
 	if not current_game.game_data.has_gold(gold_cost, card_data):
@@ -246,20 +269,68 @@ func tryPayCard(card_data: CardData, selected_additional_cards_data: Array[CardD
 	
 	return result
 
-func calculateActualCost(card_data: CardData, selected_cards_data: Array[CardData] = []) -> int:
-	"""Calculate the actual cost considering Replace reductions"""
+func calculateActualCost(card_data: CardData, selected_cards_data: Array[CardData] = [], destination_zone: GameZone.e = GameZone.e.UNKNOWN) -> int:
+	"""Calculate the actual cost by summing every applicable cost-reduction modifier
+	(Replace, CastDiscount, and any future reduction types) so they compose additively."""
 	if not card_data:
 		return 0
 	
-	var base_cost = card_data.goldCost
+	var total_reduction = 0
+	for cost_data in card_data.additionalCosts:
+		total_reduction += _calculateCostReduction(cost_data, card_data, selected_cards_data, destination_zone)
 	
-	# Check if Replace is being used
-	var replace_target = findReplaceTarget(card_data, selected_cards_data)
-	if replace_target:
-		print("💰 [REPLACE COST] Calculating reduced cost with replacement: ", replace_target.cardName)
-		return calculateReplaceCost(card_data, replace_target)
-	
-	return base_cost
+	return max(0, card_data.goldCost - total_reduction)
+
+func _calculateCostReduction(cost_data: Dictionary, card_data: CardData, selected_cards_data: Array[CardData], destination_zone: GameZone.e) -> int:
+	"""How much a single additional-cost entry reduces this card's gold cost, or 0 if inapplicable"""
+	match cost_data.get("cost_type", ""):
+		"Replace":
+			var replace_target = findReplaceTarget(card_data, selected_cards_data)
+			if not replace_target:
+				return 0
+			return _calculateReplaceReduction(cost_data, replace_target)
+		"CastDiscount":
+			return _calculateCastDiscountReduction(cost_data, card_data, destination_zone)
+		_:
+			return 0
+
+func _calculateReplaceReduction(cost_data: Dictionary, replacement_target_data: CardData) -> int:
+	var reduction = replacement_target_data.goldCost
+	var valid_card_alt_filter = cost_data.get("valid_card_alt", "")
+	if valid_card_alt_filter != "":
+		var single_target: Array[CardData] = [replacement_target_data]
+		if _get_matching_cards_in_pool(valid_card_alt_filter, single_target).size() > 0:
+			reduction += cost_data.get("add_reduction", 0)
+	return reduction
+
+func _calculateCastDiscountReduction(cost_data: Dictionary, card_data: CardData, destination_zone: GameZone.e) -> int:
+	if destination_zone == GameZone.e.UNKNOWN or not GameZone.is_combat_zone(destination_zone):
+		return 0
+	if not current_game or not _zoneHasNoCreatures(destination_zone):
+		return 0
+	return int(cost_data.get("amount", 1))
+
+func _zoneHasNoCreatures(zone: GameZone.e) -> bool:
+	# Cards land in Camp by default - check the Camp for this location/side, not the active combat grid
+	var camp_zone = GameZone.camp_zone_for_combat(zone)
+	for c in current_game.game_data.get_cards_in_zone(camp_zone):
+		if c.hasType(CardData.CardType.CREATURE):
+			return false
+	return true
+
+func hasCastDiscount(card_data: CardData) -> bool:
+	"""Whether this card has a CastDiscount additional cost (used to decide whether to check combat zones)"""
+	for cost_data in card_data.additionalCosts:
+		if cost_data.get("cost_type", "") == "CastDiscount":
+			return true
+	return false
+
+func castDiscountAppliesAt(card_data: CardData, zone: GameZone.e) -> bool:
+	"""Whether playing card_data to this specific combat zone would grant its CastDiscount"""
+	for cost_data in card_data.additionalCosts:
+		if cost_data.get("cost_type", "") == "CastDiscount":
+			return _calculateCastDiscountReduction(cost_data, card_data, zone) > 0
+	return false
 
 func findReplaceTarget(card_data: CardData, selected_cards_data: Array[CardData]) -> CardData:
 	"""Find the Replace target among selected cards"""
@@ -460,13 +531,13 @@ func findReplaceTargetsInCards(selected_cards_data: Array[CardData]) -> Array[Ca
 	
 	return replace_targets
 
-func isCardCastable(card_data: CardData) -> bool:
+func isCardCastable(card_data: CardData, destination_zone: GameZone.e = GameZone.e.UNKNOWN) -> bool:
 	"""Check if a card can be cast (affordable including additional costs)"""
 	if not card_data:
 		return false
 	
 	# Use the same logic as canPayCard for consistency
-	return canPayCard(card_data)
+	return canPayCard(card_data, destination_zone)
 
 func isCardDataCastable(card_data: CardData) -> bool:
 	"""Check if a card data can be cast (affordable including additional costs)"""
@@ -508,26 +579,17 @@ func canMeetCastingConditions(card_data: CardData) -> bool:
 	return true  # All conditions met
 
 func calculateReplaceCost(card_data: CardData, replacement_target_data: CardData) -> int:
-	"""Calculate the final cost when using Replace with the given target"""
+	"""Calculate the final cost when using Replace with the given target (Replace reduction only,
+	use calculateActualCost() directly if other reductions like CastDiscount also apply)"""
 	if not card_data or not replacement_target_data:
 		return card_data.goldCost if card_data else 0
 	
-	var base_cost = card_data.goldCost
-	var target_cost = replacement_target_data.goldCost
-	var additional_reduction = 0
-	
-	# Find the Replace cost data to get additional reduction
 	for cost_data in card_data.additionalCosts:
 		if cost_data.get("cost_type", "") == "Replace":
-			# Check if this target matches the alternative criteria for extra reduction
-			var valid_card_alt_filter = cost_data.get("valid_card_alt", "")
-			var single_target: Array[CardData] = [replacement_target_data]
-			if valid_card_alt_filter != "" and _get_matching_cards_in_pool(valid_card_alt_filter, single_target).size() > 0:
-				additional_reduction = cost_data.get("add_reduction", 0)
-			break
+			var reduction = _calculateReplaceReduction(cost_data, replacement_target_data)
+			return max(0, card_data.goldCost - reduction)
 	
-	var final_cost = base_cost - target_cost - additional_reduction
-	return max(0, final_cost)  # Cost can't be negative
+	return card_data.goldCost
 
 func getValidReplaceTargets(card_data: CardData, replace_cost_data: Dictionary) -> Array[CardData]:
 	"""Get all valid targets for Replace mechanic using provided Replace cost data"""

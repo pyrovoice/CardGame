@@ -28,11 +28,11 @@ static func unregister_all_for_card(card_data: CardData):
 	for effect in to_remove:
 		unregister_replacement_effect(effect)
 
-static func apply_replacement_effects(effect_type: String, effect_parameters: Dictionary, game_context: Game) -> Dictionary:
+static func apply_replacement_effects(effect_type: EffectType.Type, effect_parameters: Dictionary, game_context: Game) -> Dictionary:
 	"""
 	Apply all applicable replacement effects to an effect before it resolves.
 	
-	@param effect_type: String - The type of effect (e.g., "CreateToken", "DealDamage")
+	@param effect_type: EffectType.Type - The type of effect (e.g., EffectType.Type.CREATE_TOKEN)
 	@param effect_parameters: Dictionary - The original effect parameters
 	@param game_context: Game - The game context
 	@return: Dictionary - Modified effect parameters
@@ -50,7 +50,7 @@ static func apply_replacement_effects(effect_type: String, effect_parameters: Di
 			applied_count += 1
 	
 	if applied_count > 0:
-		print("  ✅ Applied ", applied_count, " replacement effect(s) to ", effect_type)
+		print("  ✅ Applied ", applied_count, " replacement effect(s) to ", EffectType.type_to_string(effect_type))
 	
 	return modified_params
 

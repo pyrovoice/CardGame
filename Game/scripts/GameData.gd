@@ -204,12 +204,15 @@ func reset_combat_zone_data(combat_zone):
 
 # === CARD DATA MODEL METHODS ===
 
-## Get all cards currently in play (battlefield + combat)
+## Get all cards currently in play (Camp + combat)
 func get_cards_in_play() -> Array[CardData]:
 	var result: Array[CardData] = []
 	
-	# Add player battlefield cards (opponent cards have no battlefield staging area - they live in combat zones)
-	result.append_array(get_cards_in_zone(GameZone.e.BATTLEFIELD_PLAYER))
+	# Add Camp cards for both sides at every location
+	for zone in [GameZone.e.LOCATION_1_PLAYER_CAMP, GameZone.e.LOCATION_1_OPPONENT_CAMP,
+				 GameZone.e.LOCATION_2_PLAYER_CAMP, GameZone.e.LOCATION_2_OPPONENT_CAMP,
+				 GameZone.e.LOCATION_3_PLAYER_CAMP, GameZone.e.LOCATION_3_OPPONENT_CAMP]:
+		result.append_array(get_cards_in_zone(zone))
 	
 	# Add combat zone cards
 	for zone in [GameZone.e.COMBAT_PLAYER_1, GameZone.e.COMBAT_PLAYER_2, GameZone.e.COMBAT_PLAYER_3,
@@ -337,10 +340,10 @@ func _find_card_in_zones(card_data: CardData) -> GameZone.e:
 			return zone
 	return GameZone.e.UNKNOWN
 
-## Get array index of card in its combat zone (returns -1 if not in combat)
+## Get array index of card in its combat or Camp zone (returns -1 if not in play)
 func get_card_combat_index(card_data: CardData) -> int:
 	var zone = get_card_zone(card_data)
-	if not GameZone.is_combat_zone(zone):
+	if not GameZone.is_battlefield_zone(zone):
 		return -1
 	return get_cards_in_zone(zone).find(card_data)
 
@@ -393,7 +396,7 @@ func parse_zone_string_to_enum(zone_str: String, from_player_perspective: bool) 
 		"ExtraDeck.Player":
 			return GameZone.e.EXTRA_DECK_PLAYER
 		"Battlefield.Player", "PlayerBase":
-			return GameZone.e.BATTLEFIELD_PLAYER
+			return GameZone.e.LOCATION_1_PLAYER_CAMP
 		_:
 			push_error("Unknown zone string: ", zone_str, " (resolved to: ", resolved_zone, ")")
 			return GameZone.e.UNKNOWN
@@ -458,7 +461,7 @@ func print_game_state() -> void:
 	print("Control Hand: ", get_cards_in_zone(GameZone.e.HAND_CONTROL).size(), " cards")
 	print("Combo Hand: ", get_cards_in_zone(GameZone.e.HAND_COMBO).size(), " cards")
 	print("Commander Hand: ", get_cards_in_zone(GameZone.e.HAND_COMMANDER).size(), " cards")
-	print("Player Battlefield: ", get_cards_in_zone(GameZone.e.BATTLEFIELD_PLAYER).size(), " cards")
+	print("Player Camp (Loc 1): ", get_cards_in_zone(GameZone.e.LOCATION_1_PLAYER_CAMP).size(), " cards")
 	print("Player Graveyard: ", get_cards_in_zone(GameZone.e.GRAVEYARD_PLAYER).size(), " cards")
 	print("Opponent Graveyard: ", get_cards_in_zone(GameZone.e.GRAVEYARD_OPPONENT).size(), " cards")
 	print("Total Zones: ", _cards_by_zone.size())

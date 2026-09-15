@@ -5,11 +5,12 @@ class_name HighlightManager
 ## External systems (SelectionManager, effects)
 
 enum CardHighlightState {
-	NONE,         ## Normal, no tint, no outline
-	CASTABLE,     ## Blue outline, normal brightness
-	DIMMED,       ## Greyed out (non-castable during a highlight pass)
-	SELECTED,     ## Green tint, green outline (chosen during selection)
-	DRAG_OUTSIDE, ## Red outline (being dragged outside the hand zone)
+	NONE,              ## Normal, no tint, no outline
+	CASTABLE,           ## Blue outline, normal brightness
+	SPECIAL_CAST,       ## Yellow outline - castable via a special condition (e.g. location discount) - "cast me!"
+	DIMMED,             ## Greyed out (non-castable during a highlight pass)
+	SELECTED,           ## Green tint, green outline (chosen during selection)
+	DRAG_OUTSIDE,       ## Red outline (being dragged outside the hand zone)
 }
 
 var game: Game
@@ -18,6 +19,9 @@ var drag_outside_hand: bool = false
 
 ## Registry of all card highlight states managed by this system.
 var _highlight_states: Dictionary = {}  # Card -> CardHighlightState
+
+## Combat zones currently highlighted as valid location-discount drop targets.
+var _highlighted_zones: Array[CombatZone] = []
 
 func _init(_game: Game) -> void:
 	game = _game
@@ -71,16 +75,22 @@ func _highlightHandCards() -> void:
 		return
 	for card in game.game_view.player_hand.get_children():
 		if card is Card:
-			var state = CardHighlightState.CASTABLE if CardPaymentManagerAL.isCardCastable(card.cardData) else CardHighlightState.DIMMED
-			set_card_highlight(card, state)
+			set_card_highlight(card, _compute_castability_state(card.cardData))
 
 func _highlightExtraDeckDisplayCards() -> void:
 	if not game or not game.game_view.extra_hand:
 		return
 	for card in game.game_view.extra_hand.get_children():
 		if card is Card:
-			var state = CardHighlightState.CASTABLE if CardPaymentManagerAL.isCardCastable(card.cardData) else CardHighlightState.DIMMED
-			set_card_highlight(card, state)
+			set_card_highlight(card, _compute_castability_state(card.cardData))
+
+func _compute_castability_state(card_data: CardData) -> CardHighlightState:
+	"""Blue if affordable at its printed cost; yellow if only affordable via a location discount; dimmed otherwise."""
+	if CardPaymentManagerAL.canPayCardAtBaseCost(card_data):
+		return CardHighlightState.CASTABLE
+	if CardPaymentManagerAL.isCardCastable(card_data):
+		return CardHighlightState.SPECIAL_CAST
+	return CardHighlightState.DIMMED
 
 # ─── Drag handling ────────────────────────────────────────────────────────────
 
@@ -110,20 +120,44 @@ func end_card_drag(card: Card) -> void:
 		return
 	currently_dragged_card = null
 	drag_outside_hand = false
+	_clear_zone_highlights()
 	onHighlight()
 
 func _update_drag_highlights() -> void:
 	if not currently_dragged_card:
 		return
 	clear_all()
+	var card_data = currently_dragged_card.cardData
 	var state: CardHighlightState
 	if drag_outside_hand:
 		state = CardHighlightState.DRAG_OUTSIDE
-	elif CardPaymentManagerAL.isCardCastable(currently_dragged_card.cardData):
+	elif CardPaymentManagerAL.canPayCardAtBaseCost(card_data):
 		state = CardHighlightState.CASTABLE
+	elif CardPaymentManagerAL.isCardCastable(card_data):
+		state = CardHighlightState.SPECIAL_CAST
 	else:
 		state = CardHighlightState.NONE
 	set_card_highlight(currently_dragged_card, state)
+	
+	_update_zone_highlights(card_data)
+
+func _update_zone_highlights(card_data: CardData) -> void:
+	"""Highlight combat zones that would grant card_data's location-based discount right now."""
+	_clear_zone_highlights()
+	if not game or not CardPaymentManagerAL.hasCastDiscount(card_data):
+		return
+	for i in range(game.game_view.get_combat_zones().size()):
+		var combat_zone = game.game_view.get_combat_zones()[i]
+		var zone_enum = (GameZone.e.COMBAT_PLAYER_1 + i) as GameZone.e
+		if CardPaymentManagerAL.castDiscountAppliesAt(card_data, zone_enum):
+			combat_zone.set_location_highlight(true)
+			_highlighted_zones.append(combat_zone)
+
+func _clear_zone_highlights() -> void:
+	for combat_zone in _highlighted_zones:
+		if is_instance_valid(combat_zone):
+			combat_zone.set_location_highlight(false)
+	_highlighted_zones.clear()
 
 # ─── Visual application ───────────────────────────────────────────────────────
 
@@ -141,14 +175,15 @@ func _apply_visual(card: Card, state: CardHighlightState) -> void:
 		card.card_2d.set_base_modulate(color)
 
 	# Outline mesh
-	var show_outline := state in [CardHighlightState.CASTABLE, CardHighlightState.SELECTED, CardHighlightState.DRAG_OUTSIDE]
+	var show_outline := state in [CardHighlightState.CASTABLE, CardHighlightState.SPECIAL_CAST, CardHighlightState.SELECTED, CardHighlightState.DRAG_OUTSIDE]
 	if card.highlight_mesh:
 		card.highlight_mesh.visible = show_outline
 		if show_outline:
 			var outline_color: Color
 			match state:
-				CardHighlightState.CASTABLE:     outline_color = Color.BLUE
-				CardHighlightState.SELECTED:     outline_color = Color.GREEN
-				CardHighlightState.DRAG_OUTSIDE: outline_color = Color.RED
-				_:                               outline_color = Color.WHITE
+				CardHighlightState.CASTABLE:           outline_color = Color.BLUE
+				CardHighlightState.SPECIAL_CAST:  outline_color = Color.YELLOW
+				CardHighlightState.SELECTED:           outline_color = Color.GREEN
+				CardHighlightState.DRAG_OUTSIDE:       outline_color = Color.RED
+				_:                                      outline_color = Color.WHITE
 			card.set_outline_color(outline_color)

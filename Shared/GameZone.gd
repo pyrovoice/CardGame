@@ -8,7 +8,12 @@ enum e {
 	HAND_CONTROL,
 	HAND_COMBO,
 	HAND_COMMANDER,
-	BATTLEFIELD_PLAYER,
+	LOCATION_1_PLAYER_CAMP,
+	LOCATION_1_OPPONENT_CAMP,
+	LOCATION_2_PLAYER_CAMP,
+	LOCATION_2_OPPONENT_CAMP,
+	LOCATION_3_PLAYER_CAMP,
+	LOCATION_3_OPPONENT_CAMP,
 	COMBAT_PLAYER_1,
 	COMBAT_PLAYER_2,
 	COMBAT_PLAYER_3,
@@ -31,6 +36,51 @@ enum e {
 	UNKNOWN
 }
 
+# Camp zones ordered by location index (0-based), player then opponent for each location
+const _CAMP_PLAYER_ZONES := [e.LOCATION_1_PLAYER_CAMP, e.LOCATION_2_PLAYER_CAMP, e.LOCATION_3_PLAYER_CAMP]
+const _CAMP_OPPONENT_ZONES := [e.LOCATION_1_OPPONENT_CAMP, e.LOCATION_2_OPPONENT_CAMP, e.LOCATION_3_OPPONENT_CAMP]
+const _COMBAT_PLAYER_ZONES := [e.COMBAT_PLAYER_1, e.COMBAT_PLAYER_2, e.COMBAT_PLAYER_3]
+const _COMBAT_OPPONENT_ZONES := [e.COMBAT_OPPONENT_1, e.COMBAT_OPPONENT_2, e.COMBAT_OPPONENT_3]
+
+# Helper to convert a location zone (camp or combat, either side) to its 0-based location index, or -1
+static func location_index_of(zone: e) -> int:
+	var idx = _CAMP_PLAYER_ZONES.find(zone)
+	if idx >= 0:
+		return idx
+	idx = _CAMP_OPPONENT_ZONES.find(zone)
+	if idx >= 0:
+		return idx
+	idx = _COMBAT_PLAYER_ZONES.find(zone)
+	if idx >= 0:
+		return idx
+	idx = _COMBAT_OPPONENT_ZONES.find(zone)
+	if idx >= 0:
+		return idx
+	return -1
+
+# Helper to get the player's Camp zone for a given location index
+static func camp_zone_for(location_index: int, player_side: bool) -> e:
+	var zones = _CAMP_PLAYER_ZONES if player_side else _CAMP_OPPONENT_ZONES
+	if location_index < 0 or location_index >= zones.size():
+		return e.UNKNOWN
+	return zones[location_index]
+
+# Helper to get the combat zone for a given location index
+static func combat_zone_for(location_index: int, player_side: bool) -> e:
+	var zones = _COMBAT_PLAYER_ZONES if player_side else _COMBAT_OPPONENT_ZONES
+	if location_index < 0 or location_index >= zones.size():
+		return e.UNKNOWN
+	return zones[location_index]
+
+# Helper to get the Camp zone matching a combat zone's location/side (or the zone itself if already a Camp)
+static func camp_zone_for_combat(zone: e) -> e:
+	if is_camp_zone(zone):
+		return zone
+	var idx = location_index_of(zone)
+	if idx < 0:
+		return e.UNKNOWN
+	return camp_zone_for(idx, zone in _COMBAT_PLAYER_ZONES)
+
 # Helper to convert GameZone.e to string for display/debug
 static func get_as_string(zone: e) -> String:
 	match zone:
@@ -39,7 +89,12 @@ static func get_as_string(zone: e) -> String:
 		e.HAND_CONTROL: return "hand_control"
 		e.HAND_COMBO: return "hand_combo"
 		e.HAND_COMMANDER: return "hand_commander"
-		e.BATTLEFIELD_PLAYER: return "battlefield_player"
+		e.LOCATION_1_PLAYER_CAMP: return "location_1_player_camp"
+		e.LOCATION_1_OPPONENT_CAMP: return "location_1_opponent_camp"
+		e.LOCATION_2_PLAYER_CAMP: return "location_2_player_camp"
+		e.LOCATION_2_OPPONENT_CAMP: return "location_2_opponent_camp"
+		e.LOCATION_3_PLAYER_CAMP: return "location_3_player_camp"
+		e.LOCATION_3_OPPONENT_CAMP: return "location_3_opponent_camp"
 		e.COMBAT_PLAYER_1: return "combat_player_1"
 		e.COMBAT_PLAYER_2: return "combat_player_2"
 		e.COMBAT_PLAYER_3: return "combat_player_3"
@@ -68,8 +123,13 @@ static func parse_trigger_zones(zone_str: String) -> Array:
 		zone_part = zone_part.strip_edges()
 		match zone_part:
 			"Battlefield":
-				# Battlefield includes both battlefield and combat zones for both players
-				zones.append(e.BATTLEFIELD_PLAYER)
+				# Battlefield includes both Camp and combat zones for both players
+				zones.append(e.LOCATION_1_PLAYER_CAMP)
+				zones.append(e.LOCATION_1_OPPONENT_CAMP)
+				zones.append(e.LOCATION_2_PLAYER_CAMP)
+				zones.append(e.LOCATION_2_OPPONENT_CAMP)
+				zones.append(e.LOCATION_3_PLAYER_CAMP)
+				zones.append(e.LOCATION_3_OPPONENT_CAMP)
 				zones.append(e.COMBAT_PLAYER_1)
 				zones.append(e.COMBAT_PLAYER_2)
 				zones.append(e.COMBAT_PLAYER_3)
@@ -103,14 +163,19 @@ static func is_combat_zone(zone: e) -> bool:
 	return zone in [e.COMBAT_PLAYER_1, e.COMBAT_PLAYER_2, e.COMBAT_PLAYER_3,
 					e.COMBAT_OPPONENT_1, e.COMBAT_OPPONENT_2, e.COMBAT_OPPONENT_3]
 
-# Helper to check if a zone is a battlefield zone (non-combat)
-static func is_battlefield_zone(zone: e) -> bool:
-	# Only the player has a battlefield staging area - opponent cards go straight to combat
-	return zone == e.BATTLEFIELD_PLAYER
+# Helper to check if a zone is a Camp zone (pre-combat staging area, one per location per side)
+static func is_camp_zone(zone: e) -> bool:
+	return zone in [e.LOCATION_1_PLAYER_CAMP, e.LOCATION_1_OPPONENT_CAMP,
+					e.LOCATION_2_PLAYER_CAMP, e.LOCATION_2_OPPONENT_CAMP,
+					e.LOCATION_3_PLAYER_CAMP, e.LOCATION_3_OPPONENT_CAMP]
 
-# Helper to check if a zone is "in play" (battlefield or combat)
+# Helper to check if a zone is a battlefield-like zone (Camp or combat)
+static func is_battlefield_zone(zone: e) -> bool:
+	return is_camp_zone(zone) or is_combat_zone(zone)
+
+# Helper to check if a zone is "in play" (Camp or combat)
 static func is_in_play(zone: e) -> bool:
-	return is_battlefield_zone(zone) or is_combat_zone(zone)
+	return is_battlefield_zone(zone)
 
 # Helper to check if a zone is a hand zone (player or any opponent Lieutenant/Commander)
 static func is_hand_zone(zone: e) -> bool:
@@ -118,14 +183,15 @@ static func is_hand_zone(zone: e) -> bool:
 
 # Helper to check if a zone belongs to the player
 static func is_player_zone(zone: e) -> bool:
-	return zone in [e.HAND_PLAYER, e.BATTLEFIELD_PLAYER, e.COMBAT_PLAYER_1, 
-					e.COMBAT_PLAYER_2, e.COMBAT_PLAYER_3, e.GRAVEYARD_PLAYER, 
+	return zone in [e.HAND_PLAYER, e.LOCATION_1_PLAYER_CAMP, e.LOCATION_2_PLAYER_CAMP, e.LOCATION_3_PLAYER_CAMP,
+					e.COMBAT_PLAYER_1, e.COMBAT_PLAYER_2, e.COMBAT_PLAYER_3, e.GRAVEYARD_PLAYER,
 					e.DECK_PLAYER, e.EXTRA_DECK_PLAYER]
 
 # Helper to check if a zone belongs to the opponent
 static func is_opponent_zone(zone: e) -> bool:
-	return zone in [e.HAND_AGGRO, e.HAND_CONTROL, e.HAND_COMBO, e.HAND_COMMANDER, e.COMBAT_OPPONENT_1,
-					e.COMBAT_OPPONENT_2, e.COMBAT_OPPONENT_3, e.GRAVEYARD_OPPONENT,
+	return zone in [e.HAND_AGGRO, e.HAND_CONTROL, e.HAND_COMBO, e.HAND_COMMANDER,
+					e.LOCATION_1_OPPONENT_CAMP, e.LOCATION_2_OPPONENT_CAMP, e.LOCATION_3_OPPONENT_CAMP,
+					e.COMBAT_OPPONENT_1, e.COMBAT_OPPONENT_2, e.COMBAT_OPPONENT_3, e.GRAVEYARD_OPPONENT,
 					e.DECK_OPPONENT, e.DECK_AGGRO, e.DECK_CONTROL, e.DECK_COMBO, e.DECK_COMMANDER]
 
 # Helper to check if a zone matches a zone string filter (for trigger conditions)
@@ -137,7 +203,7 @@ static func matches_zone_filter(zone: e, filter: String) -> bool:
 		"Combat":
 			return is_combat_zone(zone)
 		"Battlefield":
-			return is_battlefield_zone(zone) or is_combat_zone(zone)
+			return is_camp_zone(zone) or is_combat_zone(zone)
 		"Hand":
 			return is_hand_zone(zone)
 		"Graveyard":
@@ -149,3 +215,4 @@ static func matches_zone_filter(zone: e, filter: String) -> bool:
 		_:
 			push_warning("Unknown zone filter: " + filter)
 			return false
+

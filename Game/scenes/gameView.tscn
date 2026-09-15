@@ -5,9 +5,7 @@
 [ext_resource type="PackedScene" uid="uid://dnt4p0i1i5qk1" path="res://Game/scenes/Deck.tscn" id="3_76l0o"]
 [ext_resource type="Script" uid="uid://bj67ghukul3cy" path="res://Game/scripts/PlayerControl.gd" id="4_vthm1"]
 [ext_resource type="PackedScene" uid="uid://dueg4t10qe41s" path="res://Game/scenes/graveyard.tscn" id="5_inj8b"]
-[ext_resource type="Script" uid="uid://cwo3od4ulniaq" path="res://Game/scenes/PlayerBase.gd" id="6_k71w3"]
 [ext_resource type="Script" uid="uid://djvgmgqknsvcs" path="res://Game/scripts/GameUI.gd" id="7_383ci"]
-[ext_resource type="PackedScene" uid="uid://cj3soc5hs2x1t" path="res://Game/scenes/grid_container.tscn" id="7_lpwbj"]
 [ext_resource type="Texture2D" uid="uid://dkmniw1rj2l6i" path="res://Assets/Images/gold_coin_detailed.png" id="8_fe7g3"]
 [ext_resource type="PackedScene" uid="uid://cqj7vnp5xo8dy" path="res://Shared/scenes/CardPopupManager.tscn" id="9_a3f0b"]
 [ext_resource type="PackedScene" uid="uid://cmkvxbcovv25x" path="res://Game/scenes/SelectionUI.tscn" id="10_yvnn5"]
@@ -22,16 +20,6 @@
 [sub_resource type="BoxShape3D" id="BoxShape3D_vc2ns"]
 size = Vector3(20, 20, 0.01)
 
-[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_2jiha"]
-albedo_color = Color(0.286275, 0.286275, 0.286275, 1)
-
-[sub_resource type="PlaneMesh" id="PlaneMesh_bqf56"]
-material = SubResource("StandardMaterial3D_2jiha")
-size = Vector2(6, 1)
-
-[sub_resource type="BoxShape3D" id="BoxShape3D_yieuc"]
-size = Vector3(5.8588867, 0.1, 0.8916931)
-
 [sub_resource type="BoxShape3D" id="BoxShape3D_s4hdo"]
 size = Vector3(1, 0.06323242, 1.8572998)
 
@@ -39,13 +27,13 @@ size = Vector3(1, 0.06323242, 1.8572998)
 script = ExtResource("1_s4hdo")
 
 [node name="combatZone" parent="." unique_id=311767698 instance=ExtResource("2_lpwbj")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -6.8445325, -0.001, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -8.183124, -0.001, 0)
 
 [node name="combatZone2" parent="." unique_id=440671257 instance=ExtResource("2_lpwbj")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.112, -0.001, 0.5769086)
 
 [node name="combatZone3" parent="." unique_id=171562579 instance=ExtResource("2_lpwbj")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 6.4710474, -0.001, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 10.030362, -0.001, 0.20259237)
 
 [node name="Deck" parent="." unique_id=1099162038 instance=ExtResource("3_76l0o")]
 transform = Transform3D(0.99999994, 0, -0.00036651915, 0, 1, 0, 0.00036651915, 0, 0.99999994, -4.155265, -0.001, 2.3502297)
@@ -77,20 +65,6 @@ metadata/_custom_type_script = "uid://bj67ghukul3cy"
 
 [node name="graveyard" parent="." unique_id=970356928 instance=ExtResource("5_inj8b")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -4.2045817, -0.001, 3.2190084)
-
-[node name="playerBase" type="StaticBody3D" parent="." unique_id=1240959831]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.15248257, -0.001, 2.391253)
-script = ExtResource("6_k71w3")
-
-[node name="MeshInstance3D" type="MeshInstance3D" parent="playerBase" unique_id=31780633]
-mesh = SubResource("PlaneMesh_bqf56")
-
-[node name="CollisionShape3D" type="CollisionShape3D" parent="playerBase" unique_id=1098875875]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.025146484, 0, -0.00044250488)
-shape = SubResource("BoxShape3D_yieuc")
-
-[node name="GridContainer3D" parent="playerBase" unique_id=1771439032 instance=ExtResource("7_lpwbj")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.406809, 0, 0.037858486)
 
 [node name="UI" type="Control" parent="." unique_id=2062615059]
 layout_mode = 3

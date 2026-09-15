@@ -142,13 +142,18 @@ static func getControllerCards(game: Game, playerSide = true) -> Array[Card]:
 	var zones: Array[GameZone.e] = []
 	if playerSide:
 		zones = [
-			GameZone.e.BATTLEFIELD_PLAYER,
+			GameZone.e.LOCATION_1_PLAYER_CAMP,
+			GameZone.e.LOCATION_2_PLAYER_CAMP,
+			GameZone.e.LOCATION_3_PLAYER_CAMP,
 			GameZone.e.COMBAT_PLAYER_1,
 			GameZone.e.COMBAT_PLAYER_2,
 			GameZone.e.COMBAT_PLAYER_3
 		]
 	else:
 		zones = [
+			GameZone.e.LOCATION_1_OPPONENT_CAMP,
+			GameZone.e.LOCATION_2_OPPONENT_CAMP,
+			GameZone.e.LOCATION_3_OPPONENT_CAMP,
 			GameZone.e.COMBAT_OPPONENT_1,
 			GameZone.e.COMBAT_OPPONENT_2,
 			GameZone.e.COMBAT_OPPONENT_3

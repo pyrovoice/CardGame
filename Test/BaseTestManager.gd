@@ -229,7 +229,7 @@ func addCardToHand(card: Card):
 
 func addCardToBattlefield(card: Card):
 	"""Helper to add card to the player's battlefield (opponent has no battlefield staging area)"""
-	game.game_data.add_card_to_zone(card.cardData, GameZone.e.BATTLEFIELD_PLAYER)
+	game.game_data.add_card_to_zone(card.cardData, GameZone.e.LOCATION_1_PLAYER_CAMP)
 	GameUtility.reparentWithoutMoving(card, game.game_view.player_base)
 	
 func addCardToExtraDeck(card: CardData):
@@ -288,7 +288,7 @@ func play_card_from_data(card_data: CardData, from_zone: GameZone.e = GameZone.e
 	print("🎮 [TEST] Playing card: ", card_data.cardName)
 	
 	# Use game.tryPlayCard which handles all payment and play logic
-	await game.tryPlayCard(card_data, GameZone.e.BATTLEFIELD_PLAYER, null, pay_cost)
+	await game.tryPlayCard(card_data, GameZone.e.LOCATION_1_PLAYER_CAMP, null, pay_cost)
 	
 	print("✅ [TEST] Card play complete")
 	return true
@@ -344,7 +344,7 @@ func getCardsInPlay() -> Array[Card]:
 
 func getCardsInPlayData() -> Array[CardData]:
 	"""Helper to get all card data in play"""
-	return game.game_data.get_cards_in_zone(GameZone.e.BATTLEFIELD_PLAYER)
+	return game.game_data.get_cards_in_zone(GameZone.e.LOCATION_1_PLAYER_CAMP)
 
 func assertCardCount(expected: int, zone: String = "play") -> bool:
 	"""Assert the number of cards in a specific zone"""
@@ -388,9 +388,19 @@ func assertCardExists(card_name: String, zone: String = "play") -> bool:
 	return assert_test_true(found, "Card '%s' not found in %s" % [card_name, zone])
 
 func clickCombatButton(combat_zone: CombatZone):
-	"""Helper method to click a combat zone's resolve button and wait for completion"""
-	var resolve_button = combat_zone.resolve_fight_button
-	game._on_left_click(resolve_button)
+	"""Helper method to click a combat zone's button. Performs the 'start combat' click first if
+	needed (moving opponent Camp creatures into the fight), then the 'resolve' click, waiting for
+	each phase to complete."""
+	var cld = game.game_data.get_combat_zone_data(combat_zone)
+	
+	if not cld.isCombatStarted:
+		game._on_left_click(combat_zone.resolve_fight_button)
+		var start_counter = 10
+		while start_counter > 0 && cld.isCombatStarted == false:
+			await test_runner.get_tree().process_frame
+			start_counter -= 1
+	
+	game._on_left_click(combat_zone.resolve_fight_button)
 	var counter = 10
 	while counter>0 && game.game_data.get_combat_zone_data(combat_zone).isCombatResolved.value == false:
 		await test_runner.get_tree().process_frame

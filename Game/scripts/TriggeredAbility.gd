@@ -214,7 +214,7 @@ func _check_trigger_conditions(cardData: CardData, event_card_data: CardData, ga
 	var condition_str = trigger_conditions.get(TriggerCondition.CONDITION, "")
 	if condition_str != "":
 		# Use AbilityManager to evaluate the condition
-		var condition_met = AbilityManagerAL.evaluateCondition(condition_str, cardData)
+		var condition_met = AbilityManagerAL.evaluateCondition(condition_str, cardData, game)
 		if not condition_met:
 			return false
 	

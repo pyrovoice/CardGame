@@ -22,11 +22,11 @@ func apply_modification(effect_context: Dictionary, game_context: Game) -> Dicti
 	return effect_context
 
 ## Check if this replacement effect applies to the given effect
-## @param effect_type: String - The type of effect being checked (e.g., "CreateToken")
+## @param effect_type: EffectType.Type - The type of effect being checked (e.g., EffectType.Type.CREATE_TOKEN)
 ## @param effect_context: Dictionary - The effect context to check
 ## @param game_context: Game - The game context for accessing game state
 ## @return: bool - True if this effect should apply
-func applies_to(effect_type: String, effect_context: Dictionary, game_context: Game) -> bool:
+func applies_to(effect_type: EffectType.Type, effect_context: Dictionary, game_context: Game) -> bool:
 	# Check if the source card still exists in game data (headless-safe).
 	if not source_card_data:
 		return false
@@ -41,14 +41,11 @@ func applies_to(effect_type: String, effect_context: Dictionary, game_context: G
 			return false
 	
 	# Check event type match
-	var required_event_type = conditions.get("EventType", "")
-	if required_event_type.is_empty():
+	var required_event_type = conditions.get("EventType", EffectType.Type.NONE)
+	if required_event_type == EffectType.Type.NONE:
 		return false
 	
-	var standardized_required = _standardize_event_type(required_event_type)
-	var standardized_actual = _standardize_event_type(effect_type)
-	
-	if standardized_required != standardized_actual:
+	if required_event_type != effect_type:
 		return false
 	
 	# Check effect-specific conditions (override in subclasses)
@@ -83,6 +80,8 @@ func _is_zone_valid(zone_condition: String, actual_zone: GameZone.e) -> bool:
 	match zone_condition:
 		"Battlefield":
 			return GameZone.is_in_play(actual_zone)
+		"Combat":
+			return GameZone.is_combat_zone(actual_zone)
 		"Hand":
 			return GameZone.is_hand_zone(actual_zone)
 		"Graveyard":
@@ -91,13 +90,3 @@ func _is_zone_valid(zone_condition: String, actual_zone: GameZone.e) -> bool:
 			return actual_zone in [GameZone.e.DECK_PLAYER, GameZone.e.DECK_OPPONENT]
 		_:
 			return false
-
-func _standardize_event_type(event_type: String) -> String:
-	"""Standardize event type strings for comparison"""
-	match event_type:
-		"CreateToken", "CREATE_TOKEN":
-			return "CreateToken"
-		"DealDamage", "DEAL_DAMAGE":
-			return "DealDamage"
-		_:
-			return event_type
