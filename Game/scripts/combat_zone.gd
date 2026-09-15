@@ -1,3 +1,4 @@
+@tool
 extends Node3D
 class_name CombatZone
 
@@ -13,6 +14,17 @@ class_name CombatZone
 @onready var lieutenant_hand: CardHand = $LieutenantHand
 @onready var lieutenant_deck: Deck = $LieutenantDeck
 @onready var floor_mesh: MeshInstance3D = $combatZone
+@onready var collision_shape: CollisionShape3D = $CollisionShape3D
+
+## Overview mode shrinks the floor/collision width so all three locations fit on screen at once.
+## Children (cards, camps, hand, deck, button) are intentionally left untouched for now.
+const COMPACT_WIDTH_SCALE := 1.0 / 3.0
+const _DEFAULT_RESIZE_DURATION := 0.35
+
+var is_compact: bool = false
+var _base_mesh_size: Vector2
+var _base_collision_size: Vector3
+var _resize_tween: Tween = null
 
 func get_lieutenant_hand() -> CardHand:
 	"""The hand belonging to the Lieutenant assigned to this location"""
@@ -41,7 +53,41 @@ func set_location_highlight(active: bool) -> void:
 	else:
 		floor_mesh.material_override = null
 
+func set_compact(compact: bool, duration: float = _DEFAULT_RESIZE_DURATION) -> void:
+	"""Smoothly shrink (or restore) this zone's floor and collision width for the 3-battlefield overview.
+	Safe to call every time set_battlefield_focus() runs - no-ops if already in that state."""
+	if compact == is_compact:
+		return
+	is_compact = compact
+
+	var scale_x := COMPACT_WIDTH_SCALE if compact else 1.0
+	var target_mesh_width := _base_mesh_size.x * scale_x
+	var target_collision_width := _base_collision_size.x * scale_x
+
+	if _resize_tween and _resize_tween.is_valid():
+		_resize_tween.kill()
+	_resize_tween = create_tween().set_parallel(true).set_ease(Tween.EASE_IN_OUT).set_trans(Tween.TRANS_CUBIC)
+
+	if floor_mesh.mesh is QuadMesh:
+		_resize_tween.tween_property(floor_mesh.mesh, "size:x", target_mesh_width, duration)
+
+	if collision_shape.shape is BoxShape3D:
+		_resize_tween.tween_property(collision_shape.shape, "size:x", target_collision_width, duration)
+
+func get_compact_width() -> float:
+	"""Floor width this zone shrinks to when compact - i.e. the width of one third of the screen."""
+	return _base_mesh_size.x * COMPACT_WIDTH_SCALE
+
 func _ready() -> void:
+	# Duplicate shared mesh/collision resources so resizing this zone doesn't affect its siblings
+	# (all three CombatZone instances come from the same PackedScene sub-resources).
+	if floor_mesh.mesh:
+		floor_mesh.mesh = floor_mesh.mesh.duplicate()
+		_base_mesh_size = (floor_mesh.mesh as QuadMesh).size
+	if collision_shape.shape:
+		collision_shape.shape = collision_shape.shape.duplicate()
+		_base_collision_size = (collision_shape.shape as BoxShape3D).size
+
 	# Connect to child changes for both sides
 	ally_side.child_entered_tree.connect(_on_child_change)
 	ally_side.child_exiting_tree.connect(_on_child_change)

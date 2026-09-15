@@ -215,4 +215,3 @@ static func matches_zone_filter(zone: e, filter: String) -> bool:
 		_:
 			push_warning("Unknown zone filter: " + filter)
 			return false
-

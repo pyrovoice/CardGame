@@ -1,3 +1,4 @@
+@tool
 extends Node3D
 class_name GameView
 
@@ -53,18 +54,11 @@ const CARD_SCENE = preload("res://Game/scenes/Card.tscn")
 var current_viewing_container: CardContainer = null
 
 # --- Battlefield focus ---
-const _WIDE_POSITIONS: Array = [
-	Vector3(-6.8445325, -0.001, 0.0),
-	Vector3(-0.112, -0.001, 0.0),
-	Vector3(6.4710474, -0.001, 0.0),
-]
-const _FOCUSED_POSITION := Vector3(-0.112, -0.001, 0.0)
+# Positions are derived at runtime from the middle zone's authored position (see setup()),
+# so wide/focused layouts always match wherever the zones actually start, instead of a
+# hardcoded value that can drift out of sync with the scene.
+var _reference_zone_position: Vector3 = Vector3.ZERO
 const _FOCUSED_SCALE := Vector3(1.0, 1.0, 1.0)
-const _MINI_POSITIONS: Array = [
-	Vector3(-9.0, -0.001, 0.0),
-	Vector3(9.0, -0.001, 0.0),
-]
-const _MINI_SCALE := Vector3(0.65, 0.65, 0.65)
 const _FOCUS_TWEEN_DURATION := 0.35
 const _FOCUS_SPACING := 6.5
 
@@ -80,6 +74,10 @@ func setup(is_headless: bool = false) -> void:
 		get_node("combatZone2"),
 		get_node("combatZone3")
 	]
+	# Capture the middle zone's authored position as the shared y/z reference for
+	# both the wide and focused layouts, so switching states never moves zones
+	# away from where they start in the scene.
+	_reference_zone_position = combat_zones[1].position
 
 ## Create a Card view node for the given CardData
 func create_card_view(card_data: CardData, zone: GameZone.e = GameZone.e.UNKNOWN) -> Card:
@@ -703,6 +701,7 @@ func get_combat_zones() -> Array[CombatZone]:
 func set_battlefield_focus(index: int) -> void:
 	"""Move combat zones to focused or wide layout.
 	index: 0-2 = focus that zone; -1 = wide view showing all three.
+	All positions share the middle zone's y/z (see _reference_zone_position) and only differ by x-offset.
 	"""
 	if combat_zones.is_empty():
 		return
@@ -710,14 +709,20 @@ func set_battlefield_focus(index: int) -> void:
 	var tween = create_tween().set_parallel(true).set_ease(Tween.EASE_IN_OUT).set_trans(Tween.TRANS_CUBIC)
 
 	if index == -1:
-		# Wide view: restore all zones to original layout
+		# Wide view: shrink all zones to a third of their width and tile them edge-to-edge
+		# so location 1/2/3 each occupy the left/middle/right third of the screen.
+		var wide_spacing := combat_zones[1].get_compact_width()
 		for i in range(combat_zones.size()):
-			tween.tween_property(combat_zones[i], "position", _WIDE_POSITIONS[i], _FOCUS_TWEEN_DURATION)
+			combat_zones[i].set_compact(true, _FOCUS_TWEEN_DURATION)
+			var offset := (i - 1) * wide_spacing
+			var target := _reference_zone_position + Vector3(offset, 0.0, 0.0)
+			tween.tween_property(combat_zones[i], "position", target, _FOCUS_TWEEN_DURATION)
 	else:
-		# Focused zone goes to center; others offset by their distance from focused index
+		# Focused zone goes to the reference position at full size; others offset by their distance from focused index
 		for i in range(combat_zones.size()):
+			combat_zones[i].set_compact(false, _FOCUS_TWEEN_DURATION)
 			var offset := (i - index) * _FOCUS_SPACING
-			var target := _FOCUSED_POSITION + Vector3(offset, 0.0, 0.0)
+			var target := _reference_zone_position + Vector3(offset, 0.0, 0.0)
 			tween.tween_property(combat_zones[i], "position", target, _FOCUS_TWEEN_DURATION)
 
 ## Get player base
