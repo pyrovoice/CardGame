@@ -1,0 +1,66 @@
+[gd_scene format=3 uid="uid://kgokih2qso0y"]
+
+[ext_resource type="Script" uid="uid://fqb7xp4n6x0r" path="res://Game/scripts/combat_zone.gd" id="1_t5y4t"]
+[ext_resource type="PackedScene" uid="uid://c1gh53ivxrt74" path="res://Game/scenes/locationFill.tscn" id="2_rd1rg"]
+[ext_resource type="PackedScene" uid="uid://bjxoru03if1kc" path="res://Game/scenes/ResolveFightButton.tscn" id="3_hh3k5"]
+[ext_resource type="PackedScene" uid="uid://cj3soc5hs2x1t" path="res://Game/scenes/grid_container.tscn" id="4_o7x6d"]
+[ext_resource type="PackedScene" uid="uid://b23h2nqcsg3ha" path="res://Game/scenes/card_hand.tscn" id="5_myh1w"]
+[ext_resource type="PackedScene" uid="uid://dnt4p0i1i5qk1" path="res://Game/scenes/Deck.tscn" id="6_vecsk"]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_ulpi2"]
+size = Vector3(2.0291138, 0.05, 2.2816162)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_vc2ns"]
+albedo_color = Color(0.28485, 0.28485, 0.28485, 1)
+
+[sub_resource type="QuadMesh" id="QuadMesh_w3xpy"]
+material = SubResource("StandardMaterial3D_vc2ns")
+size = Vector2(2, 2.5)
+orientation = 1
+
+[node name="StaticBody3D" type="StaticBody3D" unique_id=1864932794]
+script = ExtResource("1_t5y4t")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="." unique_id=129849658]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.0065612793, 0, -0.0052337646)
+shape = SubResource("BoxShape3D_ulpi2")
+
+[node name="combatZone" type="MeshInstance3D" parent="." unique_id=701976039]
+mesh = SubResource("QuadMesh_w3xpy")
+
+[node name="OpponentTotalStrength" type="Label3D" parent="." unique_id=1757107515]
+transform = Transform3D(1, 0, 0, 0, -4.37114e-08, 1, 0, -1, -4.37114e-08, 0.9538529, 0.01, -1.339772)
+text = "0"
+
+[node name="AllyTotalStrength" type="Label3D" parent="." unique_id=53292913]
+transform = Transform3D(1, 0, 0, 0, -4.37114e-08, 1, 0, -1, -4.37114e-08, 0.9164579, 0.01, 1.3761356)
+text = "0
+"
+
+[node name="LocationFillPlayer" parent="." unique_id=386626568 instance=ExtResource("2_rd1rg")]
+transform = Transform3D(1.295, 0, 0, 0, 2, 0, 0, 0, 2, 0.28256333, 0.017, -1.4442194)
+
+[node name="LocationFillOpponent" parent="." unique_id=1170713807 instance=ExtResource("2_rd1rg")]
+transform = Transform3D(-2, 0, 3.019916e-07, 0, 2, 0, -3.019916e-07, 0, -2, -0.057772577, 0.01695007, 1.4368587)
+isPlayer = false
+
+[node name="Button" parent="." unique_id=1402370236 instance=ExtResource("3_hh3k5")]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 0, 0.023061872, 0)
+
+[node name="AllySide" parent="." unique_id=995134126 instance=ExtResource("4_o7x6d")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.8834153, 0, 0.5691899)
+
+[node name="OpponentSide" parent="." unique_id=756227310 instance=ExtResource("4_o7x6d")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.7845894, 0, -0.722674)
+
+[node name="AllyCamp" parent="." unique_id=995134127 instance=ExtResource("4_o7x6d")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.8834153, 0, 1.5)
+
+[node name="OpponentCamp" parent="." unique_id=756227311 instance=ExtResource("4_o7x6d")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.7845894, 0, -1.6)
+
+[node name="LieutenantHand" parent="." unique_id=2060382619 instance=ExtResource("5_myh1w")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.3, -1.4)
+
+[node name="LieutenantDeck" parent="." unique_id=233889524 instance=ExtResource("6_vecsk")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 0.63, -0.661669, 0.02, -1.5954756)

@@ -103,7 +103,14 @@ func create_card_view(card_data: CardData, zone: GameZone.e = GameZone.e.UNKNOWN
 
 	if zone != GameZone.e.UNKNOWN:
 		var zone_container = get_zone_container(zone)
-		if zone_container:
+		if zone_container is CombatZone:
+			# Combat/Camp zones must route through the CombatZone helpers so the card lands in the
+			# correct GridContainer3D slot instead of the zone's origin.
+			if GameZone.is_camp_zone(zone):
+				zone_container.place_in_camp(card)
+			else:
+				zone_container.set_card(card)
+		elif zone_container:
 			zone_container.add_child(card)
 			
 			# Arrange hand when adding cards to hand zones (for non-draw effects like CreateCard)
@@ -177,8 +184,8 @@ func move_card_to_zone(card_data: CardData, target_zone: GameZone.e, duration: f
 
 	var final_local_target = local_target_offset
 	if final_local_target == Vector3.INF:
-		if target_zone == GameZone.e.BATTLEFIELD_PLAYER:
-			var base = player_base
+		if GameZone.is_camp_zone(target_zone):
+			var combat_zone = get_zone_container(target_zone) as CombatZone
 
 			if turn_face_up:
 				card.setFlip(true)
@@ -186,7 +193,7 @@ func move_card_to_zone(card_data: CardData, target_zone: GameZone.e, duration: f
 				card.getAnimator().make_small()
 
 			var visual_start = card.card_representation.global_position
-			base.set_card(card)
+			combat_zone.place_in_camp(card)
 			card.card_representation.global_position = visual_start
 
 			var tween = card.getAnimator().go_to_rest(duration)
@@ -223,8 +230,6 @@ func get_zone_container(zone: GameZone.e) -> Node:
 			return combat_zones[1].get_lieutenant_hand() if combat_zones.size() > 1 else null
 		GameZone.e.HAND_COMBO:
 			return combat_zones[2].get_lieutenant_hand() if combat_zones.size() > 2 else null
-		GameZone.e.BATTLEFIELD_PLAYER:
-			return player_base
 		GameZone.e.GRAVEYARD_PLAYER:
 			return graveyard
 		GameZone.e.GRAVEYARD_OPPONENT:
@@ -241,11 +246,11 @@ func get_zone_container(zone: GameZone.e) -> Node:
 			return combat_zones[2].get_lieutenant_deck() if combat_zones.size() > 2 else null
 		GameZone.e.EXTRA_DECK_PLAYER:
 			return extra_deck
-		GameZone.e.COMBAT_PLAYER_1, GameZone.e.COMBAT_OPPONENT_1:
+		GameZone.e.COMBAT_PLAYER_1, GameZone.e.COMBAT_OPPONENT_1, GameZone.e.LOCATION_1_PLAYER_CAMP, GameZone.e.LOCATION_1_OPPONENT_CAMP:
 			return combat_zones[0] if combat_zones.size() > 0 else null
-		GameZone.e.COMBAT_PLAYER_2, GameZone.e.COMBAT_OPPONENT_2:
+		GameZone.e.COMBAT_PLAYER_2, GameZone.e.COMBAT_OPPONENT_2, GameZone.e.LOCATION_2_PLAYER_CAMP, GameZone.e.LOCATION_2_OPPONENT_CAMP:
 			return combat_zones[1] if combat_zones.size() > 1 else null
-		GameZone.e.COMBAT_PLAYER_3, GameZone.e.COMBAT_OPPONENT_3:
+		GameZone.e.COMBAT_PLAYER_3, GameZone.e.COMBAT_OPPONENT_3, GameZone.e.LOCATION_3_PLAYER_CAMP, GameZone.e.LOCATION_3_OPPONENT_CAMP:
 			return combat_zones[2] if combat_zones.size() > 2 else null
 		_:
 			push_error("GameView.get_zone_container: Unknown zone: " + str(zone))
@@ -617,8 +622,13 @@ func animate_combat_strike(attacker: Card, defender: Card) -> void:
 	if headless:
 		return
 	
-	attacker.getAnimator().animate_combat_strike(defender)
-	defender.getAnimator().animate_combat_strike(attacker)
+	var attacker_tween = attacker.getAnimator().animate_combat_strike(defender)
+	var defender_tween = defender.getAnimator().animate_combat_strike(attacker)
+	
+	if attacker_tween:
+		await attacker_tween.finished
+	if defender_tween:
+		await defender_tween.finished
 
 ## Create and animate card views for drawing cards from deck
 ## Returns array of created Card views (empty in headless mode)

@@ -61,6 +61,10 @@ func reset_damage():
 	damage = 0
 	dirty_data.emit()
 
+func get_combat_size() -> int:
+	"""How many combat columns this creature occupies (Giant occupies 2, everything else 1)"""
+	return 2 if has_keyword("Giant") else 1
+
 ## Property interception - automatically applies temporary effects
 func _get(property):
 	"""Intercept property reads to apply temporary effects"""

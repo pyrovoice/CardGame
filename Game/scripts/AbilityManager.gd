@@ -142,7 +142,7 @@ func executeAbilityEffect(source_card_data: CardData, ability, game_context: Gam
 	# Apply replacement effects from the registry
 	# This happens before the effect executes
 	resolved_parameters = ReplacementEffectRegistry.apply_replacement_effects(
-		effect_type_str, 
+		effect_type_enum, 
 		resolved_parameters, 
 		game_context
 	)
@@ -373,7 +373,7 @@ func isValidCardCondition(condition: String, triggerSource_data: CardData, abili
 	
 	return false
 
-func evaluateCondition(condition: String, triggeringCard_data: CardData) -> bool:
+func evaluateCondition(condition: String, triggeringCard_data: CardData, game: Game = null) -> bool:
 	"""Evaluate trigger conditions like Self.Attacked+ThisTurn"""
 	# Parse condition format: Target.Property+Timing
 	# Example: Self.Attacked+ThisTurn
@@ -423,6 +423,23 @@ func evaluateCondition(condition: String, triggeringCard_data: CardData) -> bool
 				_:
 					push_warning("Unsupported type for IsType condition: " + timing)
 					return false
+		"AloneAtLocation":
+			# e.g. "Self.AloneAtLocation+Now" - timing is unused, kept for format consistency
+			if not game:
+				push_warning("AloneAtLocation condition requires a game context")
+				return false
+			return _is_alone_at_location(target_card_data, game)
 		_:
 			push_warning("Unsupported condition property: " + property)
 			return false
+
+func _is_alone_at_location(card_data: CardData, game: Game) -> bool:
+	"""Check whether card_data is the only creature its controller has at its current location (Camp or combat)"""
+	var zone = game.game_data.get_card_zone(card_data)
+	if not GameZone.is_battlefield_zone(zone):
+		return false
+	var creature_count = 0
+	for c in game.game_data.get_cards_in_zone(zone):
+		if c.hasType(CardData.CardType.CREATURE):
+			creature_count += 1
+	return creature_count <= 1

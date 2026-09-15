@@ -286,9 +286,9 @@ static func resolve_numeric(value) -> int:
 ## Takes into account the controller of the source card to determine player vs opponent zones.
 ##
 ## Supported destinations:
-##   "Battlefield" → BATTLEFIELD_PLAYER (player) or COMBAT_OPPONENT_1 (opponent has no battlefield staging area)
-##   "Battlefield.Player" → BATTLEFIELD_PLAYER (explicit)
-##   "Battlefield.Opponent" → COMBAT_OPPONENT_1 (explicit; opponent cards go straight to combat)
+##   "Battlefield" → LOCATION_1_PLAYER_CAMP (player) or LOCATION_1_OPPONENT_CAMP (opponent)
+##   "Battlefield.Player" → LOCATION_1_PLAYER_CAMP (explicit)
+##   "Battlefield.Opponent" → LOCATION_1_OPPONENT_CAMP (explicit)
 ##   "Graveyard" → GRAVEYARD_PLAYER or GRAVEYARD_OPPONENT
 ##   "Hand" → HAND_PLAYER or HAND_COMMANDER (opponent hand cards belong to a specific Lieutenant; this role-agnostic helper falls back to the Commander's hand)
 ##   "Deck" → DECK_PLAYER or DECK_OPPONENT
@@ -314,8 +314,7 @@ static func parse_destination(destination_str: String, is_player_controlled: boo
 	
 	match zone_name:
 		"Battlefield":
-			# Opponent has no battlefield staging area - permanents go straight to combat
-			return GameZone.e.BATTLEFIELD_PLAYER if explicit_player else GameZone.e.COMBAT_OPPONENT_1
+			return GameZone.e.LOCATION_1_PLAYER_CAMP if explicit_player else GameZone.e.LOCATION_1_OPPONENT_CAMP
 		"Graveyard":
 			return GameZone.e.GRAVEYARD_PLAYER if explicit_player else GameZone.e.GRAVEYARD_OPPONENT
 		"Hand":
@@ -326,7 +325,7 @@ static func parse_destination(destination_str: String, is_player_controlled: boo
 			return GameZone.e.EXTRA_DECK_PLAYER if explicit_player else GameZone.e.EXTRA_DECK_PLAYER
 		_:
 			push_warning("Effect.parse_destination: unknown destination '" + destination_str + "', defaulting to Battlefield")
-			return GameZone.e.BATTLEFIELD_PLAYER if explicit_player else GameZone.e.COMBAT_OPPONENT_1
+			return GameZone.e.LOCATION_1_PLAYER_CAMP if explicit_player else GameZone.e.LOCATION_1_OPPONENT_CAMP
 
 ## Return all in-play cards matching ValidCard$, selected per Choice$/NumCard$.
 ## Choice$ Random (default) picks without UI; Choice$ Player triggers selection UI.

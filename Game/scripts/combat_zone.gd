@@ -8,8 +8,11 @@ class_name CombatZone
 @onready var resolve_fight_button: ResolveFightButton = $Button
 @onready var ally_side: GridContainer3D = $AllySide
 @onready var opponent_side: GridContainer3D = $OpponentSide
+@onready var ally_camp: GridContainer3D = $AllyCamp
+@onready var opponent_camp: GridContainer3D = $OpponentCamp
 @onready var lieutenant_hand: CardHand = $LieutenantHand
 @onready var lieutenant_deck: Deck = $LieutenantDeck
+@onready var floor_mesh: MeshInstance3D = $combatZone
 
 func get_lieutenant_hand() -> CardHand:
 	"""The hand belonging to the Lieutenant assigned to this location"""
@@ -18,6 +21,25 @@ func get_lieutenant_hand() -> CardHand:
 func get_lieutenant_deck() -> Deck:
 	"""The deck belonging to the Lieutenant assigned to this location"""
 	return lieutenant_deck
+
+func get_ally_camp() -> GridContainer3D:
+	"""The player's pre-combat staging area at this location"""
+	return ally_camp
+
+func get_opponent_camp() -> GridContainer3D:
+	"""The opponent's pre-combat staging area at this location"""
+	return opponent_camp
+
+func set_location_highlight(active: bool) -> void:
+	"""Simple yellow tint on the location floor to show it's a valid discounted drop target"""
+	if not is_instance_valid(floor_mesh):
+		return
+	if active:
+		var mat := StandardMaterial3D.new()
+		mat.albedo_color = Color(1.0, 0.9, 0.2)
+		floor_mesh.material_override = mat
+	else:
+		floor_mesh.material_override = null
 
 func _ready() -> void:
 	# Connect to child changes for both sides
@@ -55,22 +77,14 @@ func getTotalStrengthForSide(playerSide: bool):
 	
 	return total
 
-func set_card(card: Card, target_position: int = -1) -> void:
-	"""Add a card to the combat zone. Cards are automatically arranged by GridContainer3D"""
+func _place_in_grid(card: Card, target_container: GridContainer3D) -> void:
 	if not card or not is_instance_valid(card):
-		push_error("CombatZone.set_card: card is null or invalid")
+		push_error("CombatZone._place_in_grid: card is null or invalid")
 		return
-	if not card.cardData or not is_instance_valid(card.cardData):
-		push_error("CombatZone.set_card: card has no valid cardData")
+	if not is_instance_valid(target_container):
+		push_error("CombatZone._place_in_grid: Target container is invalid")
 		return
 
-	var ally_team: bool = card.cardData.playerControlled
-	var target_container = ally_side if ally_team else opponent_side
-	
-	if not is_instance_valid(target_container):
-		push_error("CombatZone.set_card: Target container is invalid")
-		return
-	
 	# Reparent without triggering auto-reorganize (child_entered_tree not connected)
 	# false = don't preserve global transform, so no compensating local scale is baked in.
 	# Cards inherit the zone's scale naturally (Option A sizing).
@@ -81,6 +95,24 @@ func set_card(card: Card, target_position: int = -1) -> void:
 	
 	# Reorganize explicitly: sets all card positions without moving representations
 	target_container.reorganize(card)
+
+func set_card(card: Card, _target_position: int = -1) -> void:
+	"""Add a card to the active combat grid (fighting side). Cards are automatically arranged by GridContainer3D"""
+	if not card or not is_instance_valid(card) or not card.cardData or not is_instance_valid(card.cardData):
+		push_error("CombatZone.set_card: card has no valid cardData")
+		return
+
+	var ally_team: bool = card.cardData.playerControlled
+	_place_in_grid(card, ally_side if ally_team else opponent_side)
+
+func place_in_camp(card: Card) -> void:
+	"""Add a card to the pre-combat Camp for its controller's side at this location"""
+	if not card or not is_instance_valid(card) or not card.cardData or not is_instance_valid(card.cardData):
+		push_error("CombatZone.place_in_camp: card has no valid cardData")
+		return
+
+	var ally_team: bool = card.cardData.playerControlled
+	_place_in_grid(card, ally_camp if ally_team else opponent_camp)
 
 func update_resolve_fight_display(is_resolved: bool):
 	"""Update the appearance of the resolve fight label based on resolution status"""
