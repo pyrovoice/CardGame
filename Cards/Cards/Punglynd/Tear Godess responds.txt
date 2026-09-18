@@ -1,0 +1,7 @@
+Name:Tears of the Goddess
+Color:Red
+Rarity:Mythic
+ManaCost:2
+Types:Legendary Spell Punglynd
+CardText: Play only if you lost combat at every location this turn. This spell is never refreshed and can be cast only once per game.
+Return to the battlefield every creature you own that died this turn. Refresh all combats.

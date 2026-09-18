@@ -1,0 +1,3 @@
+Name:Grave Explosion
+Types:Relic
+CardText:At the beginning of turn, put a charge counter on this card. Then, if it has three or more charge counters, sacrifice it and for each card in your graveyard, create a Squeleton token at a random battlefield.

@@ -1,0 +1,6 @@
+Name:The Harvester
+ManaCost:2
+Types:Creature Construct
+Power:1
+CardText:Whenever a creature goes to the opponent's graveyard, rip a random line of text from it and attach it to me.
+TODO WHEN IMPLEMENTING: Add a visual of the opponent's card visibly being ripped. The opponent's card should lose one ability and this card should gain it.
