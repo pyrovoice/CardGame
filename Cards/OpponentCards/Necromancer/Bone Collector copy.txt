@@ -1,0 +1,4 @@
+Name:Mind to Grave
+Types:Relic
+CardText:At the beginning of turn, put the top three cards of my opponent's graveyard into mine. 
+When this is sacrificed because a Battlefield completed, if I won it, put half of my opponent's deck into my graveyard.
