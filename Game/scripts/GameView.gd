@@ -60,7 +60,7 @@ var current_viewing_container: CardContainer = null
 var _reference_zone_position: Vector3 = Vector3.ZERO
 const _FOCUSED_SCALE := Vector3(1.0, 1.0, 1.0)
 const _FOCUS_TWEEN_DURATION := 0.35
-const _FOCUS_SPACING := 8
+const _FOCUS_SPACING := 15
 
 func _init():
 	pass

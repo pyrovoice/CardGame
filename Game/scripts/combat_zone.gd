@@ -21,7 +21,21 @@ class_name CombatZone
 const COMPACT_WIDTH_SCALE := 1.0 / 3.0
 const _DEFAULT_RESIZE_DURATION := 0.35
 
-var is_compact: bool = false
+## Editor toggle: preview the compact/expanded floor size directly in combat_zone.tscn
+## (no need to open gameView.tscn's EditorPreviewHelper). Drives the same tween-based
+## resize used at runtime by GameView.set_battlefield_focus().
+@export var is_compact: bool = false:
+	get:
+		return _is_compact
+	set(value):
+		if not is_node_ready():
+			# Deserializing a saved scene: @onready vars/base sizes don't exist yet.
+			# Store the desired value; _ready() applies it once everything is set up.
+			_is_compact = value
+			return
+		set_compact(value)
+
+var _is_compact: bool = false
 var _base_mesh_size: Vector2
 var _base_collision_size: Vector3
 var _resize_tween: Tween = null
@@ -56,9 +70,9 @@ func set_location_highlight(active: bool) -> void:
 func set_compact(compact: bool, duration: float = _DEFAULT_RESIZE_DURATION) -> void:
 	"""Smoothly shrink (or restore) this zone's floor and collision width for the 3-battlefield overview.
 	Safe to call every time set_battlefield_focus() runs - no-ops if already in that state."""
-	if compact == is_compact:
+	if compact == _is_compact:
 		return
-	is_compact = compact
+	_is_compact = compact
 
 	var scale_x := COMPACT_WIDTH_SCALE if compact else 1.0
 	var target_mesh_width := _base_mesh_size.x * scale_x
@@ -87,6 +101,12 @@ func _ready() -> void:
 	if collision_shape.shape:
 		collision_shape.shape = collision_shape.shape.duplicate()
 		_base_collision_size = (collision_shape.shape as BoxShape3D).size
+
+	# Apply any compact state saved on the scene (deserialized before base sizes existed above)
+	if _is_compact:
+		var pending_compact := _is_compact
+		_is_compact = false
+		set_compact(pending_compact, 0.0)
 
 	# Connect to child changes for both sides
 	ally_side.child_entered_tree.connect(_on_child_change)

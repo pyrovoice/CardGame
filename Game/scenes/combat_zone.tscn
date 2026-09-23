@@ -26,7 +26,7 @@ orientation = 1
 script = ExtResource("1_wucjk")
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.0040283203, 0, 0.042297363)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.08932495, 0, 0.042297363)
 shape = SubResource("BoxShape3D_b8hex")
 
 [node name="combatZone" type="MeshInstance3D" parent="."]
@@ -34,11 +34,11 @@ material_override = SubResource("StandardMaterial3D_ccr6e")
 mesh = SubResource("QuadMesh_ccr6e")
 
 [node name="OpponentTotalStrength" type="Label3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, -4.37114e-08, 1, 0, -1, -4.37114e-08, 1.0156648, 0.01, -2.010017)
+transform = Transform3D(1, 0, 0, 0, -4.37114e-08, 1, 0, -1, -4.37114e-08, -2.8438334, 0.01, -0.90461195)
 text = "0"
 
 [node name="AllyTotalStrength" type="Label3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, -4.37114e-08, 1, 0, -1, -4.37114e-08, -1.7812788, 0.01, 1.8242203)
+transform = Transform3D(1, 0, 0, 0, -4.37114e-08, 1, 0, -1, -4.37114e-08, -2.8696735, 0.01, 0.6309968)
 text = "0
 "
 
@@ -68,4 +68,4 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.57, 0, -1.35)
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.3, -1.9726754)
 
 [node name="LieutenantDeck" parent="." instance=ExtResource("6_lieutenantdeck")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.545745, 0.106695905, -2.1755748)
+transform = Transform3D(0.79, 0, 0, 0, 0.73, 0, 0, 0, 0.43, -2.545745, 0.106695905, -1.9683864)
