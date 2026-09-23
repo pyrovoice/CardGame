@@ -1,8 +1,9 @@
-[gd_scene load_steps=20 format=3 uid="uid://bkqg746td2asx"]
+[gd_scene load_steps=23 format=3 uid="uid://bkqg746td2asx"]
 
 [ext_resource type="Script" uid="uid://bfo2jk26bbnjb" path="res://Game/scripts/GameView.gd" id="1_s4hdo"]
 [ext_resource type="Script" uid="uid://cj3yisdrqfkyr" path="res://Game/scripts/EditorPreviewHelper.gd" id="2_editorpreview"]
 [ext_resource type="PackedScene" uid="uid://daynfobgnbdrp" path="res://Game/scenes/combat_zone.tscn" id="2_lpwbj"]
+[ext_resource type="Texture2D" uid="uid://dhdw3cg46papn" path="res://Shared/resources/play_background.png" id="2_vthm1"]
 [ext_resource type="PackedScene" uid="uid://dnt4p0i1i5qk1" path="res://Game/scenes/Deck.tscn" id="3_76l0o"]
 [ext_resource type="Script" uid="uid://bj67ghukul3cy" path="res://Game/scripts/PlayerControl.gd" id="4_vthm1"]
 [ext_resource type="PackedScene" uid="uid://dueg4t10qe41s" path="res://Game/scenes/graveyard.tscn" id="5_inj8b"]
@@ -18,6 +19,13 @@
 [ext_resource type="PackedScene" uid="uid://b23h2nqcsg3ha" path="res://Game/scenes/card_hand.tscn" id="15_4ovxi"]
 [ext_resource type="PackedScene" uid="uid://kxt24mjfk68d" path="res://Game/scenes/CardChoicePicker.tscn" id="15_vthm1"]
 
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_inj8b"]
+albedo_texture = ExtResource("2_vthm1")
+
+[sub_resource type="PlaneMesh" id="PlaneMesh_k71w3"]
+material = SubResource("StandardMaterial3D_inj8b")
+size = Vector2(10.19, 7.23)
+
 [sub_resource type="BoxShape3D" id="BoxShape3D_vc2ns"]
 size = Vector3(20, 20, 0.01)
 
@@ -27,20 +35,25 @@ size = Vector3(1, 0.06323242, 1.8572998)
 [node name="GameView" type="Node3D"]
 script = ExtResource("1_s4hdo")
 
+[node name="MeshInstance3D" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.08374095, -0.09, 0.9419012)
+mesh = SubResource("PlaneMesh_k71w3")
+
 [node name="combatZone" parent="." instance=ExtResource("2_lpwbj")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.112, -0.001, 0.5769086)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -8.112, -0.001, 0.5769086)
 
 [node name="combatZone2" parent="." instance=ExtResource("2_lpwbj")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.112, -0.001, 0.5769086)
 
 [node name="combatZone3" parent="." instance=ExtResource("2_lpwbj")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.888, -0.001, 0.5769086)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 7.888, -0.001, 0.5769086)
 
 [node name="EditorPreviewHelper" type="Node" parent="."]
 script = ExtResource("2_editorpreview")
+focused_location = 1
 
 [node name="Deck" parent="." instance=ExtResource("3_76l0o")]
-transform = Transform3D(0.99999994, 0, -0.00036651915, 0, 1, 0, 0.00036651915, 0, 0.99999994, -4.155265, -0.001, 2.3502297)
+transform = Transform3D(0.99999994, 0, -0.00036651915, 0, 1, 0, 0.00036651915, 0, 0.99999994, -3.8410997, -0.001, 3.034052)
 
 [node name="DeckOpponent" parent="." instance=ExtResource("3_76l0o")]
 transform = Transform3D(-1, 0, -8.742278e-08, 0, 1, 0, 8.742278e-08, 0, -1, 3.3656433, -0.001, -1.50072)
@@ -68,7 +81,7 @@ script = ExtResource("4_vthm1")
 metadata/_custom_type_script = "uid://bj67ghukul3cy"
 
 [node name="graveyard" parent="." instance=ExtResource("5_inj8b")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -4.2045817, -0.001, 3.2190084)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.9924023, -0.001, 3.1157422)
 
 [node name="UI" type="Control" parent="."]
 layout_mode = 3

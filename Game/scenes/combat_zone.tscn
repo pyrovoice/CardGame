@@ -1,19 +1,23 @@
-[gd_scene load_steps=10 format=3 uid="uid://daynfobgnbdrp"]
+[gd_scene load_steps=12 format=3 uid="uid://daynfobgnbdrp"]
 
 [ext_resource type="Script" uid="uid://fqb7xp4n6x0r" path="res://Game/scripts/combat_zone.gd" id="1_wucjk"]
+[ext_resource type="Texture2D" uid="uid://boqlq34seg3b6" path="res://Shared/resources/ChatGPT Image Sep 23, 2026, 03_08_33 PM.png" id="2_b8hex"]
 [ext_resource type="PackedScene" uid="uid://c1gh53ivxrt74" path="res://Game/scenes/locationFill.tscn" id="3_cu80e"]
 [ext_resource type="PackedScene" uid="uid://cj3soc5hs2x1t" path="res://Game/scenes/grid_container.tscn" id="4_lqy10"]
 [ext_resource type="PackedScene" uid="uid://bjxoru03if1kc" path="res://Game/scenes/ResolveFightButton.tscn" id="4_pjxud"]
 [ext_resource type="PackedScene" uid="uid://b23h2nqcsg3ha" path="res://Game/scenes/card_hand.tscn" id="5_lieutenanthand"]
 [ext_resource type="PackedScene" uid="uid://dnt4p0i1i5qk1" path="res://Game/scenes/Deck.tscn" id="6_lieutenantdeck"]
 
-[sub_resource type="BoxShape3D" id="BoxShape3D_ulpi2"]
+[sub_resource type="BoxShape3D" id="BoxShape3D_b8hex"]
 size = Vector3(5.7229004, 0.05, 3.6565857)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_ccr6e"]
+albedo_texture = ExtResource("2_b8hex")
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_vc2ns"]
 albedo_color = Color(0.28485, 0.28485, 0.28485, 1)
 
-[sub_resource type="QuadMesh" id="QuadMesh_w3xpy"]
+[sub_resource type="QuadMesh" id="QuadMesh_ccr6e"]
 material = SubResource("StandardMaterial3D_vc2ns")
 size = Vector2(6, 3.815)
 orientation = 1
@@ -23,10 +27,11 @@ script = ExtResource("1_wucjk")
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.0040283203, 0, 0.042297363)
-shape = SubResource("BoxShape3D_ulpi2")
+shape = SubResource("BoxShape3D_b8hex")
 
 [node name="combatZone" type="MeshInstance3D" parent="."]
-mesh = SubResource("QuadMesh_w3xpy")
+material_override = SubResource("StandardMaterial3D_ccr6e")
+mesh = SubResource("QuadMesh_ccr6e")
 
 [node name="OpponentTotalStrength" type="Label3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, -4.37114e-08, 1, 0, -1, -4.37114e-08, 1.0156648, 0.01, -2.010017)
@@ -38,14 +43,14 @@ text = "0
 "
 
 [node name="LocationFillPlayer" parent="." instance=ExtResource("3_cu80e")]
-transform = Transform3D(2, 0, 0, 0, 2, 0, 0, 0, 2, -0.11266446, 0.017, 1.7981368)
+transform = Transform3D(3.6846914, 0, 0, 0, 2, 0, 0, 0, 2.0197413, 0.043854296, 0.0012960844, 1.7275733)
 
 [node name="LocationFillOpponent" parent="." instance=ExtResource("3_cu80e")]
-transform = Transform3D(-2, 0, 3.019916e-07, 0, 2, 0, -3.019916e-07, 0, -2, -0.019156456, 0.01695007, -2.0057867)
+transform = Transform3D(-3.6509733, 0, -1.7484557e-07, 0, 2, 0, 3.191782e-07, 0, -2.0000002, 0.10701609, 0.0056720506, -1.7506602)
 isPlayer = false
 
 [node name="Button" parent="." instance=ExtResource("4_pjxud")]
-transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 0, 0.023061872, 0)
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, -0.065842986, 0.023061872, -0.02476114)
 
 [node name="AllySide" parent="." instance=ExtResource("4_lqy10")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.5698426, 0, 0.39582643)
@@ -60,7 +65,7 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.5698426, 0, 1.3)
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.57, 0, -1.35)
 
 [node name="LieutenantHand" parent="." instance=ExtResource("5_lieutenanthand")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.3, -1.4)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.3, -1.9726754)
 
 [node name="LieutenantDeck" parent="." instance=ExtResource("6_lieutenantdeck")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.640228, 0.02, -2.0490103)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.545745, 0.106695905, -2.1755748)

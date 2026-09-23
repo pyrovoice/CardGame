@@ -1,0 +1,4 @@
+Name:XXX the Piper
+Types:Creature 
+CardText:When I enter and on turn start, if it's night, I charm all creatures my opponent controls with 1 or less might in the battlefield and in the deck. If it's day, those creatures phase out.
+When I leave, any charmed or phased out creature by my effect returns to their original location. If any of those creature are in a graveyard, create a Remorse in my opponent's hand for each of those creatures.
