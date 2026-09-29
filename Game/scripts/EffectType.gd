@@ -5,6 +5,7 @@ class_name EffectType
 enum Type {
 	# Spell effects
 	DEAL_DAMAGE,  # Deal damage to target(s)
+	HEAL,  # Heal damage off a creature (used by the Resting mechanic; replacement-modifiable)
 	PUMP,  # Temporarily boost creature power
 	DRAW,  # Draw cards
 	
@@ -30,6 +31,9 @@ enum Type {
 	# State-based event that can be intercepted by replacement effects
 	DEATH,  # A permanent would die (move from battlefield to graveyard)
 	CREATURE_ATTACK,  # A creature attacks with no blocker in its slot (Defender can intercept)
+	
+	# Debuff effects
+	WEAKEN,  # Reduce a creature's power - opposite of Pump
 	
 	# Draft effects
 	DRAFT,  # Draft a card from an archetype pool to hand
@@ -57,6 +61,8 @@ static func type_to_string(effect_type: Type) -> String:
 	match effect_type:
 		Type.DEAL_DAMAGE:
 			return "DealDamage"
+		Type.HEAL:
+			return "Heal"
 		Type.PUMP:
 			return "Pump"
 		Type.DRAW:
@@ -87,6 +93,8 @@ static func type_to_string(effect_type: Type) -> String:
 			return "Death"
 		Type.CREATURE_ATTACK:
 			return "CreatureAttack"
+		Type.WEAKEN:
+			return "Weaken"
 		Type.DRAFT:
 			return "Draft"
 		Type.ADD_GOLD:
@@ -120,6 +128,8 @@ static func string_to_type(effect_string: String) -> Type:
 	match normalized:
 		"DealDamage":
 			return Type.DEAL_DAMAGE
+		"Heal":
+			return Type.HEAL
 		"Pump":
 			return Type.PUMP
 		"Draw":
@@ -150,6 +160,8 @@ static func string_to_type(effect_string: String) -> Type:
 			return Type.DEATH
 		"CreatureAttack":
 			return Type.CREATURE_ATTACK
+		"Weaken":
+			return Type.WEAKEN
 		"Draft":
 			return Type.DRAFT
 		"AddGold":
@@ -182,7 +194,7 @@ static func is_valid_string(s: String) -> bool:
 # Get all available effect type strings
 static func get_all_strings() -> Array[String]:
 	return [
-		"DealDamage", "Pump", "Draw", "CreateToken", "CreateCard", "Cast", "AddType", 
+		"DealDamage", "Heal", "Pump", "Draw", "CreateToken", "CreateCard", "Cast", "AddType", 
 		"AddKeyword", "MoveCard", "SwitchPositions", "Destroy", "Bounce", "Exile", "Mill", 
 		"Discard", "Search", "Shuffle"
 	]

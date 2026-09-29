@@ -7,6 +7,7 @@ class_name ReplacementEffect
 var source_card_data: CardData  ## The card that provides this replacement effect
 var conditions: Dictionary  ## Conditions for when this effect applies (EventType, ActiveZones, ValidToken, etc.)
 var modifications: Dictionary  ## The modifications to apply (Type, Amount, etc.)
+var owning_ability: WeakRef  ## Back-reference to the ReplacementAbility that owns this effect (for exhaustion checks)
 
 func _init(source: CardData, cond: Dictionary, mods: Dictionary):
 	source_card_data = source
@@ -48,8 +49,15 @@ func applies_to(effect_type: EffectType.Type, effect_context: Dictionary, game_c
 	if required_event_type != effect_type:
 		return false
 	
+	var ability: ReplacementAbility = owning_ability.get_ref() if owning_ability else null
+	if ability and not ability.is_available():
+		return false
+	
 	# Check effect-specific conditions (override in subclasses)
-	return applies_to_specific(effect_context, game_context)
+	var applies = applies_to_specific(effect_context, game_context)
+	if applies and ability:
+		ability.mark_exhausted()
+	return applies
 
 ## Effect-specific condition checking - override in subclasses
 ## @param effect_context: Dictionary - The effect context to check

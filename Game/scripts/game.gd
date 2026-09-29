@@ -17,6 +17,8 @@ signal strike(card_data: CardData)
 signal card_recycled(card_data: CardData)
 signal end_of_combat(card_data: CardData, zone: GameZone.e)
 signal opponent_turn_ended()  # Fires after the opponent AI completes its main phase
+signal card_rested(card_data: CardData)  # A creature rests (heals) after not joining its location's fight
+signal before_strike(card_data, zone: GameZone.e)  # Once per location, before any strikes happen this combat
 
 # Controller references (MVC: Controller layer)
 @onready var player_control: PlayerControl = $GameView/playerControl
@@ -478,6 +480,8 @@ func _move_to_graveyard(card_data: CardData, dest_zone: GameZone.e, origin_zone:
 		emit_game_event(TriggeredAbility.GameEventType.CARD_DIED, card_data)
 		
 		for ability in card_data.triggered_abilities:
+			ability.unregister_from_game(self)
+		for ability in card_data.activated_abilities:
 			ability.unregister_from_game(self)
 		for ability in card_data.static_abilities:
 			ability.remove_from_game(self)
@@ -1060,6 +1064,12 @@ func resolveCombatInZone(combat_zone: GameZone.e):
 	var opponent_entries = _assign_combat_columns(opponent_cards)
 	var max_columns = max(_entries_end(player_entries), _entries_end(opponent_entries))
 	
+	# New pre-strike phase: combatants and their overlaps are now fixed for this fight, but no
+	# damage has been dealt yet. Fires once for the whole location (not per creature) - abilities
+	# listening here (e.g. Stone Golem) look up "who's in front of me" themselves via
+	# get_creatures_in_front() rather than the event carrying a specific opponent.
+	await emit_game_event(TriggeredAbility.GameEventType.BEFORE_STRIKE, player_zone)
+	
 	var resolved: Array[CardData] = []
 	for column in range(max_columns):
 		var player_entry = _entry_at_column(player_entries, column)
@@ -1077,6 +1087,9 @@ func resolveCombatInZone(combat_zone: GameZone.e):
 	await resolveStateBasedAction()
 	resolve_queue()
 	
+	# Creatures left in Camp (didn't join the fight) rest: heal and fire OnRest
+	await _rest_camped_creatures(GameZone.location_index_of(player_zone))
+	
 	# Combat is over: return every surviving creature to its controller's Camp and clear the fighting grid
 	for card_data in game_data.get_cards_in_zone(player_zone).duplicate():
 		await execute_move_card(card_data, GameZone.camp_zone_for_combat(player_zone))
@@ -1087,6 +1100,33 @@ func resolveCombatInZone(combat_zone: GameZone.e):
 		var cld = game_data.get_combat_zone_data(combatZone)
 		if cld:
 			cld.isCombatStarted = false
+
+func _rest_camped_creatures(location_index: int) -> void:
+	"""Heal and fire OnRest for every creature sitting in either side's Camp at this location
+	while combat resolved there - they didn't join the fight, so they rest instead."""
+	if location_index < 0:
+		return
+	for player_side in [true, false]:
+		var camp_zone = GameZone.camp_zone_for(location_index, player_side)
+		for card_data in game_data.get_cards_in_zone(camp_zone).duplicate():
+			await _rest_creature(card_data)
+
+func _rest_creature(card_data: CardData) -> void:
+	"""Resolve a HealGameEffect (replacement-modifiable) on a resting creature and emit OnRest"""
+	var params = ReplacementEffectRegistry.apply_replacement_effects(EffectType.Type.HEAL, {"Targets": [card_data]}, self)
+	await EffectFactory.execute_effect(EffectType.Type.HEAL, params, card_data, self)
+	await emit_game_event(TriggeredAbility.GameEventType.ON_REST, card_data)
+	
+	# Abilities that don't auto-refresh every turn get a second chance to refresh here
+	for ability in card_data.triggered_abilities:
+		if not ability.refreshes_on_turn_start:
+			ability.refresh()
+	for ability in card_data.activated_abilities:
+		if not ability.refreshes_on_turn_start:
+			ability.refresh()
+	for ability in card_data.replacement_abilities:
+		if not ability.refreshes_on_turn_start:
+			ability.refresh()
 
 func _assign_combat_columns(cards: Array) -> Array:
 	"""Assign consecutive combat columns to each card based on its combat size (Giant occupies 2)"""
@@ -1114,6 +1154,24 @@ func _find_overlapping(entry: Dictionary, other_entries: Array) -> Array[CardDat
 		if entry["start"] < other["end"] and other["start"] < entry["end"]:
 			result.append(other["card"])
 	return result
+
+func get_creatures_in_front(card_data: CardData) -> Array[CardData]:
+	"""Every opposing creature currently overlapping this card's combat column(s) at its location.
+	Recomputed fresh from current zone contents - safe to call any time the card is in a combat zone
+	(e.g. from the BEFORE_STRIKE phase, before the real strike loop uses the same computation)."""
+	var zone = game_data.get_card_zone(card_data)
+	if not GameZone.is_combat_zone(zone):
+		return []
+	
+	var location_index = GameZone.location_index_of(zone)
+	var is_player_side = zone in [GameZone.e.COMBAT_PLAYER_1, GameZone.e.COMBAT_PLAYER_2, GameZone.e.COMBAT_PLAYER_3]
+	var own_entries = _assign_combat_columns(game_data.get_cards_in_zone(GameZone.combat_zone_for(location_index, is_player_side)))
+	var opposing_entries = _assign_combat_columns(game_data.get_cards_in_zone(GameZone.combat_zone_for(location_index, not is_player_side)))
+	
+	for entry in own_entries:
+		if entry["card"] == card_data:
+			return _find_overlapping(entry, opposing_entries)
+	return []
 
 func _resolve_creature_combat(attacker: CardData, targets: Array[CardData], attacker_is_player: bool, combatZone: CombatZone):
 	"""Resolve a single creature's one-time strike: full damage to every overlapping opponent,
@@ -2082,6 +2140,9 @@ func resolve_queue():
 		
 		# Execute the resolvable ability with event context
 		await AbilityManagerAL.executeAbilityEffect(queued_resolvable.source_card_data, queued_resolvable.ability, self)
+		
+		if queued_resolvable.ability is CardAbility:
+			queued_resolvable.ability.mark_exhausted()
 	is_resolving_triggers = false
 	print("✅ [RESOLVABLE QUEUE] Resolution complete")
 
@@ -2129,6 +2190,10 @@ func emit_game_event(event_type: TriggeredAbility.GameEventType, card_data):
 			card_recycled.emit(card_data)
 		TriggeredAbility.GameEventType.END_OF_COMBAT:
 			end_of_combat.emit(null, card_data)
+		TriggeredAbility.GameEventType.ON_REST:
+			card_rested.emit(card_data)
+		TriggeredAbility.GameEventType.BEFORE_STRIKE:
+			before_strike.emit(null, card_data)
 	
 	# After emitting the event, resolve any resolvables that were added to the queue
 	await resolve_queue()

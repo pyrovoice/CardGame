@@ -54,6 +54,10 @@ func receiveDamage(v: int):
 	damage += v
 	dirty_data.emit()
 
+func heal(v: int):
+	damage = max(damage - v, 0)
+	dirty_data.emit()
+
 func getDamage() -> int:
 	return damage
 
@@ -358,6 +362,10 @@ func subscribe_to_game_signals(game: Node):
 	"""Subscribe to game signals and register all abilities"""
 	# Register all triggered abilities to game signals
 	for ability in triggered_abilities:
+		ability.register_to_game(game)
+	
+	# Register activated abilities (refresh-on-turn-start listener only)
+	for ability in activated_abilities:
 		ability.register_to_game(game)
 	
 	# Apply static abilities to game

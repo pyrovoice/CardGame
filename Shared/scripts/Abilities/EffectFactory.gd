@@ -9,6 +9,9 @@ static func create_effect(effect_type: EffectType.Type) -> Effect:
 		EffectType.Type.DEAL_DAMAGE:
 			return DealDamageEffect.new()
 		
+		EffectType.Type.HEAL:
+			return HealGameEffect.new()
+		
 		EffectType.Type.PUMP:
 			return PumpEffect.new()
 		
@@ -59,6 +62,9 @@ static func create_effect(effect_type: EffectType.Type) -> Effect:
 		
 		EffectType.Type.RELIC_DURABILITY_TICK:
 			return RelicDurabilityEffect.new()
+		
+		EffectType.Type.WEAKEN:
+			return WeakenEffect.new()
 		
 		_:
 			push_error("Unknown effect type: " + str(effect_type))

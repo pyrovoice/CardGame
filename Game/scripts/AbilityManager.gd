@@ -11,6 +11,10 @@ class_name AbilityManager
 func activateAbility(source_card_data: CardData, activated_ability: ActivatedAbility, game_context: Game, pre_selections: SelectionManager.CardPlaySelections = null):
 	print("🔥 [ACTIVATED] Activating ability on ", source_card_data.cardName)
 	
+	if not activated_ability.is_available():
+		print("⚠️ Ability is exhausted for ", source_card_data.cardName)
+		return false
+	
 	# First, check if costs can be paid
 	if not CardPaymentManagerAL.canPayCosts(activated_ability.activation_costs, source_card_data):
 		print("⚠️ Cannot pay activation costs for ", source_card_data.cardName)
@@ -42,6 +46,7 @@ func activateAbility(source_card_data: CardData, activated_ability: ActivatedAbi
 	
 	# Execute the ability effect using CardData (which persists even if Card is freed)
 	await executeAbilityEffect(source_card_data, activated_ability, game_context)
+	activated_ability.mark_exhausted()
 	
 	# Resolve state-based actions after ability execution
 	game_context.resolveStateBasedAction()
@@ -373,8 +378,28 @@ func isValidCardCondition(condition: String, triggerSource_data: CardData, abili
 	
 	return false
 
-func evaluateCondition(condition: String, triggeringCard_data: CardData, game: Game = null) -> bool:
-	"""Evaluate trigger conditions like Self.Attacked+ThisTurn"""
+func evaluateCondition(condition: String, triggeringCard_data: CardData, game: Game = null, compare_card_data: CardData = null) -> bool:
+	"""Evaluate trigger conditions like Self.Attacked+ThisTurn, or a comparison between two cards
+	like Target.Power>Self.Power (compare_card_data is whichever card "Target" refers to)"""
+	
+	# Comparison format: "<Ref>.<Property><op><Ref>.<Property>" e.g. "Target.Power>Self.Power"
+	for op in [">=", "<=", "==", ">", "<"]:
+		if op in condition:
+			var sides = condition.split(op, false, 1)
+			if sides.size() != 2:
+				continue
+			var left = _resolve_condition_value(sides[0].strip_edges(), triggeringCard_data, compare_card_data)
+			var right = _resolve_condition_value(sides[1].strip_edges(), triggeringCard_data, compare_card_data)
+			if left == null or right == null:
+				push_warning("Could not resolve comparison condition: " + condition)
+				return false
+			match op:
+				">=": return left >= right
+				"<=": return left <= right
+				"==": return left == right
+				">": return left > right
+				"<": return left < right
+	
 	# Parse condition format: Target.Property+Timing
 	# Example: Self.Attacked+ThisTurn
 	
@@ -432,6 +457,30 @@ func evaluateCondition(condition: String, triggeringCard_data: CardData, game: G
 		_:
 			push_warning("Unsupported condition property: " + property)
 			return false
+
+func _resolve_condition_value(ref: String, self_card: CardData, target_card: CardData):
+	"""Resolve a '<Ref>.<Property>' token for comparison conditions - "Self" is the ability's own
+	card, "Target" is whichever card was passed in as compare_card_data. Returns null if unresolvable."""
+	var parts = ref.split(".")
+	if parts.size() != 2:
+		return null
+	
+	var card: CardData
+	match parts[0]:
+		"Self": card = self_card
+		"Target": card = target_card
+		_:
+			push_warning("Unsupported comparison reference: " + parts[0])
+			return null
+	if not card:
+		return null
+	
+	match parts[1]:
+		"Power": return card.power
+		"Cost": return card.goldCost
+		_:
+			push_warning("Unsupported comparison property: " + parts[1])
+			return null
 
 func _is_alone_at_location(card_data: CardData, game: Game) -> bool:
 	"""Check whether card_data is the only creature its controller has at its current location (Camp or combat)"""

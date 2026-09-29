@@ -1,0 +1,7 @@
+Name:Stone Golem
+ManaCost:2
+Types:Creature Construct
+Power:2
+T:Mode$ WouldFight | Execute$ StoneGolemWeaken
+SVar:StoneGolemWeaken$ Weaken | Affected$ Card.InFrontOfMe | TargetCondition$ Target.Power>Self.Power | Duration$ EndOfTurn
+CardText:When I would fight a creature with more power than me, that creature first lose all power. Exhaust.

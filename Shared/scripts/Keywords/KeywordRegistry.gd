@@ -18,6 +18,7 @@ static func _register_all() -> void:
 	_add(FleetingKeyword.new())
 	_add(RecycleKeyword.new())
 	_add(DefenderKeyword.new())
+	_add(ExhaustKeyword.new())
 
 static func _add(kw: Keyword) -> void:
 	_registry[kw.get_keyword_name()] = kw
@@ -58,6 +59,24 @@ static func get_all_abilities_for_card(card: CardData) -> Array[CardAbility]:
 ## Get the Keyword instance for a given name, or null if not registered.
 static func get_keyword(keyword_name: String) -> Keyword:
 	return _registry.get(keyword_name)
+
+## Let every keyword present on this card reconfigure abilities already attached to it
+## (e.g. Exhaust). Call after register_abilities()'s results have all been added.
+static func apply_existing_ability_configuration(card: CardData) -> void:
+	var already_checked: Array[String] = []
+
+	for kw_name in card._keywords:
+		already_checked.append(kw_name)
+		var kw: Keyword = _registry.get(kw_name)
+		if kw:
+			kw.configure_existing_abilities(card)
+
+	for kw_name in _registry:
+		if kw_name in already_checked:
+			continue
+		var kw: Keyword = _registry[kw_name]
+		if kw.should_register_for(card):
+			kw.configure_existing_abilities(card)
 
 # ---------------------------------------------------------------------------
 # Internal

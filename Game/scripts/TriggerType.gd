@@ -10,7 +10,9 @@ enum Type {
 	CHANGED_ZONE,  # Card changing zones (with Origin/Destination filtering)
 	PHASE,  # Phase-based triggers (beginning of turn, combat, end of turn)
 	STRIKE,  # Creature strikes in combat
-	Card_DIES  # Card going to graveyard from battlefield
+	Card_DIES,  # Card going to graveyard from battlefield
+	RESTS,  # Creature rests (heals) after not joining its location's fight
+	WOULD_FIGHT  # Once per location, before any strikes happen this combat
 }
 
 # Convert trigger type enum to string representation
@@ -32,6 +34,10 @@ static func type_to_string(trigger_type: Type) -> String:
 			return "Strikes"
 		Type.Card_DIES:
 			return "CardDies"
+		Type.RESTS:
+			return "Rests"
+		Type.WOULD_FIGHT:
+			return "WouldFight"
 		_:
 			return "UNKNOWN"
 
@@ -54,6 +60,10 @@ static func string_to_type(trigger_string: String) -> Type:
 			return Type.STRIKE
 		"CardDies":
 			return Type.Card_DIES
+		"Rests":
+			return Type.RESTS
+		"WouldFight":
+			return Type.WOULD_FIGHT
 		# Support old format for backwards compatibility
 		"ChangesZone":
 			return Type.CHANGED_ZONE  # Legacy mapping

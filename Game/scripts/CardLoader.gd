@@ -127,6 +127,9 @@ func parse_card_data(card_text: String) -> CardData:
 	# Add automatic triggered abilities for special keywords
 	_add_keyword_triggered_abilities(card_data)
 	
+	# Let keywords (e.g. Exhaust) reconfigure abilities already attached to this card
+	KeywordRegistry.apply_existing_ability_configuration(card_data)
+	
 	# Parse additional costs
 	card_data.additionalCosts = parse_additional_costs(properties)
 	
@@ -544,6 +547,10 @@ func _convert_trigger_type_to_game_event(trigger_type: TriggerType.Type, conditi
 			return TriggeredAbility.GameEventType.STRIKE
 		TriggerType.Type.Card_DIES:
 			return TriggeredAbility.GameEventType.CARD_DIED
+		TriggerType.Type.RESTS:
+			return TriggeredAbility.GameEventType.ON_REST
+		TriggerType.Type.WOULD_FIGHT:
+			return TriggeredAbility.GameEventType.BEFORE_STRIKE
 		_:
 			push_warning("Unknown TriggerType: " + str(trigger_type))
 			return TriggeredAbility.GameEventType.CARD_ENTERED_PLAY  # Default fallback

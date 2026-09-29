@@ -26,6 +26,12 @@ func on_apply(card: CardData, game: Game) -> void:
 func register_abilities(card: CardData) -> Array[CardAbility]:
 	return []
 
+## Called at card-load time (after all T:/A:/R: abilities and register_abilities() results
+## are attached) for keywords that reconfigure the card's existing abilities rather than
+## adding new ones (e.g. Exhaust flips exhaustion flags on every ability already on the card).
+func configure_existing_abilities(_card: CardData) -> void:
+	pass
+
 ## Override to detect this keyword from sources other than card._keywords.
 ## Default: check whether get_keyword_name() is in card._keywords.
 ## Example override: ElusiveKeyword checks card.text_box instead.

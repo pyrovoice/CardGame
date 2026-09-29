@@ -5,10 +5,28 @@ class_name ActivatedAbility
 ## Handles activation costs and player-initiated effects
 
 var activation_costs: Array[Dictionary] = []  # Costs to activate (gold, sacrifice, tap, etc.)
+var game_ref: WeakRef  # Reference to game node (for the refresh-on-turn-start listener)
 
 func _init(p_owner: CardData, p_effect: EffectType.Type):
 	super(p_owner)
 	effect_type = p_effect
+	exhausts_on_use = false  # Unlike triggered abilities, activating doesn't exhaust by default
+
+## Game signal registration - unlike TriggeredAbility, this only ever listens for
+## Beginning of Turn to auto-refresh. Activation itself is always player/AI-initiated,
+## never signal-driven.
+
+func register_to_game(game: Node) -> void:
+	game_ref = weakref(game)
+	if refreshes_on_turn_start and not game.is_connected("beginning_of_turn", _on_refresh_signal):
+		game.connect("beginning_of_turn", _on_refresh_signal)
+
+func unregister_from_game(game: Node) -> void:
+	if game.is_connected("beginning_of_turn", _on_refresh_signal):
+		game.disconnect("beginning_of_turn", _on_refresh_signal)
+
+func _on_refresh_signal(_card_data: CardData = null) -> void:
+	refresh()
 
 ## Builder methods
 

@@ -43,6 +43,8 @@ enum GameEventType {
 	CARD_RECYCLED,        # When a card is recycled from hand
 	END_OF_COMBAT,        # After all combat in a zone is resolved
 	OPPONENT_TURN_END,    # After the opponent AI finishes its main phase
+	ON_REST,              # A creature rests (heals) after not joining its location's fight
+	BEFORE_STRIKE,        # Once per location, after combatants are set but before any strikes happen
 }
 
 enum TriggerCondition {
@@ -72,6 +74,8 @@ const EVENT_TO_SIGNAL = {
 	GameEventType.CARD_RECYCLED: "card_recycled",
 	GameEventType.END_OF_COMBAT: "end_of_combat",
 	GameEventType.OPPONENT_TURN_END: "opponent_turn_ended",
+	GameEventType.ON_REST: "card_rested",
+	GameEventType.BEFORE_STRIKE: "before_strike",
 }
 
 var game_event_trigger: GameEventType
@@ -115,17 +119,25 @@ func register_to_game(game: Node):
 	# Connect to the signal
 	if not game.is_connected(signal_name, _on_game_event):
 		game.connect(signal_name, _on_game_event)
+	
+	# Separately listen for Beginning of Turn to auto-refresh, regardless of this ability's own trigger
+	if refreshes_on_turn_start and not game.is_connected("beginning_of_turn", _on_refresh_signal):
+		game.connect("beginning_of_turn", _on_refresh_signal)
 
 func unregister_from_game(game: Node):
 	"""Disconnect from game signal (called when card leaves play or is destroyed)"""
 	var signal_name = EVENT_TO_SIGNAL.get(game_event_trigger, "")
-	if signal_name.is_empty():
-		return
-	
-	if game.has_signal(signal_name) and game.is_connected(signal_name, _on_game_event):
+	if not signal_name.is_empty() and game.has_signal(signal_name) and game.is_connected(signal_name, _on_game_event):
 		game.disconnect(signal_name, _on_game_event)
+	
+	if game.is_connected("beginning_of_turn", _on_refresh_signal):
+		game.disconnect("beginning_of_turn", _on_refresh_signal)
 
 ## Signal callback
+
+func _on_refresh_signal(_card_data: CardData = null) -> void:
+	"""Beginning-of-Turn callback that only refreshes - bypasses trigger conditions and queueing"""
+	refresh()
 
 func _on_game_event(event_card_data: CardData = null, from_zone = null, to_zone = null):
 	"""Called when the relevant game event fires
@@ -136,6 +148,9 @@ func _on_game_event(event_card_data: CardData = null, from_zone = null, to_zone 
 	var owner = get_owner()
 	if not owner:
 		return  # Owner was destroyed
+	
+	if not is_available():
+		return  # Exhausted (or used up, if one-time) - skip firing until refreshed
 	
 	var game = game_ref.get_ref() if game_ref else null
 	if not game:
@@ -176,6 +191,13 @@ func _check_trigger_conditions(cardData: CardData, event_card_data: CardData, ga
 		if game_event_trigger == GameEventType.END_OF_COMBAT and from_zone != null:
 			if cardData_zone != from_zone:
 				return false
+	
+	# BEFORE_STRIKE fires once per location (either side) - match by location index, not exact zone,
+	# since the ability's owner may be on the opposing side of the same location.
+	if game_event_trigger == GameEventType.BEFORE_STRIKE and from_zone != null:
+		var cardData_zone_for_location = game.game_data.get_card_zone(cardData)
+		if GameZone.location_index_of(cardData_zone_for_location) != GameZone.location_index_of(from_zone):
+			return false
 	
 	# Check Origin condition for zone changes (e.g., "Origin$ Hand")
 	var origin_filter = trigger_conditions.get(TriggerCondition.ORIGIN, "")
@@ -247,6 +269,10 @@ static func event_to_string(event: GameEventType) -> String:
 			return "EndOfTurnCleanup"
 		GameEventType.STRIKE:
 			return "Strike"
+		GameEventType.ON_REST:
+			return "Rest"
+		GameEventType.BEFORE_STRIKE:
+			return "BeforeStrike"
 	return "Unknown"
 
 static func string_to_event(event_str: String) -> GameEventType:
@@ -272,4 +298,8 @@ static func string_to_event(event_str: String) -> GameEventType:
 			return GameEventType.BEGINNING_OF_TURN
 		"EndOfTurnCleanup":
 			return GameEventType.END_OF_TURN_CLEANUP
+		"Rest":
+			return GameEventType.ON_REST
+		"BeforeStrike":
+			return GameEventType.BEFORE_STRIKE
 	return GameEventType.CARD_ENTERED_PLAY  # Default

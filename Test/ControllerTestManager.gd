@@ -2875,3 +2875,322 @@ func test_player_deck_refill_end_of_turn() -> bool:
 
 	print("✅ Player deck refill test passed!")
 	return true
+
+## === ABILITY EXHAUSTION TESTS (Triggered / Activated / Replacement) ===
+## All three use "add 1 gold" as a cheap, fully repeatable, board-state-safe "situation":
+## - Triggered: manually emit SPELL_CAST for the owning creature
+## - Activated: call AbilityManagerAL.activateAbility() directly (no activation costs)
+## - Replacement: call ReplacementEffectRegistry.apply_replacement_effects() for a fake ADD_GOLD event
+## Resting is exercised through the real flow: the creature sits alone in Location 1's Camp while
+## that location's combat resolves (game.resolveCombatInZone), which is the actual "fight happens" hook.
+
+## A minimal ReplacementEffect that just counts how many times it was allowed to apply.
+class _CountingReplacementEffect extends ReplacementEffect:
+	var fire_count: int = 0
+
+	func apply_modification(effect_context: Dictionary, _game_context: Game) -> Dictionary:
+		fire_count += 1
+		return effect_context
+
+func _make_exhaustion_test_creature(card_name: String) -> CardData:
+	var tpl = CardData.new()
+	tpl.cardName = card_name
+	tpl.addType(CardData.CardType.CREATURE)
+	return game.createCardData(tpl, GameZone.e.LOCATION_1_PLAYER_CAMP, true)
+
+func _rest_via_combat(_creature: CardData) -> void:
+	"""Resolve Location 1's (empty) combat so its Camp occupants rest - the real Resting trigger"""
+	await game.resolveCombatInZone(GameZone.e.COMBAT_PLAYER_1)
+
+func test_triggered_ability_no_exhaust() -> bool:
+	"""A triggered ability with exhausts_on_use=false should fire every time its event occurs"""
+	print("=== Testing Triggered Ability: No Exhaustion ===")
+	var creature = _make_exhaustion_test_creature("Test Triggered No-Exhaust")
+	var ability = TriggeredAbility.new(creature, TriggeredAbility.GameEventType.SPELL_CAST, EffectType.Type.ADD_GOLD)
+	ability.trigger_conditions[TriggeredAbility.TriggerCondition.VALID_CARD] = "Card.Self"
+	ability.exhausts_on_use = false
+	creature.triggered_abilities.append(ability)
+	ability.register_to_game(game)
+
+	setPlayerGold(0)
+	await game.emit_game_event(TriggeredAbility.GameEventType.SPELL_CAST, creature)
+	await game.emit_game_event(TriggeredAbility.GameEventType.SPELL_CAST, creature)
+
+	if not assert_test_equal(game.game_data.player_gold.getValue(), 2, "Ability should fire both times (no exhaustion)"):
+		return false
+	print("✅ Non-exhausting triggered ability fired twice")
+	return true
+
+func test_triggered_ability_exhausts_and_rest_does_not_refresh() -> bool:
+	"""Default triggered ability (exhausts_on_use=true, refreshes_on_turn_start=true) should exhaust
+	after firing once, and Resting alone (not a turn refresh) should not bring it back"""
+	print("=== Testing Triggered Ability: Exhausts, Rest Does Not Refresh ===")
+	var creature = _make_exhaustion_test_creature("Test Triggered Exhausts")
+	var ability = TriggeredAbility.new(creature, TriggeredAbility.GameEventType.SPELL_CAST, EffectType.Type.ADD_GOLD)
+	ability.trigger_conditions[TriggeredAbility.TriggerCondition.VALID_CARD] = "Card.Self"
+	creature.triggered_abilities.append(ability)
+	ability.register_to_game(game)
+
+	setPlayerGold(0)
+	await game.emit_game_event(TriggeredAbility.GameEventType.SPELL_CAST, creature)
+	if not assert_test_equal(game.game_data.player_gold.getValue(), 1, "First fire should succeed"):
+		return false
+	if not assert_test_false(ability.is_available(), "Ability should be exhausted after firing"):
+		return false
+
+	await game.emit_game_event(TriggeredAbility.GameEventType.SPELL_CAST, creature)
+	if not assert_test_equal(game.game_data.player_gold.getValue(), 1, "Second fire should be blocked while exhausted"):
+		return false
+
+	await _rest_via_combat(creature)
+	await game.emit_game_event(TriggeredAbility.GameEventType.SPELL_CAST, creature)
+	if not assert_test_equal(game.game_data.player_gold.getValue(), 1, "Resting should not refresh a turn-refreshing ability"):
+		return false
+
+	print("✅ Exhausted triggered ability stayed blocked through a Rest")
+	return true
+
+func test_triggered_ability_one_time_never_refreshes() -> bool:
+	"""A one-time triggered ability should fire once and never again, even after a Rest that would
+	otherwise refresh it (refreshes_on_turn_start=false here)"""
+	print("=== Testing Triggered Ability: One-Time Use ===")
+	var creature = _make_exhaustion_test_creature("Test Triggered One-Time")
+	var ability = TriggeredAbility.new(creature, TriggeredAbility.GameEventType.SPELL_CAST, EffectType.Type.ADD_GOLD)
+	ability.trigger_conditions[TriggeredAbility.TriggerCondition.VALID_CARD] = "Card.Self"
+	ability.refreshes_on_turn_start = false
+	ability.is_one_time = true
+	creature.triggered_abilities.append(ability)
+	ability.register_to_game(game)
+
+	setPlayerGold(0)
+	await game.emit_game_event(TriggeredAbility.GameEventType.SPELL_CAST, creature)
+	if not assert_test_equal(game.game_data.player_gold.getValue(), 1, "First fire should succeed"):
+		return false
+
+	await _rest_via_combat(creature)
+	if not assert_test_false(ability.is_available(), "One-time ability should stay unavailable even after resting"):
+		return false
+
+	await game.emit_game_event(TriggeredAbility.GameEventType.SPELL_CAST, creature)
+	if not assert_test_equal(game.game_data.player_gold.getValue(), 1, "One-time ability should never fire again"):
+		return false
+
+	print("✅ One-time triggered ability did not refresh after resting")
+	return true
+
+func test_activated_ability_no_exhaust() -> bool:
+	"""An activated ability with exhausts_on_use=false (the default) can be activated repeatedly"""
+	print("=== Testing Activated Ability: No Exhaustion ===")
+	var creature = _make_exhaustion_test_creature("Test Activated No-Exhaust")
+	var ability = ActivatedAbility.new(creature, EffectType.Type.ADD_GOLD)
+	creature.activated_abilities.append(ability)
+
+	setPlayerGold(0)
+	var first = await AbilityManagerAL.activateAbility(creature, ability, game)
+	var second = await AbilityManagerAL.activateAbility(creature, ability, game)
+
+	if not assert_test_true(first, "First activation should succeed"):
+		return false
+	if not assert_test_true(second, "Second activation should also succeed (no exhaustion by default)"):
+		return false
+	if not assert_test_equal(game.game_data.player_gold.getValue(), 2, "Both activations should have added gold"):
+		return false
+	print("✅ Non-exhausting activated ability activated twice")
+	return true
+
+func test_activated_ability_exhausts_and_rest_does_not_refresh() -> bool:
+	"""An activated ability explicitly opted into exhaustion (refreshes_on_turn_start left at its
+	default true) should stay blocked after one use, and Resting alone should not refresh it"""
+	print("=== Testing Activated Ability: Exhausts, Rest Does Not Refresh ===")
+	var creature = _make_exhaustion_test_creature("Test Activated Exhausts")
+	var ability = ActivatedAbility.new(creature, EffectType.Type.ADD_GOLD)
+	ability.exhausts_on_use = true
+	creature.activated_abilities.append(ability)
+
+	setPlayerGold(0)
+	var first = await AbilityManagerAL.activateAbility(creature, ability, game)
+	if not assert_test_true(first, "First activation should succeed"):
+		return false
+	if not assert_test_false(ability.is_available(), "Ability should be exhausted after activating"):
+		return false
+
+	var second = await AbilityManagerAL.activateAbility(creature, ability, game)
+	if not assert_test_false(second, "Second activation should be blocked while exhausted"):
+		return false
+
+	await _rest_via_combat(creature)
+	var third = await AbilityManagerAL.activateAbility(creature, ability, game)
+	if not assert_test_false(third, "Resting should not refresh a turn-refreshing activated ability"):
+		return false
+	if not assert_test_equal(game.game_data.player_gold.getValue(), 1, "Only the first activation should have added gold"):
+		return false
+
+	print("✅ Exhausted activated ability stayed blocked through a Rest")
+	return true
+
+func test_activated_ability_one_time_never_refreshes() -> bool:
+	"""A one-time activated ability should fire once and never again, even after a Rest that would
+	otherwise refresh it (refreshes_on_turn_start=false here)"""
+	print("=== Testing Activated Ability: One-Time Use ===")
+	var creature = _make_exhaustion_test_creature("Test Activated One-Time")
+	var ability = ActivatedAbility.new(creature, EffectType.Type.ADD_GOLD)
+	ability.exhausts_on_use = true
+	ability.refreshes_on_turn_start = false
+	ability.is_one_time = true
+	creature.activated_abilities.append(ability)
+
+	setPlayerGold(0)
+	var first = await AbilityManagerAL.activateAbility(creature, ability, game)
+	if not assert_test_true(first, "First activation should succeed"):
+		return false
+
+	await _rest_via_combat(creature)
+	if not assert_test_false(ability.is_available(), "One-time ability should stay unavailable even after resting"):
+		return false
+
+	var second = await AbilityManagerAL.activateAbility(creature, ability, game)
+	if not assert_test_false(second, "One-time ability should never activate again"):
+		return false
+	if not assert_test_equal(game.game_data.player_gold.getValue(), 1, "Only the first activation should have added gold"):
+		return false
+
+	print("✅ One-time activated ability did not refresh after resting")
+	return true
+
+func _make_counting_replacement(creature: CardData) -> _CountingReplacementEffect:
+	return _CountingReplacementEffect.new(creature, {"EventType": EffectType.Type.ADD_GOLD}, {})
+
+func test_replacement_ability_no_exhaust() -> bool:
+	"""A replacement ability with exhausts_on_use=false (the default) should apply every time its event occurs"""
+	print("=== Testing Replacement Ability: No Exhaustion ===")
+	var creature = _make_exhaustion_test_creature("Test Replacement No-Exhaust")
+	var effect = _make_counting_replacement(creature)
+	var ability = ReplacementAbility.new(creature, EffectType.Type.ADD_GOLD, effect)
+	creature.replacement_abilities.append(ability)
+	ability.apply_to_game(game)
+
+	ReplacementEffectRegistry.apply_replacement_effects(EffectType.Type.ADD_GOLD, {}, game)
+	ReplacementEffectRegistry.apply_replacement_effects(EffectType.Type.ADD_GOLD, {}, game)
+	ability.remove_from_game(game)
+
+	if not assert_test_equal(effect.fire_count, 2, "Replacement should apply both times (no exhaustion)"):
+		return false
+	print("✅ Non-exhausting replacement ability applied twice")
+	return true
+
+func test_replacement_ability_exhausts_and_rest_does_not_refresh() -> bool:
+	"""A replacement ability explicitly opted into exhaustion (refreshes_on_turn_start left at its
+	default true) should stay blocked after applying once, and Resting alone should not refresh it"""
+	print("=== Testing Replacement Ability: Exhausts, Rest Does Not Refresh ===")
+	var creature = _make_exhaustion_test_creature("Test Replacement Exhausts")
+	var effect = _make_counting_replacement(creature)
+	var ability = ReplacementAbility.new(creature, EffectType.Type.ADD_GOLD, effect)
+	ability.exhausts_on_use = true
+	creature.replacement_abilities.append(ability)
+	ability.apply_to_game(game)
+
+	ReplacementEffectRegistry.apply_replacement_effects(EffectType.Type.ADD_GOLD, {}, game)
+	if not assert_test_equal(effect.fire_count, 1, "First application should succeed"):
+		ability.remove_from_game(game)
+		return false
+	if not assert_test_false(ability.is_available(), "Ability should be exhausted after applying"):
+		ability.remove_from_game(game)
+		return false
+
+	ReplacementEffectRegistry.apply_replacement_effects(EffectType.Type.ADD_GOLD, {}, game)
+	if not assert_test_equal(effect.fire_count, 1, "Second application should be blocked while exhausted"):
+		ability.remove_from_game(game)
+		return false
+
+	await _rest_via_combat(creature)
+	ReplacementEffectRegistry.apply_replacement_effects(EffectType.Type.ADD_GOLD, {}, game)
+	ability.remove_from_game(game)
+	if not assert_test_equal(effect.fire_count, 1, "Resting should not refresh a turn-refreshing replacement ability"):
+		return false
+
+	print("✅ Exhausted replacement ability stayed blocked through a Rest")
+	return true
+
+func test_replacement_ability_one_time_never_refreshes() -> bool:
+	"""A one-time replacement ability should apply once and never again, even after a Rest that would
+	otherwise refresh it (refreshes_on_turn_start=false here)"""
+	print("=== Testing Replacement Ability: One-Time Use ===")
+	var creature = _make_exhaustion_test_creature("Test Replacement One-Time")
+	var effect = _make_counting_replacement(creature)
+	var ability = ReplacementAbility.new(creature, EffectType.Type.ADD_GOLD, effect)
+	ability.exhausts_on_use = true
+	ability.refreshes_on_turn_start = false
+	ability.is_one_time = true
+	creature.replacement_abilities.append(ability)
+	ability.apply_to_game(game)
+
+	ReplacementEffectRegistry.apply_replacement_effects(EffectType.Type.ADD_GOLD, {}, game)
+	if not assert_test_equal(effect.fire_count, 1, "First application should succeed"):
+		ability.remove_from_game(game)
+		return false
+
+	await _rest_via_combat(creature)
+	if not assert_test_false(ability.is_available(), "One-time ability should stay unavailable even after resting"):
+		ability.remove_from_game(game)
+		return false
+
+	ReplacementEffectRegistry.apply_replacement_effects(EffectType.Type.ADD_GOLD, {}, game)
+	ability.remove_from_game(game)
+	if not assert_test_equal(effect.fire_count, 1, "One-time ability should never apply again"):
+		return false
+
+	print("✅ One-time replacement ability did not refresh after resting")
+	return true
+
+func test_weaken_before_strike_power_boundary() -> bool:
+	"""Test a 'weaken before strike' ability (same shape as Stone Golem), built from scratch as a
+	custom CardData + TriggeredAbility rather than loading Stone Golem's own card file.
+	Golem has power 2, TargetCondition$ Target.Power>Self.Power (strictly greater):
+	  - Opponent power 5 (higher): weakened to 0 before the strike -> Golem takes 0 damage, survives.
+	    Opponent still takes Golem's 2 damage and dies (power 0 = any positive damage is lethal).
+	  - Opponent power 2 (same): condition is strictly '>', so no weaken -> normal trade, both deal/
+	    receive 2 damage -> both meet their own lethal threshold -> Golem dies too.
+	  - Opponent power 1 (lower): no weaken -> normal trade, Golem only takes 1 damage -> survives."""
+	print("=== Testing Weaken-Before-Strike Ability (Stone Golem-style) ===")
+
+	var scenarios = [
+		{"opponent_power": 5, "golem_should_survive": true, "label": "higher power opponent"},
+		{"opponent_power": 2, "golem_should_survive": false, "label": "same power opponent"},
+		{"opponent_power": 1, "golem_should_survive": true, "label": "lower power opponent"},
+	]
+
+	for scenario in scenarios:
+		print("  --- Scenario: ", scenario["label"], " (opponent power ", scenario["opponent_power"], ") ---")
+
+		var golem_tpl = CardData.new()
+		golem_tpl.cardName = "Test Weaken Golem"
+		golem_tpl.addType(CardData.CardType.CREATURE)
+		golem_tpl._power = 2
+		var golem = game.createCardData(golem_tpl, GameZone.e.COMBAT_PLAYER_1, true)
+
+		var weaken_ability = TriggeredAbility.new(golem, TriggeredAbility.GameEventType.BEFORE_STRIKE, EffectType.Type.WEAKEN)
+		weaken_ability.effect_parameters = {
+			"Affected": "Card.InFrontOfMe",
+			"TargetCondition": "Target.Power>Self.Power",
+			"Duration": "EndOfTurn",
+		}
+		golem.triggered_abilities.append(weaken_ability)
+		weaken_ability.register_to_game(game)
+
+		var opponent_tpl = CardData.new()
+		opponent_tpl.cardName = "Test Opponent Fighter"
+		opponent_tpl.addType(CardData.CardType.CREATURE)
+		opponent_tpl._power = scenario["opponent_power"]
+		game.createCardData(opponent_tpl, GameZone.e.COMBAT_OPPONENT_1, false)
+
+		await game.resolveCombatInZone(GameZone.e.COMBAT_PLAYER_1)
+
+		var golem_alive = GameZone.is_in_play(game.game_data.get_card_zone(golem))
+		if not assert_test_equal(golem_alive, scenario["golem_should_survive"],
+				scenario["label"] + ": Golem alive should be " + str(scenario["golem_should_survive"])):
+			return false
+		print("    ✅ Golem alive = ", golem_alive, " as expected")
+
+	print("✅ Weaken-before-strike ability test passed for all power scenarios!")
+	return true
+
