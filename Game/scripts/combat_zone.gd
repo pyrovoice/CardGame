@@ -17,9 +17,19 @@ class_name CombatZone
 @onready var collision_shape: CollisionShape3D = $CollisionShape3D
 
 ## Overview mode shrinks the floor/collision width so all three locations fit on screen at once.
-## Children (cards, camps, hand, deck, button) are intentionally left untouched for now.
 const COMPACT_WIDTH_SCALE := 1.0 / 3.0
 const _DEFAULT_RESIZE_DURATION := 0.35
+
+## Compact-layout targets, captured from a manual editor pass (see git history for the source diff).
+const _COMPACT_ALLY_SIDE_X := -0.73740864
+const _COMPACT_OPPONENT_SIDE_X := -0.7776954
+const _COMPACT_ALLY_CAMP_X := -0.6526084
+const _COMPACT_OPPONENT_CAMP_X := -0.7378247
+const _COMPACT_LIEUTENANT_DECK_X := -0.66502404
+const _COMPACT_OPPONENT_STRENGTH_X := -0.9641607
+const _COMPACT_ALLY_STRENGTH_X := -0.96347404
+const _COMPACT_LOCATION_FILL_PLAYER_SCALE := Vector3(1.625, 1.756, 1.773)
+const _COMPACT_LOCATION_FILL_OPPONENT_SCALE := Vector3(1.601, 2.0, 2.0)
 
 ## Editor toggle: preview the compact/expanded floor size directly in combat_zone.tscn
 ## (no need to open gameView.tscn's EditorPreviewHelper). Drives the same tween-based
@@ -39,6 +49,17 @@ var _is_compact: bool = false
 var _base_mesh_size: Vector2
 var _base_collision_size: Vector3
 var _resize_tween: Tween = null
+
+# Expanded-state values, captured in _ready() so compact mode can be reverted exactly.
+var _base_ally_side_x: float
+var _base_opponent_side_x: float
+var _base_ally_camp_x: float
+var _base_opponent_camp_x: float
+var _base_lieutenant_deck_x: float
+var _base_opponent_strength_x: float
+var _base_ally_strength_x: float
+var _base_location_fill_player_scale: Vector3
+var _base_location_fill_opponent_scale: Vector3
 
 func get_lieutenant_hand() -> CardHand:
 	"""The hand belonging to the Lieutenant assigned to this location"""
@@ -88,6 +109,16 @@ func set_compact(compact: bool, duration: float = _DEFAULT_RESIZE_DURATION) -> v
 	if collision_shape.shape is BoxShape3D:
 		_resize_tween.tween_property(collision_shape.shape, "size:x", target_collision_width, duration)
 
+	_resize_tween.tween_property(ally_side, "position:x", _COMPACT_ALLY_SIDE_X if compact else _base_ally_side_x, duration)
+	_resize_tween.tween_property(opponent_side, "position:x", _COMPACT_OPPONENT_SIDE_X if compact else _base_opponent_side_x, duration)
+	_resize_tween.tween_property(ally_camp, "position:x", _COMPACT_ALLY_CAMP_X if compact else _base_ally_camp_x, duration)
+	_resize_tween.tween_property(opponent_camp, "position:x", _COMPACT_OPPONENT_CAMP_X if compact else _base_opponent_camp_x, duration)
+	_resize_tween.tween_property(lieutenant_deck, "position:x", _COMPACT_LIEUTENANT_DECK_X if compact else _base_lieutenant_deck_x, duration)
+	_resize_tween.tween_property(opponent_total_strength, "position:x", _COMPACT_OPPONENT_STRENGTH_X if compact else _base_opponent_strength_x, duration)
+	_resize_tween.tween_property(ally_total_strength, "position:x", _COMPACT_ALLY_STRENGTH_X if compact else _base_ally_strength_x, duration)
+	_resize_tween.tween_property(location_fill_player, "scale", _COMPACT_LOCATION_FILL_PLAYER_SCALE if compact else _base_location_fill_player_scale, duration)
+	_resize_tween.tween_property(location_fill_opponent, "scale", _COMPACT_LOCATION_FILL_OPPONENT_SCALE if compact else _base_location_fill_opponent_scale, duration)
+
 func get_compact_width() -> float:
 	"""Floor width this zone shrinks to when compact - i.e. the width of one third of the screen."""
 	return _base_mesh_size.x * COMPACT_WIDTH_SCALE
@@ -101,6 +132,16 @@ func _ready() -> void:
 	if collision_shape.shape:
 		collision_shape.shape = collision_shape.shape.duplicate()
 		_base_collision_size = (collision_shape.shape as BoxShape3D).size
+
+	_base_ally_side_x = ally_side.position.x
+	_base_opponent_side_x = opponent_side.position.x
+	_base_ally_camp_x = ally_camp.position.x
+	_base_opponent_camp_x = opponent_camp.position.x
+	_base_lieutenant_deck_x = lieutenant_deck.position.x
+	_base_opponent_strength_x = opponent_total_strength.position.x
+	_base_ally_strength_x = ally_total_strength.position.x
+	_base_location_fill_player_scale = location_fill_player.scale
+	_base_location_fill_opponent_scale = location_fill_opponent.scale
 
 	# Apply any compact state saved on the scene (deserialized before base sizes existed above)
 	if _is_compact:
