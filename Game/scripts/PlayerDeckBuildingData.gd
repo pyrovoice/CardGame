@@ -9,6 +9,9 @@ var color_rarity_limits: Dictionary = {}
 # All card names the player currently owns (unique names only).
 var owned_card_names: Array[String] = []
 
+# All consumable cards owned/available for the match.
+var consumable_cards: Array[CardData] = []
+
 # Player overrides: card_name -> desired copy count.
 # Only entries that differ from the calculated maximum are stored here.
 var player_modifications: Dictionary = {}  # String -> int
@@ -136,4 +139,9 @@ func build_deck_list() -> DeckList:
 			else:
 				deck_cards.append(copy)
 
-	return DeckList.new(deck_cards, extra_deck_cards)
+	var duplicated_consumables: Array[CardData] = []
+	for consumable in consumable_cards:
+		if consumable:
+			duplicated_consumables.append(CardLoaderAL.duplicateCardScript(consumable))
+
+	return DeckList.new(deck_cards, extra_deck_cards, duplicated_consumables)

@@ -115,6 +115,7 @@ func _ready() -> void:
 		var deck_list = DeckConfigAL.player_deck_building_data.build_deck_list()
 		game_data.playerDeckList.deck_cards = deck_list.deck_cards
 		game_data.playerDeckList.extra_deck_cards = deck_list.extra_deck_cards
+		game_data.playerDeckList.consumable_cards = deck_list.consumable_cards
 		game_data.opponentDeckList.deck_cards = _build_default_opponent_deck()
 		# TODO: Replace with encounter selection once one exists; Necromancer is the only encounter for now.
 		game_data.encounter_deck_list = EncounterDeckList.load_from_file("res://DeckData/Opponents/Necromancer.json")
@@ -164,11 +165,26 @@ func setupGame():
 func populate_decks():
 	# MVC Pattern: Populate both Model (GameData) and View (containers)
 	replenish_deck_zone(GameZone.e.DECK_PLAYER, 2)
+	add_consumables_to_deck_zone(GameZone.e.DECK_PLAYER)
+	game_data.get_cards_in_zone(GameZone.e.DECK_PLAYER).shuffle()
+	
 	replenish_deck_zone(GameZone.e.EXTRA_DECK_PLAYER)
+	
 	replenish_deck_zone(GameZone.e.DECK_OPPONENT)
+	add_consumables_to_deck_zone(GameZone.e.DECK_OPPONENT)
+	game_data.get_cards_in_zone(GameZone.e.DECK_OPPONENT).shuffle()
+	
 	replenish_deck_zone(GameZone.e.DECK_AGGRO)
+	add_consumables_to_deck_zone(GameZone.e.DECK_AGGRO)
+	game_data.get_cards_in_zone(GameZone.e.DECK_AGGRO).shuffle()
+	
 	replenish_deck_zone(GameZone.e.DECK_CONTROL)
+	add_consumables_to_deck_zone(GameZone.e.DECK_CONTROL)
+	game_data.get_cards_in_zone(GameZone.e.DECK_CONTROL).shuffle()
+	
 	replenish_deck_zone(GameZone.e.DECK_COMBO)
+	add_consumables_to_deck_zone(GameZone.e.DECK_COMBO)
+	game_data.get_cards_in_zone(GameZone.e.DECK_COMBO).shuffle()
 
 func _build_default_opponent_deck() -> Array[CardData]:
 	# TODO: Replace with OpponentData system
@@ -1213,6 +1229,31 @@ func replenish_deck_zone(zone_name: GameZone.e, copies: int = 1):
 		templates_to_create.shuffle()
 		# Create all cards through createCardData so signal wiring and zone setup stay centralized.
 		createCardDatas(templates_to_create, zone_name, is_player_owned)
+
+func add_consumables_to_deck_zone(zone_name: GameZone.e) -> void:
+	var consumable_templates: Array[CardData] = []
+	var is_player_owned := true
+
+	match zone_name:
+		GameZone.e.DECK_PLAYER:
+			consumable_templates = game_data.playerDeckList.consumable_cards
+			is_player_owned = true
+		GameZone.e.DECK_OPPONENT:
+			consumable_templates = game_data.opponentDeckList.consumable_cards
+			is_player_owned = false
+		GameZone.e.DECK_AGGRO, GameZone.e.DECK_CONTROL, GameZone.e.DECK_COMBO, GameZone.e.DECK_COMMANDER:
+			consumable_templates = _lieutenant_deck_list_for_zone(zone_name).consumable_cards
+			is_player_owned = false
+		_:
+			push_error("add_consumables_to_deck_zone: Unsupported deck zone " + str(zone_name))
+			return
+
+	if consumable_templates.is_empty():
+		return
+
+	var templates_to_create: Array[CardData] = consumable_templates.duplicate()
+	templates_to_create.shuffle()
+	createCardDatas(templates_to_create, zone_name, is_player_owned)
 	
 func opponentMainOne():
 	if opponent_ai:
