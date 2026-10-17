@@ -304,19 +304,20 @@ func _calculateReplaceReduction(cost_data: Dictionary, replacement_target_data: 
 	return reduction
 
 func _calculateCastDiscountReduction(cost_data: Dictionary, card_data: CardData, destination_zone: GameZone.e) -> int:
-	if destination_zone == GameZone.e.UNKNOWN or not GameZone.is_combat_zone(destination_zone):
-		return 0
-	if not current_game or not _zoneHasNoCreatures(destination_zone):
-		return 0
+	# CastDiscount is a generic gold discount; "Condition$ EmptyLocation" is an optional, explicit
+	# opt-in for cards (like Punglynd Pointholder) that only want it while playing to an empty location.
+	# By default "empty" means neither side controls a creature there; "PlayerSide$ true" restricts
+	# the check to only the played card's own controller side.
+	if cost_data.get("condition", "") == "EmptyLocation":
+		if destination_zone == GameZone.e.UNKNOWN or not GameZone.is_battlefield_zone(destination_zone):
+			return 0
+		if not current_game:
+			return 0
+		var is_empty = current_game.game_data.is_location_empty_of_creatures(destination_zone) if cost_data.get("player_side_only", false) \
+			else current_game.game_data.is_location_fully_empty(destination_zone)
+		if not is_empty:
+			return 0
 	return int(cost_data.get("amount", 1))
-
-func _zoneHasNoCreatures(zone: GameZone.e) -> bool:
-	# Cards land in Camp by default - check the Camp for this location/side, not the active combat grid
-	var camp_zone = GameZone.camp_zone_for_combat(zone)
-	for c in current_game.game_data.get_cards_in_zone(camp_zone):
-		if c.hasType(CardData.CardType.CREATURE):
-			return false
-	return true
 
 func hasCastDiscount(card_data: CardData) -> bool:
 	"""Whether this card has a CastDiscount additional cost (used to decide whether to check combat zones)"""

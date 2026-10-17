@@ -4,9 +4,10 @@ Rarity:Uncommon
 ManaCost:1
 Types:Creature Punglynd
 Power:2
-AC:$ CastDiscount | Amount$ 1
-T:Mode$ CardEnters | ValidCard$ Card.Self | Condition$ Self.AloneAtLocation+Now | Execute$ PointholderPump & PointholderGiant
+AC:$ CastDiscount | Amount$ 1 | Condition$ EmptyLocation | PlayerSide$ true
+T:Mode$ CardEnters | ValidCard$ Card.Self | Condition$ Self.AloneAtLocation+Now | Execute$ PointholderPump & PointholderGiant & PointholderLock
 SVar:PointholderPump$ Pump | Target$ Self | Pow$ 2 | Duration$ EndOfTurn
 SVar:PointholderGiant$ AddKeyword | Target$ Self | KW$ Giant | Duration$ EndOfTurn
+SVar:PointholderLock$ LockLocation | Target$ Self
 CardText: I cost 1 less to play to a location where you control no creature.
 When CARDNAME enters, if it is the only creature you control at that location, it gets +2 power and Giant until the end of turn. You cannot move or play creatures at this location until the end of turn.

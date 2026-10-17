@@ -150,6 +150,55 @@ func reset_combat_resolution_flags():
 	"""Reset all combat resolution flags at start of turn"""
 	for c in combatLocationDatas:
 		c.isCombatResolved.setValue(false)
+		c.locked_for_player = false
+		c.locked_for_opponent = false
+
+## Lock a location against creature plays/moves for one side until the next reset_combat_resolution_flags()
+func lock_location(zone: GameZone.e) -> void:
+	var location_index = GameZone.location_index_of(zone)
+	if location_index < 0 or location_index >= combatLocationDatas.size():
+		return
+	var cld = combatLocationDatas[location_index]
+	if GameZone.is_player_zone(zone):
+		cld.locked_for_player = true
+	else:
+		cld.locked_for_opponent = true
+
+## Whether creatures are currently locked out of playing/moving into this location for its side
+func is_location_locked(zone: GameZone.e) -> bool:
+	var location_index = GameZone.location_index_of(zone)
+	if location_index < 0 or location_index >= combatLocationDatas.size():
+		return false
+	var cld = combatLocationDatas[location_index]
+	return cld.locked_for_player if GameZone.is_player_zone(zone) else cld.locked_for_opponent
+
+## Whether a location has no creatures for the given zone's side (Camp + combat combined),
+## e.g. for CastDiscount-style "control no creature here" checks. Works with either a Camp or
+## combat-style zone - both are normalized to the same location/side.
+func is_location_empty_of_creatures(zone: GameZone.e) -> bool:
+	var location_index = GameZone.location_index_of(zone)
+	if location_index < 0:
+		return false
+	var player_side = GameZone.is_player_zone(zone)
+	var camp_zone = GameZone.camp_zone_for(location_index, player_side)
+	var combat_zone = GameZone.combat_zone_for(location_index, player_side)
+	for c in get_cards_in_zone(camp_zone) + get_cards_in_zone(combat_zone):
+		if c.hasType(CardData.CardType.CREATURE):
+			return false
+	return true
+
+## Whether NEITHER side has a creature at this location (Camp + combat, both sides)
+func is_location_fully_empty(zone: GameZone.e) -> bool:
+	var location_index = GameZone.location_index_of(zone)
+	if location_index < 0:
+		return false
+	for player_side in [true, false]:
+		var camp_zone = GameZone.camp_zone_for(location_index, player_side)
+		var combat_zone = GameZone.combat_zone_for(location_index, player_side)
+		for c in get_cards_in_zone(camp_zone) + get_cards_in_zone(combat_zone):
+			if c.hasType(CardData.CardType.CREATURE):
+				return false
+	return true
 
 func get_lieutenant_data(zone: GameZone.e) -> LieutenantData:
 	for lieutenant in lieutenant_datas:

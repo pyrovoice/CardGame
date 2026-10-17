@@ -1,0 +1,8 @@
+Name:Punglynd Wargod
+Color:Red
+Rarity:Legendary Mythic
+Types:Creature Punglynd
+Power:8
+CardText: I can be cast only if you won in all Battlefields this turn.
+When I enter, refresh the combat at my location.
+I deal double damage to life.

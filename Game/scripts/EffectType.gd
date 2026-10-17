@@ -17,6 +17,7 @@ enum Type {
 	# Modification effects
 	ADD_TYPE,  # Add types/subtypes to cards
 	ADD_KEYWORD,  # Grant keyword abilities (used by PumpAll)
+	LOCK_LOCATION,  # Prevent creatures from being played/moved into a location until end of turn
 	
 	# Card movement effects
 	MOVE_CARD,  # Move card from one zone to another
@@ -73,6 +74,8 @@ static func type_to_string(effect_type: Type) -> String:
 			return "AddType"
 		Type.ADD_KEYWORD:
 			return "AddKeyword"
+		Type.LOCK_LOCATION:
+			return "LockLocation"
 		Type.MOVE_CARD:
 			return "MoveCard"
 		Type.SWITCH_POSITIONS:
@@ -136,6 +139,8 @@ static func string_to_type(effect_string: String) -> Type:
 			return Type.ADD_TYPE
 		"AddKeyword", "PumpAll":  # PumpAll is alias for AddKeyword
 			return Type.ADD_KEYWORD
+		"LockLocation":
+			return Type.LOCK_LOCATION
 		"MoveCard":
 			return Type.MOVE_CARD
 		"SwitchPositions":
@@ -183,7 +188,7 @@ static func is_valid_string(s: String) -> bool:
 static func get_all_strings() -> Array[String]:
 	return [
 		"DealDamage", "Pump", "Draw", "CreateToken", "CreateCard", "Cast", "AddType", 
-		"AddKeyword", "MoveCard", "SwitchPositions", "Destroy", "Bounce", "Exile", "Mill", 
+		"AddKeyword", "LockLocation", "MoveCard", "SwitchPositions", "Destroy", "Bounce", "Exile", "Mill", 
 		"Discard", "Search", "Shuffle"
 	]
 

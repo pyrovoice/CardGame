@@ -8,6 +8,8 @@ var opponent_capture_threshold = SignalInt.new(10)
 var opponent_capture_current = SignalInt.new(0)
 var isCombatResolved: SignalBool = SignalBool.new(false)
 var isCombatStarted: bool = false
+var locked_for_player: bool = false
+var locked_for_opponent: bool = false
 
 func _init(combatZone: CombatZone):
 	if !combatZone:

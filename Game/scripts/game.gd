@@ -606,10 +606,6 @@ func _try_move_from_camp(card_data: CardData, target_location: Node3D) -> void:
 	if not can_card_move(card_data):
 		return
 	
-	# Tap the card for movement and mark as attacked
-	card_data.tap()
-	card_data.hasAttackedThisTurn = true
-	
 	# Determine which combat zone based on card's controller
 	var zone_index = game_view.get_combat_zones().find(combat_zone)
 	var dest_zone: GameZone.e
@@ -617,6 +613,14 @@ func _try_move_from_camp(card_data: CardData, target_location: Node3D) -> void:
 		dest_zone = (GameZone.e.COMBAT_PLAYER_1 + zone_index) as GameZone.e
 	else:
 		dest_zone = (GameZone.e.COMBAT_OPPONENT_1 + zone_index) as GameZone.e
+	
+	if game_data.is_location_locked(dest_zone):
+		print("❌ Location is locked against creature moves this turn")
+		return
+	
+	# Tap the card for movement and mark as attacked
+	card_data.tap()
+	card_data.hasAttackedThisTurn = true
 	
 	# Move using centralized system
 	await execute_move_card(card_data, dest_zone)
@@ -671,6 +675,10 @@ func tryPlayCard(card_data: CardData, destination_zone: GameZone.e = GameZone.e.
 	# Determine destination zone if not specified
 	if destination_zone == GameZone.e.UNKNOWN:
 		destination_zone = GameZone.e.LOCATION_1_PLAYER_CAMP if card_data.playerControlled else _default_combat_zone_for_opponent_card(card_data)
+	
+	if card_data.hasType(CardData.CardType.CREATURE) and game_data.is_location_locked(destination_zone):
+		print("❌ [TRYPLAYCARD] Location is locked against creature plays this turn")
+		return
 	
 	print("✅ [TRYPLAYCARD] Passed initial checks, proceeding with card play")
 	

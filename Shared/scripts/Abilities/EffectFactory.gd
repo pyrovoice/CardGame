@@ -15,6 +15,9 @@ static func create_effect(effect_type: EffectType.Type) -> Effect:
 		EffectType.Type.ADD_KEYWORD:
 			return AddKeywordEffect.new()
 		
+		EffectType.Type.LOCK_LOCATION:
+			return LockLocationEffect.new()
+		
 		EffectType.Type.CREATE_TOKEN:
 			return CreateTokenEffect.new()
 		

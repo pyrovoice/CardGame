@@ -309,7 +309,7 @@ func test_cast_discount_requires_empty_location() -> bool:
 	discount_tpl.addType(CardData.CardType.CREATURE)
 	discount_tpl.goldCost = 2
 	discount_tpl._power = 1
-	discount_tpl.additionalCosts.append({"cost_type": "CastDiscount", "amount": 1})
+	discount_tpl.additionalCosts.append({"cost_type": "CastDiscount", "amount": 1, "condition": "EmptyLocation", "player_side_only": true})
 	var discount_card = game.createCardData(discount_tpl, GameZone.e.HAND_PLAYER, true)
 
 	# Step 2: Create an occupant creature in location 1's player Camp (cards land in Camp by
@@ -362,7 +362,7 @@ func test_cast_discount_applies_even_with_full_gold() -> bool:
 	discount_tpl.addType(CardData.CardType.CREATURE)
 	discount_tpl.goldCost = 2
 	discount_tpl._power = 1
-	discount_tpl.additionalCosts.append({"cost_type": "CastDiscount", "amount": 1})
+	discount_tpl.additionalCosts.append({"cost_type": "CastDiscount", "amount": 1, "condition": "EmptyLocation", "player_side_only": true})
 	var discount_card = game.createCardData(discount_tpl, GameZone.e.HAND_PLAYER, true)
 
 	# Enough gold to pay the full cost of 2, to make sure the discount isn't skipped just because it's affordable
@@ -379,6 +379,61 @@ func test_cast_discount_applies_even_with_full_gold() -> bool:
 	print("  ✅ Discount was correctly applied instead of paying the full cost")
 
 	print("✅ CastDiscount full-gold test passed!")
+	return true
+
+func test_cast_discount_player_side_only_vs_both_sides() -> bool:
+	"""Test that EmptyLocation's default (both sides must be empty) blocks the discount when an
+	opponent occupies the location, while PlayerSide$ true ignores the opponent's side entirely."""
+	print("=== Testing CastDiscount PlayerSide vs Both-Sides Emptiness ===")
+
+	# Opponent creature occupying location 1 - player's own side is still empty
+	var opponent_tpl = CardData.new()
+	opponent_tpl.cardName = "Test Opponent Occupant"
+	opponent_tpl.addType(CardData.CardType.CREATURE)
+	opponent_tpl._power = 1
+	game.createCardData(opponent_tpl, GameZone.e.LOCATION_1_OPPONENT_CAMP, false)
+
+	# Card A: default EmptyLocation (both sides must be empty) - should be blocked by the opponent
+	var both_sides_tpl = CardData.new()
+	both_sides_tpl.cardName = "Test Both-Sides Discount"
+	both_sides_tpl.addType(CardData.CardType.CREATURE)
+	both_sides_tpl.goldCost = 2
+	both_sides_tpl._power = 1
+	both_sides_tpl.additionalCosts.append({"cost_type": "CastDiscount", "amount": 1, "condition": "EmptyLocation"})
+	var both_sides_card = game.createCardData(both_sides_tpl, GameZone.e.HAND_PLAYER, true)
+
+	# Card B: PlayerSide$ true - only the player's own side needs to be empty
+	var player_side_tpl = CardData.new()
+	player_side_tpl.cardName = "Test Player-Side Discount"
+	player_side_tpl.addType(CardData.CardType.CREATURE)
+	player_side_tpl.goldCost = 2
+	player_side_tpl._power = 1
+	player_side_tpl.additionalCosts.append({"cost_type": "CastDiscount", "amount": 1, "condition": "EmptyLocation", "player_side_only": true})
+	var player_side_card = game.createCardData(player_side_tpl, GameZone.e.HAND_PLAYER, true)
+
+	setPlayerGold(1)
+
+	# Card A should fail to play - opponent's presence blocks the both-sides discount, cost stays 2
+	await game.tryPlayCard(both_sides_card, GameZone.e.COMBAT_PLAYER_1)
+	if not assert_test_equal(game.game_data.get_card_zone(both_sides_card), GameZone.e.HAND_PLAYER,
+			"Both-sides card should remain in hand - opponent occupies the location"):
+		return false
+	if not assert_test_equal(game.game_data.player_gold.getValue(), 1,
+			"Gold should be unchanged after the failed play attempt"):
+		return false
+	print("  ✅ Default EmptyLocation correctly blocked by the opponent's creature")
+
+	# Card B should succeed - only the player's own (empty) side matters
+	await game.tryPlayCard(player_side_card, GameZone.e.COMBAT_PLAYER_1)
+	if not assert_test_equal(game.game_data.get_card_zone(player_side_card), GameZone.e.LOCATION_1_PLAYER_CAMP,
+			"PlayerSide card should be played - the player's own side is empty"):
+		return false
+	if not assert_test_equal(game.game_data.player_gold.getValue(), 0,
+			"Gold should be spent (1 gold after the discount reduces cost from 2 to 1)"):
+		return false
+	print("  ✅ PlayerSide$ true correctly ignored the opponent's creature")
+
+	print("✅ CastDiscount PlayerSide vs both-sides test passed!")
 	return true
 
 func test_camp_to_combat_flow() -> bool:

@@ -941,6 +941,10 @@ func parse_single_additional_cost(cost_text: String) -> Dictionary:
 			cost_data["add_reduction"] = int(part.substr(13))
 		elif part.begins_with("Amount$"):
 			cost_data["amount"] = int(part.substr(8))
+		elif part.begins_with("Condition$"):
+			cost_data["condition"] = part.substr(11).strip_edges()
+		elif part.begins_with("PlayerSide$"):
+			cost_data["player_side_only"] = part.substr(12).strip_edges().to_lower() == "true"
 		# Add more cost types as needed (PayLife, DiscardCard, etc.)
 	
 	return cost_data

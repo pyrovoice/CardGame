@@ -434,12 +434,16 @@ func evaluateCondition(condition: String, triggeringCard_data: CardData, game: G
 			return false
 
 func _is_alone_at_location(card_data: CardData, game: Game) -> bool:
-	"""Check whether card_data is the only creature its controller has at its current location (Camp or combat)"""
+	"""Check whether card_data is the only creature its controller has at its current location (Camp + combat combined)"""
 	var zone = game.game_data.get_card_zone(card_data)
 	if not GameZone.is_battlefield_zone(zone):
 		return false
+	var location_index = GameZone.location_index_of(zone)
+	var player_side = GameZone.is_player_zone(zone)
+	var camp_zone = GameZone.camp_zone_for(location_index, player_side)
+	var combat_zone = GameZone.combat_zone_for(location_index, player_side)
 	var creature_count = 0
-	for c in game.game_data.get_cards_in_zone(zone):
+	for c in game.game_data.get_cards_in_zone(camp_zone) + game.game_data.get_cards_in_zone(combat_zone):
 		if c.hasType(CardData.CardType.CREATURE):
 			creature_count += 1
 	return creature_count <= 1
