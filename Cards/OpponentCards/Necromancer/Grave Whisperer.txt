@@ -3,7 +3,7 @@ ManaCost:2
 Power:1
 Types:Creature Cultist
 K:Elusive
-T:Mode$ Strikes | Execute$ TrigSteal
+T:Mode$ Strikes | ValidCard$ Card.Self | Execute$ TrigSteal
 SVar:TrigSteal$ MoveCard | Origin$ Graveyard.Opponent | Destination$ Graveyard.Controller | Choice$ Random | ValidCard$ Creature | Condition$ IfAlive | AlternativeResolve$ TrigStealLibrary
 SVar:TrigStealLibrary$ MoveCard | Origin$ Deck.Opponent | Destination$ Graveyard.Controller | Choice$ Random | ValidCard$ Creature | Condition$ IfAlive
 CardText:Elusive

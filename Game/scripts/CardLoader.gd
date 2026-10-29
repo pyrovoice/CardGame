@@ -672,7 +672,7 @@ func parse_replacement_effect(replacement_text: String, svar_effects: Dictionary
 	
 	# Build conditions with event type
 	var conditions = replacement_conditions.duplicate()
-	conditions["EventType"] = event_type
+	conditions["EventType"] = effect_type
 	
 	# Build modifications from effect parameters
 	var modifications = effect_parameters.duplicate()
@@ -926,6 +926,8 @@ func parse_single_additional_cost(cost_text: String) -> Dictionary:
 			cost_data["cost_type"] = "SacrificePermanent"
 		elif part == "Replace" or part == "$ Replace":
 			cost_data["cost_type"] = "Replace"
+		elif part == "CastDiscount" or part == "$ CastDiscount":
+			cost_data["cost_type"] = "CastDiscount"
 		# Parameters
 		elif part.begins_with("ValidCard$"):
 			cost_data["valid_card"] = part.substr(11)
@@ -937,6 +939,8 @@ func parse_single_additional_cost(cost_text: String) -> Dictionary:
 			cost_data["min_count"] = int(part.substr(9))
 		elif part.begins_with("AddReduction "):
 			cost_data["add_reduction"] = int(part.substr(13))
+		elif part.begins_with("Amount$"):
+			cost_data["amount"] = int(part.substr(8))
 		# Add more cost types as needed (PayLife, DiscardCard, etc.)
 	
 	return cost_data
