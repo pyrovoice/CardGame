@@ -14,6 +14,7 @@ var goldCost: int
 var colors: Array[CardColor] = []  # Colors this card belongs to (empty = colorless)
 var rarity: Rarity = Rarity.COMMON
 var durability: int = 3  # Relic durability; decremented each turn while in play as a Relic
+var countdown: int = 0  # Countdown charge counters; 0 = not a Countdown card
 
 # Core properties with _ prefix are modified through _get() interception
 var _types: Array[CardType] = []

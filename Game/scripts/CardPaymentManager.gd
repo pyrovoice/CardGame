@@ -24,6 +24,10 @@ func canPayCosts(costs: Array[Dictionary], source_card_data: CardData) -> bool:
 	for cost in costs:
 		var cost_type = cost.get("type", "")
 		match cost_type:
+			"SacrificeAtLocation":
+				if get_sacrifice_candidates(cost, source_card_data).size() < cost.get("count", 1):
+					return false
+
 			"Sacrifice":
 				var target = cost.get("target", "")
 				var count = cost.get("count", 1)
@@ -75,6 +79,35 @@ func canPayCosts(costs: Array[Dictionary], source_card_data: CardData) -> bool:
 				return false
 	
 	return true
+
+func get_activation_cost_options(ability: ActivatedAbility) -> Array:
+	var options: Array = [ability.activation_costs]
+	options.append_array(ability.alternative_activation_costs)
+	return options
+
+func canPayAnyActivationCost(ability: ActivatedAbility, source_card_data: CardData) -> bool:
+	for cost_option in get_activation_cost_options(ability):
+		if canPayCosts(cost_option, source_card_data):
+			return true
+	return false
+
+func get_sacrifice_candidates(cost: Dictionary, source_card_data: CardData) -> Array[CardData]:
+	"""Return cards matching a SacrificeAtLocation cost from either side of source's combat location."""
+	if not current_game:
+		return []
+	var location_index := GameZone.location_index_of(current_game.game_data.get_card_zone(source_card_data))
+	if location_index < 0:
+		return []
+	var candidate_zones := [GameZone.combat_zone_for(location_index, true), GameZone.combat_zone_for(location_index, false)]
+	var in_location: Array[CardData] = []
+	for zone in candidate_zones:
+		in_location.append_array(current_game.game_data.get_cards_in_zone(zone))
+	var matching_cards := current_game._matches_card_filter(cost.get("target", "Card"))
+	var result: Array[CardData] = []
+	for card_data in in_location:
+		if card_data in matching_cards:
+			result.append(card_data)
+	return result
 
 func canPayCard(card_data: CardData) -> bool:
 	if not card_data or not current_game:
@@ -162,6 +195,16 @@ func payCosts(costs: Array[Dictionary], source_card_data: CardData, pre_selectio
 	for cost in costs:
 		var cost_type = cost.get("type", "")
 		match cost_type:
+			"SacrificeAtLocation":
+				var count: int = cost.get("count", 1)
+				var candidates := get_sacrifice_candidates(cost, source_card_data)
+				if pre_selections == null or pre_selections.sacrifice_targets.size() != count:
+					return result
+				for selected_card in pre_selections.sacrifice_targets:
+					if selected_card not in candidates:
+						return result
+				result.cards_to_sacrifice.append_array(pre_selections.sacrifice_targets)
+
 			"Sacrifice":
 				var target = cost.get("target", "")
 				var count = cost.get("count", 1)

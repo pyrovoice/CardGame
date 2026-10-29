@@ -8,6 +8,9 @@ static func create_effect(effect_type: EffectType.Type) -> Effect:
 	match effect_type:
 		EffectType.Type.DEAL_DAMAGE:
 			return DealDamageEffect.new()
+
+		EffectType.Type.DESTROY:
+			return DestroyEffect.new()
 		
 		EffectType.Type.PUMP:
 			return PumpEffect.new()
@@ -59,6 +62,12 @@ static func create_effect(effect_type: EffectType.Type) -> Effect:
 		
 		EffectType.Type.RELIC_DURABILITY_TICK:
 			return RelicDurabilityEffect.new()
+		
+		EffectType.Type.COUNTDOWN_TICK:
+			return CountdownTickEffect.new()
+
+		EffectType.Type.RAISE_COUNTDOWN:
+			return RaiseCountdownEffect.new()
 		
 		_:
 			push_error("Unknown effect type: " + str(effect_type))

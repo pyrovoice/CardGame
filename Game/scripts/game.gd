@@ -17,6 +17,7 @@ signal strike(card_data: CardData)
 signal card_recycled(card_data: CardData)
 signal end_of_combat(card_data: CardData, zone: GameZone.e)
 signal opponent_turn_ended()  # Fires after the opponent AI completes its main phase
+signal countdown_reached_zero(card_data: CardData)  # A Countdown card's charge counter reached zero
 
 # Controller references (MVC: Controller layer)
 @onready var player_control: PlayerControl = $GameView/playerControl
@@ -25,6 +26,7 @@ signal opponent_turn_ended()  # Fires after the opponent AI completes its main p
 # Trigger queue for managing triggered abilities
 var trigger_queue: ResolvableQueue = ResolvableQueue.new()
 var is_resolving_triggers: bool = false  # Track if we're currently resolving the trigger queue
+var countdown_cards_to_sacrifice: Array[CardData] = []
 
 # Orphaned abilities - triggered abilities not attached to any card (e.g., delayed effects)
 # These persist independently and clean up after resolution
@@ -1116,18 +1118,22 @@ func _handle_location_captured(combatZone: CombatZone, captured_by_player: bool)
 	var capture_color = Color.GOLD if captured_by_player else Color.PURPLE
 	AnimationsManagerAL.show_floating_text(self, combatZone.global_position, capture_text, capture_color)
 	
+	var role = _lieutenant_role_for_combat_zone(combatZone)
+	var lieutenant = game_data.get_lieutenant_data_by_role(role)
+	
 	if captured_by_player:
 		game_data.add_player_points(1)
 		game_data.get_combat_zone_data(combatZone).player_capture_threshold.value += 5
 		# The Lieutenant defending this location was conquered - reset their refill counter
-		var role = _lieutenant_role_for_combat_zone(combatZone)
-		var lieutenant = game_data.get_lieutenant_data_by_role(role)
 		if lieutenant:
 			lieutenant.reset_since_last_conquest()
+			lieutenant.player_wins += 1
 	else:
 		game_data.damage_player(1)
 		game_data.add_gold(1)
 		game_data.get_combat_zone_data(combatZone).opponent_capture_threshold.value += 5
+		if lieutenant:
+			lieutenant.lieutenant_wins += 1
 		
 	game_data.reset_combat_zone_data(combatZone)
 
@@ -1411,9 +1417,11 @@ func tryActivateAbility(card: Card) -> bool:
 	# For now, if there are multiple activated abilities, use the first one
 	# TODO: Add UI to choose between multiple abilities
 	var ability_to_activate = activated_abilities[0]
+	if not card.cardData.playerControlled and not ability_to_activate.can_be_activated_by_any_player:
+		return false
 	
 	# Check if the ability can be activated (costs can be paid)
-	if not CardPaymentManagerAL.canPayCosts(ability_to_activate.activation_costs, card.cardData):
+	if not CardPaymentManagerAL.canPayAnyActivationCost(ability_to_activate, card.cardData):
 		print("⚠️ Cannot pay activation costs for ", card.cardData.cardName)
 		return false
 	
@@ -1566,9 +1574,16 @@ func _matches_card_filter(filter: String) -> Array[CardData]:
 							token_index += 1
 						else:
 							cards = []
-					
 					_:
-						cards = cards.filter(func(c): return c.hasSubtype(key))
+						if key.begins_with("Might>"):
+							var might_threshold_text := key.substr(6)
+							if might_threshold_text.is_valid_int():
+								var might_threshold := int(might_threshold_text)
+								cards = cards.filter(func(c): return c.power > might_threshold)
+							else:
+								cards = []
+						else:
+							cards = cards.filter(func(c): return c.hasSubtype(key))
 				
 				token_index += 1
 		
@@ -2011,24 +2026,32 @@ func resolve_queue():
 		print("⚠️ [RESOLVABLE QUEUE] Already resolving, skipping nested resolution")
 		return
 	
-	if not trigger_queue.has_resolvables():
+	if not trigger_queue.has_resolvables() and countdown_cards_to_sacrifice.is_empty():
 		return
 	
 	print("🔄 [RESOLVABLE QUEUE] Starting resolution (", trigger_queue.size(), " resolvables)")
 	is_resolving_triggers = true
 	
-	while trigger_queue.has_resolvables():
-		var queued_resolvable = trigger_queue.get_next_resolvable()
+	while trigger_queue.has_resolvables() or not countdown_cards_to_sacrifice.is_empty():
+		while trigger_queue.has_resolvables():
+			var queued_resolvable = trigger_queue.get_next_resolvable()
+			if not queued_resolvable:
+				break
+			print("  ⚡ Resolving: ", queued_resolvable.source_card_data.cardName, " - ", queued_resolvable.ability.get_description())
+			await AbilityManagerAL.executeAbilityEffect(queued_resolvable.source_card_data, queued_resolvable.ability, self)
 		
-		if not queued_resolvable:
-			break
-		
-		print("  ⚡ Resolving: ", queued_resolvable.source_card_data.cardName, " - ", queued_resolvable.ability.get_description())
-		
-		# Execute the resolvable ability with event context
-		await AbilityManagerAL.executeAbilityEffect(queued_resolvable.source_card_data, queued_resolvable.ability, self)
+		if not countdown_cards_to_sacrifice.is_empty():
+			var pending_sacrifices: Array[CardData] = countdown_cards_to_sacrifice.duplicate()
+			countdown_cards_to_sacrifice.clear()
+			for card_data in pending_sacrifices:
+				if GameZone.is_in_play(game_data.get_card_zone(card_data)):
+					await EffectFactory.execute_effect(EffectType.Type.SACRIFICE, {"Defined": "Self"}, card_data, self)
 	is_resolving_triggers = false
 	print("✅ [RESOLVABLE QUEUE] Resolution complete")
+
+func defer_countdown_sacrifice(card_data: CardData) -> void:
+	if card_data and card_data not in countdown_cards_to_sacrifice:
+		countdown_cards_to_sacrifice.append(card_data)
 
 func emit_game_event(event_type: TriggeredAbility.GameEventType, card_data):
 	"""Emit a game event signal - abilities listening to this event will add themselves to the trigger queue"""
@@ -2074,6 +2097,8 @@ func emit_game_event(event_type: TriggeredAbility.GameEventType, card_data):
 			card_recycled.emit(card_data)
 		TriggeredAbility.GameEventType.END_OF_COMBAT:
 			end_of_combat.emit(null, card_data)
+		TriggeredAbility.GameEventType.COUNTDOWN_REACHED_ZERO:
+			countdown_reached_zero.emit(card_data)
 	
 	# After emitting the event, resolve any resolvables that were added to the queue
 	await resolve_queue()

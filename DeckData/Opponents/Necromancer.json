@@ -13,7 +13,8 @@
 		"combo": [
 			{ "card": "Opp1", "count": 1 },
 			{ "card": "Opp2", "count": 1 },
-			{ "card": "Opp3", "count": 1 }
+			{ "card": "Crumbling Skeleton", "count": 1 }
+			
 		]
 	},
 	"commander": {

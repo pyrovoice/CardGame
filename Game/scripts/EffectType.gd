@@ -27,6 +27,10 @@ enum Type {
 	# Relic mechanics
 	RELIC_DURABILITY_TICK,  # Decrement relic durability; sacrifice at zero
 	
+	# Countdown mechanic
+	COUNTDOWN_TICK,  # Decrement a card's Countdown charge counter; resolve its effect and sacrifice at zero
+	RAISE_COUNTDOWN,  # Raise the source card's Countdown using the sacrificed creature's power
+	
 	# State-based event that can be intercepted by replacement effects
 	DEATH,  # A permanent would die (move from battlefield to graveyard)
 	
@@ -82,6 +86,10 @@ static func type_to_string(effect_type: Type) -> String:
 			return "RemoveCardFromPlay"
 		Type.RELIC_DURABILITY_TICK:
 			return "RelicDurabilityTick"
+		Type.COUNTDOWN_TICK:
+			return "CountdownTick"
+		Type.RAISE_COUNTDOWN:
+			return "RaiseCountdown"
 		Type.DEATH:
 			return "Death"
 		Type.DRAFT:
@@ -143,6 +151,10 @@ static func string_to_type(effect_string: String) -> Type:
 			return Type.REMOVE_CARD_FROM_PLAY
 		"RelicDurabilityTick":
 			return Type.RELIC_DURABILITY_TICK
+		"CountdownTick":
+			return Type.COUNTDOWN_TICK
+		"RaiseCountdown":
+			return Type.RAISE_COUNTDOWN
 		"Death":
 			return Type.DEATH
 		"Draft":
@@ -177,7 +189,7 @@ static func is_valid_string(s: String) -> bool:
 # Get all available effect type strings
 static func get_all_strings() -> Array[String]:
 	return [
-		"DealDamage", "Pump", "Draw", "CreateToken", "CreateCard", "Cast", "AddType", 
+		"DealDamage", "Pump", "Draw", "CreateToken", "CreateCard", "Cast", "RaiseCountdown", "AddType",
 		"AddKeyword", "MoveCard", "SwitchPositions", "Destroy", "Bounce", "Exile", "Mill", 
 		"Discard", "Search", "Shuffle"
 	]

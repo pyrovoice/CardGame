@@ -10,17 +10,59 @@ class_name AbilityManager
 
 func activateAbility(source_card_data: CardData, activated_ability: ActivatedAbility, game_context: Game, pre_selections: SelectionManager.CardPlaySelections = null):
 	print("🔥 [ACTIVATED] Activating ability on ", source_card_data.cardName)
-	
-	# First, check if costs can be paid
-	if not CardPaymentManagerAL.canPayCosts(activated_ability.activation_costs, source_card_data):
+	var cost_options := CardPaymentManagerAL.get_activation_cost_options(activated_ability)
+	if not CardPaymentManagerAL.canPayAnyActivationCost(activated_ability, source_card_data):
 		print("⚠️ Cannot pay activation costs for ", source_card_data.cardName)
 		return false
+
+	if pre_selections == null:
+		pre_selections = SelectionManager.CardPlaySelections.new()
+		var sacrifice_candidates: Array[CardData] = []
+		var selection_count := -1
+		for cost_option in cost_options:
+			for cost in cost_option:
+				if cost.get("type", "") != "SacrificeAtLocation":
+					continue
+				var count: int = cost.get("count", 1)
+				if selection_count < 0:
+					selection_count = count
+				elif selection_count != count:
+					push_error("Alternative SacrificeAtLocation costs must require the same number of cards")
+					return false
+				for candidate in CardPaymentManagerAL.get_sacrifice_candidates(cost, source_card_data):
+					if candidate not in sacrifice_candidates:
+						sacrifice_candidates.append(candidate)
+		if selection_count > 0:
+			if game_context.game_view.headless:
+				var default_candidates: Array[CardData] = []
+				for option_index in range(cost_options.size() - 1, -1, -1):
+					for cost in cost_options[option_index]:
+						if cost.get("type", "") == "SacrificeAtLocation":
+							var option_candidates := CardPaymentManagerAL.get_sacrifice_candidates(cost, source_card_data)
+							if option_candidates.size() >= selection_count:
+								default_candidates.assign(option_candidates.slice(0, selection_count))
+								break
+					if not default_candidates.is_empty():
+						break
+				pre_selections.sacrifice_targets.assign(default_candidates)
+			else:
+				SelectionRequest.reset().with_pool(sacrifice_candidates).with_count(selection_count).with_description("valid creature at this location").with_context("sacrifice_for_" + source_card_data.cardName).with_casting_card(source_card_data)
+				var selected = await game_context.start_card_selection()
+				if selected == null or selected.size() != selection_count:
+					return false
+				pre_selections.sacrifice_targets.assign(selected)
 	
 	var card_name_for_debug = source_card_data.cardName  # Store card name before potential destruction
 
-	
-	# Pay costs - payCosts returns info for game_context to execute
-	var payment_info = CardPaymentManagerAL.payCosts(activated_ability.activation_costs, source_card_data, pre_selections)
+	# Prefer the last matching branch so later, more specific alternatives take effect.
+	var payment_info: Dictionary = {}
+	var selected_cost_option := -1
+	for option_index in range(cost_options.size() - 1, -1, -1):
+		var option_payment: Dictionary = CardPaymentManagerAL.payCosts(cost_options[option_index], source_card_data, pre_selections)
+		if option_payment.get("success", false):
+			payment_info = option_payment
+			selected_cost_option = option_index
+			break
 	if not payment_info.success:
 		print("❌ Failed to pay activation costs for ", card_name_for_debug)
 		return false
@@ -41,7 +83,10 @@ func activateAbility(source_card_data: CardData, activated_ability: ActivatedAbi
 		payment_info.card_to_tap.tap()
 	
 	# Execute the ability effect using CardData (which persists even if Card is freed)
-	await executeAbilityEffect(source_card_data, activated_ability, game_context)
+	await executeAbilityEffect(source_card_data, activated_ability, game_context, {
+		"SacrificedCards": payment_info.cards_to_sacrifice,
+		"_AlternativeCostPaid": selected_cost_option > 0,
+	})
 	
 	# Resolve state-based actions after ability execution
 	game_context.resolveStateBasedAction()
@@ -49,7 +94,7 @@ func activateAbility(source_card_data: CardData, activated_ability: ActivatedAbi
 	print("✅ [ACTIVATED] Completed ability activation")
 	return true
 
-func executeAbilityEffect(source_card_data: CardData, ability, game_context: Game):
+func executeAbilityEffect(source_card_data: CardData, ability, game_context: Game, additional_parameters: Dictionary = {}):
 	"""
 	Unified method to execute ability effects - used for triggered and activated abilities.
 	After an ability is triggered or activated, this handles the actual effect execution.
@@ -96,6 +141,16 @@ func executeAbilityEffect(source_card_data: CardData, ability, game_context: Gam
 	
 	# Resolve targets at the ability level (before effect execution)
 	var resolved_parameters = effect_parameters.duplicate()
+	for parameter_key in additional_parameters:
+		resolved_parameters[parameter_key] = additional_parameters[parameter_key]
+	if resolved_parameters.get("_AlternativeCostPaid", false):
+		var parameter_keys: Array = resolved_parameters.keys()
+		for parameter_key in parameter_keys:
+			if parameter_key.begins_with("Alternative") and parameter_key.length() > "Alternative".length():
+				var base_key := parameter_key.substr("Alternative".length())
+				resolved_parameters[base_key] = resolved_parameters[parameter_key]
+				resolved_parameters.erase(parameter_key)
+	resolved_parameters.erase("_AlternativeCostPaid")
 
 	# Merge target conditions generically; effect classes decide how to resolve targets.
 	for condition_key in target_conditions.keys():
@@ -106,7 +161,7 @@ func executeAbilityEffect(source_card_data: CardData, ability, game_context: Gam
 	# If required targeting cannot be satisfied, cancel effect execution.
 	var has_preselected_targets = resolved_parameters.has("Targets") and not resolved_parameters.get("Targets", []).is_empty()
 	var has_targeting_spec = resolved_parameters.has("Target") or resolved_parameters.has("ValidCards") or resolved_parameters.has("ValidTargets")
-	var requires_targets = bool(target_conditions.get("required", false)) or EffectType.requires_targeting(effect_type_enum)
+	var requires_targets = (bool(target_conditions.get("required", false)) or EffectType.requires_targeting(effect_type_enum)) and not resolved_parameters.has("Affected")
 
 	if not has_preselected_targets and has_targeting_spec:
 		var resolved_targets = TargetResolver.resolve_targets(resolved_parameters, source_card_data, game_context)
@@ -423,6 +478,9 @@ func evaluateCondition(condition: String, triggeringCard_data: CardData) -> bool
 				_:
 					push_warning("Unsupported type for IsType condition: " + timing)
 					return false
+		"HasCountdown":
+			# e.g. "Self.HasCountdown+Active" - timing is unused, kept for format consistency
+			return target_card_data.countdown > 0
 		_:
 			push_warning("Unsupported condition property: " + property)
 			return false

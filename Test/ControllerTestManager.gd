@@ -2715,3 +2715,157 @@ func test_consumable_cards_match_start_and_refill() -> bool:
 	print("✅ Consumable cards match start and refill test passed!")
 	return true
 
+func test_inevitable_doom_countdown_and_activation() -> bool:
+	"""Countdown zero destroys player creatures at Doom's combat location; its any-player ability
+	can sacrifice a non-token creature there and raises Countdown by 1 or 2 based on creature power."""
+	print("=== Testing Inevitable Doom Countdown and Activation ===")
+	var doom = createCardFromName("Inevitable Doom", GameZone.e.COMBAT_OPPONENT_1, false)
+	var local_player_creature = createTestCard("Doom Local Victim", 0, 2)
+	await game.execute_move_card(local_player_creature, GameZone.e.COMBAT_PLAYER_1)
+	var remote_player_creature = createCardDataForTest("Doom Remote Survivor", 2, GameZone.e.COMBAT_PLAYER_2)
+
+	if not assert_test_equal(doom.countdown, 1, "Inevitable Doom should start with one Countdown counter"):
+		return false
+	await game.trigger_phase("BeginningOfTurn")
+	if not assert_test_equal(game.game_data.get_card_zone(doom), GameZone.e.GRAVEYARD_OPPONENT,
+			"Doom should be sacrificed after CountdownZero resolves"):
+		return false
+	if not assert_test_equal(game.game_data.get_card_zone(local_player_creature), GameZone.e.GRAVEYARD_PLAYER,
+			"Doom should destroy player creatures at its own location"):
+		return false
+	if not assert_test_equal(game.game_data.get_card_zone(remote_player_creature), GameZone.e.COMBAT_PLAYER_2,
+			"Doom should leave player creatures at other locations untouched"):
+		return false
+
+	var second_doom = createCardFromName("Inevitable Doom", GameZone.e.COMBAT_OPPONENT_1, false)
+	var high_might_creature = createCardDataForTest("Doom Cost Creature", 4, GameZone.e.COMBAT_PLAYER_1)
+	var raise_ability: ActivatedAbility = second_doom.activated_abilities[0]
+	if not assert_test_true(raise_ability.can_be_activated_by_any_player,
+			"Activator$ Any should be parsed for Inevitable Doom"):
+		return false
+	var selections := SelectionManager.CardPlaySelections.new()
+	selections.add_sacrifice_target(high_might_creature)
+	var activated := await AbilityManagerAL.activateAbility(second_doom, raise_ability, game, selections)
+	if not assert_test_true(activated, "Inevitable Doom's SacHere ability should activate"):
+		return false
+	if not assert_test_equal(second_doom.countdown, 3,
+			"Sacrificing a 4-power creature should raise Countdown by 2"):
+		return false
+	if not assert_test_equal(game.game_data.get_card_zone(high_might_creature), GameZone.e.GRAVEYARD_PLAYER,
+			"The selected creature should be sacrificed"):
+		return false
+
+	var low_might_creature = createCardDataForTest("Doom Low-Might Cost", 3, GameZone.e.COMBAT_PLAYER_1)
+	var token_creature = createCardDataForTest("Doom Token Cost", 7, GameZone.e.COMBAT_PLAYER_1)
+	token_creature.isToken = true
+	var low_power_selections := SelectionManager.CardPlaySelections.new()
+	low_power_selections.add_sacrifice_target(low_might_creature)
+	activated = await AbilityManagerAL.activateAbility(second_doom, raise_ability, game, low_power_selections)
+	if not assert_test_true(activated, "Inevitable Doom should also activate with a lower-power creature"):
+		return false
+	if not assert_test_equal(second_doom.countdown, 4, "Sacrificing a 3-power creature should raise Countdown by 1"):
+		return false
+	if not assert_test_equal(game.game_data.get_card_zone(low_might_creature), GameZone.e.GRAVEYARD_PLAYER,
+			"The low-power non-token creature should be sacrificed"):
+		return false
+	if not assert_test_equal(game.game_data.get_card_zone(token_creature), GameZone.e.COMBAT_PLAYER_1,
+			"A token creature must not be a valid SacHere cost"):
+		return false
+	var token_selections := SelectionManager.CardPlaySelections.new()
+	token_selections.add_sacrifice_target(token_creature)
+	activated = await AbilityManagerAL.activateAbility(second_doom, raise_ability, game, token_selections)
+	if not assert_test_true(activated, "The alternative Might>3 cost should allow a high-power token"):
+		return false
+	if not assert_test_equal(second_doom.countdown, 6, "A 7-power token should pay the alternative cost and raise Countdown by 2"):
+		return false
+	if not assert_test_equal(game.game_data.get_card_zone(token_creature), GameZone.e.GRAVEYARD_PLAYER,
+			"The high-power token should be sacrificed through the alternative cost"):
+		return false
+
+	print("✅ Inevitable Doom countdown and activation test passed!")
+	return true
+
+func test_activated_alternative_cost_might_allows_token() -> bool:
+	"""Test a custom activated ability rejecting a weak token, then accepting it via its Might alternative."""
+	var card_text = (
+		"Name:TestAlternativeCostSource\n" +
+		"Types:Relic\n" +
+		"AA:AB$ AddGold | Cost$ SacHere<1:Creature+NonToken> | Cost$ SacHere<1:Creature+Might>3> | Amount$ 1 | AlternativeAmount$ 2\n" +
+		"CardText:Test alternative-cost card"
+	)
+	var source_template: CardData = CardLoaderAL.parse_card_data(card_text)
+	var source_card: CardData = game.createCardData(source_template, GameZone.e.COMBAT_PLAYER_1, true)
+	var token_creature: CardData = createCardDataForTest("Alternative Cost Token", 1, GameZone.e.COMBAT_PLAYER_1)
+	token_creature.isToken = true
+	var ability: ActivatedAbility = source_card.activated_abilities[0]
+	var selections := SelectionManager.CardPlaySelections.new()
+	selections.add_sacrifice_target(token_creature)
+	var gold_before: int = game.game_data.player_gold.getValue()
+
+	var activated: bool = await AbilityManagerAL.activateAbility(source_card, ability, game, selections)
+	if not assert_test_false(activated, "A 1-power token should not satisfy either sacrifice cost"):
+		return false
+	if not assert_test_equal(game.game_data.player_gold.getValue(), gold_before,
+			"Failed activation should not add gold"):
+		return false
+	if not assert_test_equal(game.game_data.get_card_zone(token_creature), GameZone.e.COMBAT_PLAYER_1,
+			"Failed activation should leave the token in combat"):
+		return false
+
+	token_creature.power = 4
+	activated = await AbilityManagerAL.activateAbility(source_card, ability, game, selections)
+	if not assert_test_true(activated, "A 4-power token should satisfy the alternative Might cost"):
+		return false
+	if not assert_test_equal(game.game_data.get_card_zone(token_creature), GameZone.e.GRAVEYARD_PLAYER,
+			"Successful activation should sacrifice the selected token"):
+		return false
+	if not assert_test_equal(game.game_data.player_gold.getValue(), gold_before + 2,
+			"Paying the alternative cost should apply AlternativeAmount 2"):
+		return false
+
+	return true
+
+func test_custom_countdown_zero_trigger_resolves_before_sacrifice() -> bool:
+	"""Test the universal countdown tick and queued CountdownZero effect on a custom card."""
+	var template := CardData.new()
+	template.cardName = "Test Countdown Source"
+	template.addType(CardData.CardType.RELIC)
+	var zero_ability := TriggeredAbility.new(
+		template,
+		TriggeredAbility.GameEventType.COUNTDOWN_REACHED_ZERO,
+		EffectType.Type.ADD_GOLD
+	)
+	zero_ability.trigger_conditions[TriggeredAbility.TriggerCondition.VALID_CARD] = "Card.Self"
+	zero_ability.trigger_conditions[TriggeredAbility.TriggerCondition.TRIGGER_ZONES] = [GameZone.e.BATTLEFIELD_PLAYER]
+	zero_ability.effect_parameters = {"Amount": 3}
+	template.triggered_abilities.append(zero_ability)
+	var countdown_card: CardData = game.createCardData(template, GameZone.e.BATTLEFIELD_PLAYER, true)
+	countdown_card.countdown = 2
+	var gold_before: int = game.game_data.player_gold.getValue()
+
+	await game.trigger_phase("BeginningOfTurn")
+	if not assert_test_equal(countdown_card.countdown, 1, "First beginning-of-turn tick should reduce Countdown to 1"):
+		return false
+	if not assert_test_equal(game.game_data.player_gold.getValue(), gold_before,
+			"CountdownZero effect should not fire before the counter reaches zero"):
+		return false
+
+	await game.trigger_phase("BeginningOfTurn")
+	if not assert_test_equal(countdown_card.countdown, 0, "Second beginning-of-turn tick should reduce Countdown to 0"):
+		return false
+	if not assert_test_equal(game.game_data.player_gold.getValue(), gold_before + 3,
+			"CountdownZero ability should add gold through the resolvable queue"):
+		return false
+	if not assert_test_equal(game.game_data.get_card_zone(countdown_card), GameZone.e.GRAVEYARD_PLAYER,
+			"Countdown source should be sacrificed after its zero trigger resolves"):
+		return false
+
+	return true
+
+func createCardDataForTest(card_name: String, power: int, zone: GameZone.e) -> CardData:
+	var template := CardData.new()
+	template.cardName = card_name
+	template.addType(CardData.CardType.CREATURE)
+	template._power = power
+	return game.createCardData(template, zone, true)
+

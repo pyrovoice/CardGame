@@ -10,7 +10,8 @@ enum Type {
 	CHANGED_ZONE,  # Card changing zones (with Origin/Destination filtering)
 	PHASE,  # Phase-based triggers (beginning of turn, combat, end of turn)
 	STRIKE,  # Creature strikes in combat
-	Card_DIES  # Card going to graveyard from battlefield
+	Card_DIES,  # Card going to graveyard from battlefield
+	COUNTDOWN_ZERO  # A card's Countdown charge counter reached zero
 }
 
 # Convert trigger type enum to string representation
@@ -32,6 +33,8 @@ static func type_to_string(trigger_type: Type) -> String:
 			return "Strikes"
 		Type.Card_DIES:
 			return "CardDies"
+		Type.COUNTDOWN_ZERO:
+			return "CountdownZero"
 		_:
 			return "UNKNOWN"
 
@@ -54,6 +57,8 @@ static func string_to_type(trigger_string: String) -> Type:
 			return Type.STRIKE
 		"CardDies":
 			return Type.Card_DIES
+		"CountdownZero":
+			return Type.COUNTDOWN_ZERO
 		# Support old format for backwards compatibility
 		"ChangesZone":
 			return Type.CHANGED_ZONE  # Legacy mapping
@@ -71,7 +76,7 @@ static func string_to_type(trigger_string: String) -> Type:
 
 # Get all available trigger type strings (in card file format)
 static func get_all_strings() -> Array[String]:
-	return ["CardDraw", "CardPlayed", "CardEnters", "StartAttack", "ChangedZone", "Phase"]
+	return ["CardDraw", "CardPlayed", "CardEnters", "StartAttack", "ChangedZone", "Phase", "CountdownZero"]
 
 # Check if a trigger type represents a card entering the battlefield
 static func is_battlefield_entry(trigger_type: Type) -> bool:

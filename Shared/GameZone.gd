@@ -103,6 +103,20 @@ static func is_combat_zone(zone: e) -> bool:
 	return zone in [e.COMBAT_PLAYER_1, e.COMBAT_PLAYER_2, e.COMBAT_PLAYER_3,
 					e.COMBAT_OPPONENT_1, e.COMBAT_OPPONENT_2, e.COMBAT_OPPONENT_3]
 
+static func location_index_of(zone: e) -> int:
+	match zone:
+		e.COMBAT_PLAYER_1, e.COMBAT_OPPONENT_1: return 0
+		e.COMBAT_PLAYER_2, e.COMBAT_OPPONENT_2: return 1
+		e.COMBAT_PLAYER_3, e.COMBAT_OPPONENT_3: return 2
+		_: return -1
+
+static func combat_zone_for(location_index: int, player_side: bool) -> e:
+	if location_index < 0 or location_index > 2:
+		return e.UNKNOWN
+	if player_side:
+		return (e.COMBAT_PLAYER_1 + location_index) as e
+	return (e.COMBAT_OPPONENT_1 + location_index) as e
+
 # Helper to check if a zone is a battlefield zone (non-combat)
 static func is_battlefield_zone(zone: e) -> bool:
 	# Only the player has a battlefield staging area - opponent cards go straight to combat

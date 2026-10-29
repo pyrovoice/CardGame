@@ -43,6 +43,7 @@ enum GameEventType {
 	CARD_RECYCLED,        # When a card is recycled from hand
 	END_OF_COMBAT,        # After all combat in a zone is resolved
 	OPPONENT_TURN_END,    # After the opponent AI finishes its main phase
+	COUNTDOWN_REACHED_ZERO,  # A card's Countdown charge counter reached zero (fires before it's sacrificed)
 }
 
 enum TriggerCondition {
@@ -72,6 +73,7 @@ const EVENT_TO_SIGNAL = {
 	GameEventType.CARD_RECYCLED: "card_recycled",
 	GameEventType.END_OF_COMBAT: "end_of_combat",
 	GameEventType.OPPONENT_TURN_END: "opponent_turn_ended",
+	GameEventType.COUNTDOWN_REACHED_ZERO: "countdown_reached_zero",
 }
 
 var game_event_trigger: GameEventType
@@ -247,6 +249,8 @@ static func event_to_string(event: GameEventType) -> String:
 			return "EndOfTurnCleanup"
 		GameEventType.STRIKE:
 			return "Strike"
+		GameEventType.COUNTDOWN_REACHED_ZERO:
+			return "CountdownReachedZero"
 	return "Unknown"
 
 static func string_to_event(event_str: String) -> GameEventType:
@@ -272,4 +276,6 @@ static func string_to_event(event_str: String) -> GameEventType:
 			return GameEventType.BEGINNING_OF_TURN
 		"EndOfTurnCleanup":
 			return GameEventType.END_OF_TURN_CLEANUP
+		"CountdownReachedZero":
+			return GameEventType.COUNTDOWN_REACHED_ZERO
 	return GameEventType.CARD_ENTERED_PLAY  # Default

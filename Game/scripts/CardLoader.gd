@@ -97,6 +97,9 @@ func parse_card_data(card_text: String) -> CardData:
 	if "Durability" in properties:
 		card_data.durability = int(properties["Durability"])
 	
+	if "Countdown" in properties:
+		card_data.countdown = int(properties["Countdown"])
+	
 	# Set CardText from collected content
 	if card_text_content.size() > 0:
 		card_data.text_box = "\n".join(card_text_content).strip_edges()
@@ -274,6 +277,10 @@ func _parse_effect_parameters_from_parts(parts: Array) -> Dictionary:
 			parameters["subAbility"] = part.substr(12)
 		elif part.begins_with("Affected$"):
 			parameters["Affected"] = part.substr(10)
+		elif part.begins_with("Alternative"):
+			var alternative_parts := part.split("$", false, 1)
+			if alternative_parts.size() == 2:
+				parameters[alternative_parts[0].strip_edges()] = alternative_parts[1].strip_edges()
 	
 	return parameters
 
@@ -544,6 +551,8 @@ func _convert_trigger_type_to_game_event(trigger_type: TriggerType.Type, conditi
 			return TriggeredAbility.GameEventType.STRIKE
 		TriggerType.Type.Card_DIES:
 			return TriggeredAbility.GameEventType.CARD_DIED
+		TriggerType.Type.COUNTDOWN_ZERO:
+			return TriggeredAbility.GameEventType.COUNTDOWN_REACHED_ZERO
 		_:
 			push_warning("Unknown TriggerType: " + str(trigger_type))
 			return TriggeredAbility.GameEventType.CARD_ENTERED_PLAY  # Default fallback
@@ -720,9 +729,11 @@ func _create_replacement_effect(source: CardData, event_type_str: String, condit
 func parse_activated_ability(activated_text: String, _svar_effects: Dictionary, card_data: CardData) -> ActivatedAbility:
 	var effect_type_str: String = ""
 	var activation_costs: Array[Dictionary] = []
+	var activation_cost_options: Array[Array] = []
 	var target_conditions: Dictionary = {}
 	var effect_parameters: Dictionary = {}
 	var description: String = ""
+	var ability_any_player: bool = false
 	
 	var activated_parts = activated_text.split(" | ")
 	
@@ -736,9 +747,9 @@ func parse_activated_ability(activated_text: String, _svar_effects: Dictionary, 
 			# Old format: "$ PumpAll" (e.g., "AA:$ PumpAll | Cost$ ...")
 			effect_type_str = part.substr(2).strip_edges()
 		elif part.begins_with("Cost$"):
-			# Parse the cost components (e.g., "Sac.Self+Pay.1" or "{T} Sac<filter>")
+			# Repeated Cost$ fields are mutually exclusive payment options.
 			var cost_string = part.substr(6)  # Remove "Cost$ "
-			activation_costs = parse_activation_costs(cost_string)
+			activation_cost_options.append(parse_activation_costs(cost_string))
 		elif part.begins_with("ValidCards$"):
 			target_conditions["ValidCards"] = part.substr(12)
 		elif part.begins_with("ValidTargets$"):
@@ -755,6 +766,12 @@ func parse_activated_ability(activated_text: String, _svar_effects: Dictionary, 
 			effect_parameters["Amount"] = part.substr(8)
 		elif part.begins_with("Description$"):
 			description = part.substr(13)
+		elif part.begins_with("Activator$"):
+			ability_any_player = part.substr(10).strip_edges() == "Any"
+		elif part.begins_with("Alternative"):
+			var alternative_parts := part.split("$", false, 1)
+			if alternative_parts.size() == 2:
+				effect_parameters[alternative_parts[0].strip_edges()] = alternative_parts[1].strip_edges()
 	
 	# Validate effect type before converting
 	if effect_type_str.is_empty():
@@ -770,10 +787,14 @@ func parse_activated_ability(activated_text: String, _svar_effects: Dictionary, 
 	
 	# Create ActivatedAbility instance
 	var ability = ActivatedAbility.new(card_data, effect_type)
-	ability.activation_costs = activation_costs
+	if not activation_cost_options.is_empty():
+		ability.activation_costs = activation_cost_options[0]
+		for option_index in range(1, activation_cost_options.size()):
+			ability.alternative_activation_costs.append(activation_cost_options[option_index])
 	ability.effect_parameters = effect_parameters
 	ability.targeting_requirements = target_conditions
 	ability.description = description
+	ability.can_be_activated_by_any_player = ability_any_player
 	return ability
 
 # Parse activation costs from cost string (e.g., "T Sac<1:Card.Creature>" or "Sac.Self+Pay.1")
@@ -828,6 +849,17 @@ func parse_activation_costs(cost_string: String) -> Array[Dictionary]:
 		if cost_part == "T":
 			cost_data["type"] = "Tap"
 			cost_data["target"] = "Self"
+		# Sacrifice a card matching the filter from either side at this card's location.
+		elif cost_part.begins_with("SacHere<") and cost_part.ends_with(">"):
+			cost_data["type"] = "SacrificeAtLocation"
+			var inner_content = cost_part.substr(8, cost_part.length() - 9)
+			if ":" in inner_content:
+				var parts = inner_content.split(":", false, 1)
+				cost_data["count"] = int(parts[0].strip_edges())
+				cost_data["target"] = parts[1].strip_edges()
+			else:
+				cost_data["count"] = 1
+				cost_data["target"] = inner_content.strip_edges()
 		# Check for sacrifice with filter (new format: Sac<count:filter> or Sac<filter>)
 		elif cost_part.begins_with("Sac<") and cost_part.ends_with(">"):
 			cost_data["type"] = "Sacrifice"
@@ -1258,6 +1290,8 @@ func _duplicate_activated_ability(original: ActivatedAbility, new_owner: CardDat
 	var copy = ActivatedAbility.new(new_owner, original.effect_type)
 	copy.effect_parameters = original.effect_parameters.duplicate()
 	copy.targeting_requirements = original.targeting_requirements.duplicate()
+	copy.alternative_activation_costs = original.alternative_activation_costs.duplicate(true)
+	copy.can_be_activated_by_any_player = original.can_be_activated_by_any_player
 	for cost in original.activation_costs:
 		copy.activation_costs.append(cost.duplicate())
 	return copy
@@ -1301,6 +1335,7 @@ func duplicateCardScript(original: CardData) -> CardData:
 	copy.colors = original.colors.duplicate()
 	copy.rarity = original.rarity
 	copy.durability = original.durability
+	copy.countdown = original.countdown
 	
 	# Deep copy types array
 	copy._types = original._types.duplicate()
@@ -1358,6 +1393,13 @@ func duplicateCardScript(original: CardData) -> CardData:
 	relic_trigger.trigger_conditions[TriggeredAbility.TriggerCondition.TRIGGER_ZONES] = GameZone.parse_trigger_zones("Battlefield")
 	relic_trigger.trigger_conditions[TriggeredAbility.TriggerCondition.CONDITION] = "Self.IsType+Relic"
 	copy.triggered_abilities.append(relic_trigger)
+	
+	# Add universal Countdown-tick trigger to every card.
+	# It checks countdown > 0 before enqueuing, so cards without a Countdown never pay the cost.
+	var countdown_trigger = TriggeredAbility.new(copy, TriggeredAbility.GameEventType.BEGINNING_OF_TURN, EffectType.Type.COUNTDOWN_TICK)
+	countdown_trigger.trigger_conditions[TriggeredAbility.TriggerCondition.TRIGGER_ZONES] = GameZone.parse_trigger_zones("Battlefield")
+	countdown_trigger.trigger_conditions[TriggeredAbility.TriggerCondition.CONDITION] = "Self.HasCountdown+Active"
+	copy.triggered_abilities.append(countdown_trigger)
 	
 	return copy
 

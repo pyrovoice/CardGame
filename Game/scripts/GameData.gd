@@ -39,7 +39,7 @@ func _init():
 	player_gold = SignalInt.new(3)  # Starting gold
 	commander_gold = SignalInt.new(0)
 	recycling_remaining = SignalInt.new(3)  # Recycling uses per turn
-	danger_level = SignalInt.new(3)
+	danger_level = SignalInt.new(0)
 	current_turn = SignalInt.new(1)
 	
 	# Initialize empty deck lists (will be populated in game.gd)
@@ -131,7 +131,7 @@ func reset_game():
 	player_shield.value = 3
 	player_points.value = 0
 	player_gold.value = 3
-	danger_level.value = 5
+	danger_level.value = 0
 	current_turn.value = 1
 	
 	# Reset capture values
@@ -145,6 +145,8 @@ func reset_game():
 	# New combat: reset each Lieutenant's since-last-conquest refill counter
 	for lieutenant in lieutenant_datas:
 		lieutenant.reset_since_last_conquest()
+		lieutenant.player_wins = 0
+		lieutenant.lieutenant_wins = 0
 
 func reset_combat_resolution_flags():
 	"""Reset all combat resolution flags at start of turn"""
@@ -164,10 +166,17 @@ func get_lieutenant_data_by_role(role: String) -> LieutenantData:
 	return null
 
 func setOpponentGold():
-	"""Give each Lieutenant (and the Commander) a fresh budget equal to the danger level for the turn"""
+	"""Each Lieutenant's budget is BASE + player wins - Lieutenant wins at its location; the Commander
+	still follows danger level. Whatever gold the Commander didn't spend last turn is handed to a
+	random Lieutenant on top of their own budget this turn."""
+	var leftover_commander_gold = commander_gold.getValue()
 	for lieutenant in lieutenant_datas:
-		lieutenant.gold.setValue(danger_level.getValue())
+		lieutenant.gold.setValue(lieutenant.get_turn_budget())
 	commander_gold.setValue(danger_level.getValue())
+	
+	if leftover_commander_gold > 0 and lieutenant_datas.size() > 0:
+		var chosen_lieutenant = lieutenant_datas[randi() % lieutenant_datas.size()]
+		chosen_lieutenant.gold.setValue(chosen_lieutenant.gold.getValue() + leftover_commander_gold)
 
 func debug_player_resources():
 	"""Debug function to print current player resources"""
