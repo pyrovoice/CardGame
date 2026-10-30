@@ -33,6 +33,7 @@ enum Type {
 	
 	# State-based event that can be intercepted by replacement effects
 	DEATH,  # A permanent would die (move from battlefield to graveyard)
+	CREATURE_ATTACK,  # A creature attacks with no blocker in its slot (Defender can intercept)
 	
 	# Draft effects
 	DRAFT,  # Draft a card from an archetype pool to hand
@@ -92,6 +93,8 @@ static func type_to_string(effect_type: Type) -> String:
 			return "RaiseCountdown"
 		Type.DEATH:
 			return "Death"
+		Type.CREATURE_ATTACK:
+			return "CreatureAttack"
 		Type.DRAFT:
 			return "Draft"
 		Type.ADD_GOLD:
@@ -157,6 +160,8 @@ static func string_to_type(effect_string: String) -> Type:
 			return Type.RAISE_COUNTDOWN
 		"Death":
 			return Type.DEATH
+		"CreatureAttack":
+			return Type.CREATURE_ATTACK
 		"Draft":
 			return Type.DRAFT
 		"AddGold":

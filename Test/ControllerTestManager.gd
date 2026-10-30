@@ -56,7 +56,7 @@ func test_card_play_basic():
 	if not assertCardCount(1, "hand"):
 		return false
 	
-	await game.tryPlayCard(card, GameZone.e.BATTLEFIELD_PLAYER)
+	await game.tryPlayCard(card, GameZone.e.LOCATION_1_PLAYER_CAMP)
 	
 	if not assertCardCount(2, "play"):
 		return false
@@ -76,7 +76,7 @@ func test_insufficient_gold():
 	if not assert_test_equal(gold_before, 0, "Gold should be 0 before play attempt"):
 		return false
 	
-	await game.tryPlayCard(card, GameZone.e.BATTLEFIELD_PLAYER)
+	await game.tryPlayCard(card, GameZone.e.LOCATION_1_PLAYER_CAMP)
 	
 	# Card should still be in hand (payment should have failed)
 	if not assertCardCount(0, "play"):
@@ -93,8 +93,8 @@ func test_goblin_pair():
 	"""Test Goblin Pair card creation and spawning"""
 	var c: CardData = createCardFromName("goblin pair", GameZone.e.HAND_PLAYER)
 	game.game_data.player_gold.setValue(99)
-	await game.tryPlayCard(c, GameZone.e.BATTLEFIELD_PLAYER)
-	var cardsInPlay = game.game_data.get_cards_in_zone(GameZone.e.BATTLEFIELD_PLAYER)
+	await game.tryPlayCard(c, GameZone.e.LOCATION_1_PLAYER_CAMP)
+	var cardsInPlay = game.game_data.get_cards_in_zone(GameZone.e.LOCATION_1_PLAYER_CAMP)
 	if not assert_test_equal(cardsInPlay.size(), 2, "Goblin Pair should spawn 2 cards"):
 		return false
 
@@ -144,6 +144,10 @@ func test_combat_location_independence():
 	# Play goblin2 to second combat location
 	await game.tryPlayCard(goblin2, GameZone.e.COMBAT_PLAYER_2)
 	
+	# Cards land in their location's Camp by default - manually move each into its combat grid
+	await game.tryMoveCard(goblin1, combat_zone_1)
+	await game.tryMoveCard(goblin2, combat_zone_2)
+	
 	# Verify both cards are assigned to their respective combat zones (DATA LAYER)
 	var goblin1_zone = game.game_data.get_card_zone(goblin1)
 	var goblin2_zone = game.game_data.get_card_zone(goblin2)
@@ -186,11 +190,285 @@ func test_combat_location_independence():
 		"Second combat zone's player_capture_current should not have changed"):
 		return false
 
+func test_giant_vs_one_small() -> bool:
+	"""Test that a Giant creature (combat size 2) resolves normally in a simple 1v1 fight"""
+	print("=== Testing Giant vs One Small Creature ===")
+
+	var giant_tpl = CardData.new()
+	giant_tpl.cardName = "Test Giant"
+	giant_tpl.addType(CardData.CardType.CREATURE)
+	giant_tpl._power = 3
+	giant_tpl.add_keyword("Giant")
+	var giant = game.createCardData(giant_tpl, GameZone.e.COMBAT_PLAYER_1, true)
+
+	var small_tpl = CardData.new()
+	small_tpl.cardName = "Test Small"
+	small_tpl.addType(CardData.CardType.CREATURE)
+	small_tpl._power = 2
+	var small = game.createCardData(small_tpl, GameZone.e.COMBAT_OPPONENT_1, false)
+
+	await game.resolve_combat_for_zone(GameZone.e.COMBAT_PLAYER_1)
+
+	if not assert_test_equal(giant.getDamage(), 2, "Giant should take damage equal to the small creature's power"):
+		return false
+	if not assert_test_equal(small.getDamage(), 3, "Small creature should take damage equal to the Giant's power"):
+		return false
+	print("  ✅ Giant and small creature exchanged damage normally in 1v1 combat")
+	return true
+
+func test_giant_vs_two_small() -> bool:
+	"""Test that a Giant occupying both combat columns takes a separate strike from each overlapping opponent"""
+	print("=== Testing Giant vs Two Small Creatures ===")
+
+	var giant_tpl = CardData.new()
+	giant_tpl.cardName = "Test Giant"
+	giant_tpl.addType(CardData.CardType.CREATURE)
+	giant_tpl._power = 99
+	giant_tpl.add_keyword("Giant")
+	var giant = game.createCardData(giant_tpl, GameZone.e.COMBAT_PLAYER_1, true)
+
+	var small_a_tpl = CardData.new()
+	small_a_tpl.cardName = "Test Small A"
+	small_a_tpl.addType(CardData.CardType.CREATURE)
+	small_a_tpl._power = 2
+	var small_a = game.createCardData(small_a_tpl, GameZone.e.COMBAT_OPPONENT_1, false)
+
+	var small_b_tpl = CardData.new()
+	small_b_tpl.cardName = "Test Small B"
+	small_b_tpl.addType(CardData.CardType.CREATURE)
+	small_b_tpl._power = 3
+	var small_b = game.createCardData(small_b_tpl, GameZone.e.COMBAT_OPPONENT_1, false)
+
+	await game.resolve_combat_for_zone(GameZone.e.COMBAT_PLAYER_1)
+
+	if not assert_test_equal(giant.getDamage(), 5, "Giant should take the sum of both opponents' power (2+3)"):
+		return false
+	print("  ✅ Giant received two separate strikes totaling 5 damage")
+
+	var graveyard_opponent = game.game_data.get_cards_in_zone(GameZone.e.GRAVEYARD_OPPONENT)
+	if not assert_test_true(graveyard_opponent.has(small_a), "Small A should have died from the Giant's 99 power"):
+		return false
+	if not assert_test_true(graveyard_opponent.has(small_b), "Small B should have died from the Giant's 99 power"):
+		return false
+	print("  ✅ Both small creatures died individually from the Giant's strike")
+	return true
+
+func test_giant_vs_giant_and_small() -> bool:
+	"""Test cross-column overlap between a Giant+Small lineup on each side"""
+	print("=== Testing Giant+Small vs Small+Giant ===")
+
+	# Player: [Giant (5), Small (2)] -> Giant occupies columns 0-1, Small occupies column 2
+	var player_giant_tpl = CardData.new()
+	player_giant_tpl.cardName = "Test Player Giant"
+	player_giant_tpl.addType(CardData.CardType.CREATURE)
+	player_giant_tpl._power = 5
+	player_giant_tpl.add_keyword("Giant")
+	var player_giant = game.createCardData(player_giant_tpl, GameZone.e.COMBAT_PLAYER_1, true)
+
+	var player_small_tpl = CardData.new()
+	player_small_tpl.cardName = "Test Player Small"
+	player_small_tpl.addType(CardData.CardType.CREATURE)
+	player_small_tpl._power = 2
+	var player_small = game.createCardData(player_small_tpl, GameZone.e.COMBAT_PLAYER_1, true)
+
+	# Opponent: [Small (3), Giant (4)] -> Small occupies column 0, Giant occupies columns 1-2
+	var opponent_small_tpl = CardData.new()
+	opponent_small_tpl.cardName = "Test Opponent Small"
+	opponent_small_tpl.addType(CardData.CardType.CREATURE)
+	opponent_small_tpl._power = 3
+	var opponent_small = game.createCardData(opponent_small_tpl, GameZone.e.COMBAT_OPPONENT_1, false)
+
+	var opponent_giant_tpl = CardData.new()
+	opponent_giant_tpl.cardName = "Test Opponent Giant"
+	opponent_giant_tpl.addType(CardData.CardType.CREATURE)
+	opponent_giant_tpl._power = 4
+	opponent_giant_tpl.add_keyword("Giant")
+	var opponent_giant = game.createCardData(opponent_giant_tpl, GameZone.e.COMBAT_OPPONENT_1, false)
+
+	await game.resolve_combat_for_zone(GameZone.e.COMBAT_PLAYER_1)
+
+	if not assert_test_equal(player_giant.getDamage(), 7, "Player Giant should be struck by both the opposing Small and Giant (3+4)"):
+		return false
+	if not assert_test_equal(opponent_giant.getDamage(), 7, "Opponent Giant should be struck by both the Player Giant and Small (5+2)"):
+		return false
+	if not assert_test_equal(player_small.getDamage(), 4, "Player Small should only overlap the Opponent Giant's column"):
+		return false
+	if not assert_test_equal(opponent_small.getDamage(), 5, "Opponent Small should only overlap the Player Giant's column"):
+		return false
+	print("  ✅ All column overlaps matched expected damage totals")
+	return true
+
+func test_cast_discount_requires_empty_location() -> bool:
+	"""Test that a CastDiscount-cost card is unaffordable at an occupied location but
+	affordable (with the discount applied) at an empty one."""
+	print("=== Testing CastDiscount at Occupied vs Empty Location ===")
+
+	# Step 1: Create a card in hand with a CastDiscount additional cost (costs 2, discount -1)
+	var discount_tpl = CardData.new()
+	discount_tpl.cardName = "Test Discount Creature"
+	discount_tpl.addType(CardData.CardType.CREATURE)
+	discount_tpl.goldCost = 2
+	discount_tpl._power = 1
+	discount_tpl.additionalCosts.append({"cost_type": "CastDiscount", "amount": 1})
+	var discount_card = game.createCardData(discount_tpl, GameZone.e.HAND_PLAYER, true)
+
+	# Step 2: Create an occupant creature in location 1's player Camp (cards land in Camp by
+	# default now, so that's what CastDiscount checks for emptiness)
+	var occupant_tpl = CardData.new()
+	occupant_tpl.cardName = "Test Occupant"
+	occupant_tpl.addType(CardData.CardType.CREATURE)
+	occupant_tpl._power = 1
+	game.createCardData(occupant_tpl, GameZone.e.LOCATION_1_PLAYER_CAMP, true)
+
+	# Step 3: Set player gold to 1 - not enough for the base cost of 2, only enough with the discount
+	setPlayerGold(1)
+
+	# Step 4: Try to play at the occupied location - should fail (cost stays 2, can't afford)
+	await game.tryPlayCard(discount_card, GameZone.e.COMBAT_PLAYER_1)
+
+	if not assert_test_equal(game.game_data.get_card_zone(discount_card), GameZone.e.HAND_PLAYER,
+			"Card should remain in hand when played to an occupied location (no discount, unaffordable)"):
+		return false
+	if not assert_test_equal(game.game_data.get_cards_in_zone(GameZone.e.LOCATION_1_PLAYER_CAMP).size(), 1,
+			"Occupied Camp should still only have the occupant creature"):
+		return false
+	if not assert_test_equal(game.game_data.player_gold.getValue(), 1,
+			"Gold should be unchanged after the failed play attempt"):
+		return false
+	print("  ✅ Card correctly failed to play at the occupied location")
+
+	# Step 5: Try to play at an empty location - discount should apply, making it affordable
+	await game.tryPlayCard(discount_card, GameZone.e.COMBAT_PLAYER_2)
+
+	if not assert_test_equal(game.game_data.get_card_zone(discount_card), GameZone.e.LOCATION_2_PLAYER_CAMP,
+			"Card should be played to the empty location's Camp with the discount applied"):
+		return false
+	if not assert_test_equal(game.game_data.player_gold.getValue(), 0,
+			"Gold should be spent (1 gold after the CastDiscount reduces cost from 2 to 1)"):
+		return false
+	print("  ✅ Card successfully played at the empty location with the discount applied")
+
+	print("✅ CastDiscount location test passed!")
+	return true
+
+func test_cast_discount_applies_even_with_full_gold() -> bool:
+	"""Test that CastDiscount still reduces the cost at an empty location even when the
+	player could otherwise afford the full price - only the discounted amount should be spent."""
+	print("=== Testing CastDiscount Applies Even With Enough Gold For Full Cost ===")
+
+	# Card costs 2, with a CastDiscount of 1 (discounted cost = 1)
+	var discount_tpl = CardData.new()
+	discount_tpl.cardName = "Test Discount Creature"
+	discount_tpl.addType(CardData.CardType.CREATURE)
+	discount_tpl.goldCost = 2
+	discount_tpl._power = 1
+	discount_tpl.additionalCosts.append({"cost_type": "CastDiscount", "amount": 1})
+	var discount_card = game.createCardData(discount_tpl, GameZone.e.HAND_PLAYER, true)
+
+	# Enough gold to pay the full cost of 2, to make sure the discount isn't skipped just because it's affordable
+	setPlayerGold(2)
+
+	await game.tryPlayCard(discount_card, GameZone.e.COMBAT_PLAYER_1)
+
+	if not assert_test_equal(game.game_data.get_card_zone(discount_card), GameZone.e.LOCATION_1_PLAYER_CAMP,
+			"Card should be played to the empty location's Camp"):
+		return false
+	if not assert_test_equal(game.game_data.player_gold.getValue(), 1,
+			"Only the discounted cost (1) should be spent, leaving 1 gold, even though 2 was affordable"):
+		return false
+	print("  ✅ Discount was correctly applied instead of paying the full cost")
+
+	print("✅ CastDiscount full-gold test passed!")
+	return true
+
+func test_camp_to_combat_flow() -> bool:
+	"""Test the full Camp/Combat flow: play a card into Camp, start combat (opponent Camp
+	creature auto-moves in), manually move the player's creature into combat, then resolve
+	and verify damage/death."""
+	print("=== Testing Camp -> Combat -> Resolve Flow ===")
+
+	var combat_zone = game.game_view.get_combat_zones()[0]
+
+	# Step 1: Play a creature from hand - it should land in the location's player Camp
+	var player_tpl = CardData.new()
+	player_tpl.cardName = "Test Camp Attacker"
+	player_tpl.addType(CardData.CardType.CREATURE)
+	player_tpl.goldCost = 0
+	player_tpl._power = 5
+	var player_card = game.createCardData(player_tpl, GameZone.e.HAND_PLAYER, true)
+
+	await game.tryPlayCard(player_card, GameZone.e.COMBAT_PLAYER_1)
+
+	if not assert_test_equal(game.game_data.get_card_zone(player_card), GameZone.e.LOCATION_1_PLAYER_CAMP,
+			"Played card should land in the location's player Camp, not directly in combat"):
+		return false
+	print("  ✅ Player creature landed in Location 1's Camp")
+
+	# Step 2: Create an opponent creature directly in that location's opponent Camp
+	var opponent_tpl = CardData.new()
+	opponent_tpl.cardName = "Test Camp Defender"
+	opponent_tpl.addType(CardData.CardType.CREATURE)
+	opponent_tpl._power = 2
+	var opponent_card = game.createCardData(opponent_tpl, GameZone.e.LOCATION_1_OPPONENT_CAMP, false)
+
+	# Step 3: Start combat (first click) - the opponent's Camp creature should move into the fight
+	game._on_left_click(combat_zone.resolve_fight_button)
+	var cld = game.game_data.get_combat_zone_data(combat_zone)
+	var start_counter = 10
+	while start_counter > 0 && cld.isCombatStarted == false:
+		await test_runner.get_tree().process_frame
+		start_counter -= 1
+
+	if not assert_test_true(cld.isCombatStarted, "Combat should be marked as started after the first click"):
+		return false
+	if not assert_test_equal(game.game_data.get_card_zone(opponent_card), GameZone.e.COMBAT_OPPONENT_1,
+			"Opponent's Camp creature should have moved into the active combat grid"):
+		return false
+	if not assert_test_equal(game.game_data.get_cards_in_zone(GameZone.e.LOCATION_1_OPPONENT_CAMP).size(), 0,
+			"Opponent Camp should be empty after starting combat"):
+		return false
+	print("  ✅ Opponent creature moved from Camp into combat")
+
+	# Step 4: Manually move the player's creature from Camp into combat
+	await game.tryMoveCard(player_card, combat_zone)
+
+	if not assert_test_equal(game.game_data.get_card_zone(player_card), GameZone.e.COMBAT_PLAYER_1,
+			"Player creature should have moved from Camp into the active combat grid"):
+		return false
+	print("  ✅ Player creature manually moved from Camp into combat")
+
+	# Step 5: Resolve combat (second click)
+	game._on_left_click(combat_zone.resolve_fight_button)
+	var resolve_counter = 10
+	while resolve_counter > 0 && cld.isCombatResolved.value == false:
+		await test_runner.get_tree().process_frame
+		resolve_counter -= 1
+
+	if not assert_test_true(cld.isCombatResolved.value, "Combat should be resolved after the second click"):
+		return false
+
+	# Step 6: Verify damage was dealt and the weaker creature died
+	var graveyard_opponent = game.game_data.get_cards_in_zone(GameZone.e.GRAVEYARD_OPPONENT)
+	if not assert_test_true(graveyard_opponent.has(opponent_card), "Opponent creature should have died (5 damage >= 2 power)"):
+		return false
+	if not assert_test_equal(player_card.getDamage(), 2, "Player creature should have taken 2 damage from the opponent"):
+		return false
+	print("  ✅ Combat resolved: opponent creature died, player creature took damage")
+
+	# Step 7: Verify the player's surviving creature returned to its Camp after combat
+	if not assert_test_equal(game.game_data.get_card_zone(player_card), GameZone.e.LOCATION_1_PLAYER_CAMP,
+			"Surviving player creature should return to its Camp after combat resolves"):
+		return false
+	print("  ✅ Surviving player creature returned to Camp")
+
+	print("✅ Camp -> Combat -> Resolve flow test passed!")
+	return true
+
 func test_bolt_spell_with_valid_target():
 	"""Test casting Bolt spell with a legal target - bolt and target should end up in graveyard"""
 	# Setup: Create Bolt spell and a target creature
 	var bolt_card: CardData = createCardFromName("Bolt", GameZone.e.HAND_PLAYER)
-	var target_creature: CardData = createCardFromName("goblin", GameZone.e.BATTLEFIELD_PLAYER)
+	var target_creature: CardData = createCardFromName("goblin", GameZone.e.LOCATION_1_PLAYER_CAMP)
 	
 	setPlayerGold(99)
 	
@@ -199,7 +477,7 @@ func test_bolt_spell_with_valid_target():
 	selections.add_spell_target(target_creature)
 	
 	# Cast Bolt targeting the creature
-	await game.tryPlayCard(bolt_card, GameZone.e.BATTLEFIELD_PLAYER, selections)
+	await game.tryPlayCard(bolt_card, GameZone.e.LOCATION_1_PLAYER_CAMP, selections)
 	
 	# Verify final state: both bolt and target should be in graveyard
 	if not assertCardExists("Bolt", "graveyard"):
@@ -215,7 +493,7 @@ func test_bolt_spell_cancelled_with_target():
 	"""Test casting Bolt with target selected but then cancelled - spell should return to hand, creature should stay in play"""
 	# Setup: Create Bolt spell and a target creature
 	var bolt_card = createCardFromName("Bolt", GameZone.e.HAND_PLAYER)
-	var target_creature = createCardFromName("goblin", GameZone.e.BATTLEFIELD_PLAYER)
+	var target_creature = createCardFromName("goblin", GameZone.e.LOCATION_1_PLAYER_CAMP)
 	
 	setPlayerGold(99)
 	
@@ -235,7 +513,7 @@ func test_bolt_spell_cancelled_with_target():
 		return false
 	
 	# Attempt to cast Bolt but cancel
-	await game.tryPlayCard(bolt_card, GameZone.e.BATTLEFIELD_PLAYER, selections)
+	await game.tryPlayCard(bolt_card, GameZone.e.LOCATION_1_PLAYER_CAMP, selections)
 	
 	# Wait a frame for any reparenting to complete
 	await test_runner.get_tree().process_frame
@@ -265,7 +543,7 @@ func test_bolt_spell_empty_board():
 	setPlayerGold(99)
 	
 	# Attempt to cast Bolt with no targets available
-	await game.tryPlayCard(bolt_card, GameZone.e.BATTLEFIELD_PLAYER)
+	await game.tryPlayCard(bolt_card, GameZone.e.LOCATION_1_PLAYER_CAMP)
 	
 	# Verify final state: bolt should be back in hand since no valid targets
 	if not assertCardExists("Bolt", "hand"):
@@ -461,7 +739,7 @@ func test_replace_mechanism() -> bool:
 		return false
 	
 	# Create a valid target (1-cost creature)
-	var target_creature = createCardFromName("Punglynd Child", GameZone.e.BATTLEFIELD_PLAYER)
+	var target_creature = createCardFromName("Punglynd Child", GameZone.e.LOCATION_1_PLAYER_CAMP)
 	if not assert_test_not_null(target_creature, "Should be able to create Punglynd Child card"):
 		return false
 	
@@ -500,7 +778,7 @@ func test_replace_with_additional_reduction() -> bool:
 		return false
 	
 	# Create a Grown-up target for extra reduction
-	var grownup_target = createCardFromName("Punglynd Child", GameZone.e.BATTLEFIELD_PLAYER)
+	var grownup_target = createCardFromName("Punglynd Child", GameZone.e.LOCATION_1_PLAYER_CAMP)
 	grownup_target.addSubtype("Grown-up")
 	
 	# Test cost calculation with Grown-up (should get additional reduction)
@@ -584,7 +862,7 @@ func test_tap_system() -> bool:
 	var test_card = createCardFromName("Punglynd Hersir", GameZone.e.HAND_PLAYER)
 	
 	# Add it to player base using proper game flow
-	await game.execute_move_card(test_card, GameZone.e.BATTLEFIELD_PLAYER)
+	await game.execute_move_card(test_card, GameZone.e.LOCATION_1_PLAYER_CAMP)
 	await game.resolveStateBasedAction()
 	
 	# Test 1: Card should start untapped
@@ -670,9 +948,9 @@ func test_temporary_keyword_effects() -> bool:
 	print("=== Testing Temporary Keyword Effects ===")
 	
 	# Step 1: Create test creatures - one with activated ability, targets for the effect
-	var hersir_card = createCardFromName("Punglynd Hersir", GameZone.e.BATTLEFIELD_PLAYER)
+	var hersir_card = createCardFromName("Punglynd Hersir", GameZone.e.LOCATION_1_PLAYER_CAMP)
 	
-	var target_card = createCardFromName("Goblin", GameZone.e.BATTLEFIELD_PLAYER)
+	var target_card = createCardFromName("Goblin", GameZone.e.LOCATION_1_PLAYER_CAMP)
 	
 	# Step 3: Verify target doesn't have Spellshield initially
 	var has_spellshield_initial = target_card.has_keyword("Spellshield")
@@ -747,7 +1025,7 @@ func test_growth_spell_pump() -> bool:
 	# Step 1: Create Growth spell and a target creature
 	var growth_card = createCardFromName("Growth", GameZone.e.HAND_PLAYER)
 	
-	var target_creature: CardData = createCardFromName("Goblin", GameZone.e.BATTLEFIELD_PLAYER)
+	var target_creature: CardData = createCardFromName("Goblin", GameZone.e.LOCATION_1_PLAYER_CAMP)
 	
 	# Step 2: Place target in play and spell in hand
 	setPlayerGold(10)
@@ -757,7 +1035,7 @@ func test_growth_spell_pump() -> bool:
 	var selections = SelectionManager.CardPlaySelections.new()
 	selections.add_spell_target(target_creature)
 	
-	await game.tryPlayCard(growth_card, GameZone.e.BATTLEFIELD_PLAYER, selections)
+	await game.tryPlayCard(growth_card, GameZone.e.LOCATION_1_PLAYER_CAMP, selections)
 	await test_runner.get_tree().process_frame
 	
 	# Step 5: Verify power was increased by 3
@@ -806,7 +1084,7 @@ func test_punglynd_child_growup():
 	"""Test that Punglynd Child gains 'Grown-up' subtype at end of combat while in a combat zone"""
 	
 	# Step 1: Create Punglynd Child token in play
-	var child_card = createCardFromName("Punglynd Child", GameZone.e.BATTLEFIELD_PLAYER)
+	var child_card = createCardFromName("Punglynd Child", GameZone.e.LOCATION_1_PLAYER_CAMP)
 	
 	# Step 2: Verify initial state - should not have Grown-up subtype yet
 	if not assert_test_false("Grown-up" in child_card.subtypes, "Child should not have Grown-up subtype initially"):
@@ -836,7 +1114,7 @@ func test_replace_with_insufficient_gold() -> bool:
 	setPlayerGold(0)
 	
 	# Step 2: Create a Punglynd Child token in player base
-	var child_card = createCardFromName("Punglynd Child", GameZone.e.BATTLEFIELD_PLAYER)
+	var child_card = createCardFromName("Punglynd Child", GameZone.e.LOCATION_1_PLAYER_CAMP)
 	child_card.addSubtype("Grown-up")
 	
 	# Step 3: Create Punglynd Childbearer and add to hand
@@ -857,7 +1135,7 @@ func test_replace_with_insufficient_gold() -> bool:
 	
 	# Step 7: Store initial counts
 	var initial_hand_count = game.game_data.get_cards_in_zone(GameZone.e.HAND_PLAYER).size()
-	var initial_base_count = game.game_data.get_cards_in_zone(GameZone.e.BATTLEFIELD_PLAYER).size()
+	var initial_base_count = game.game_data.get_cards_in_zone(GameZone.e.LOCATION_1_PLAYER_CAMP).size()
 	
 	# Step 8: Use pre-selection system to specify Replace target
 	print("🎮 Starting card play with Replace mechanism using pre-selection...")
@@ -866,11 +1144,11 @@ func test_replace_with_insufficient_gold() -> bool:
 	selections.set_replace_target(child_card)
 	
 	# Step 9: Try to play the card using Replace with pre-selections
-	await game.tryPlayCard(childbearer_card, GameZone.e.BATTLEFIELD_PLAYER, selections)
+	await game.tryPlayCard(childbearer_card, GameZone.e.LOCATION_1_PLAYER_CAMP, selections)
 	print("✅ Card play with Replace completed")
 	await test_runner.get_tree().process_frame
 	var final_hand_count = game.game_data.get_cards_in_zone(GameZone.e.HAND_PLAYER).size()
-	var final_base_count = game.game_data.get_cards_in_zone(GameZone.e.BATTLEFIELD_PLAYER).size()
+	var final_base_count = game.game_data.get_cards_in_zone(GameZone.e.LOCATION_1_PLAYER_CAMP).size()
 	
 	if not assert_test_equal(final_hand_count, initial_hand_count - 1, "Hand count should decrease by 1"):
 		return false
@@ -879,7 +1157,7 @@ func test_replace_with_insufficient_gold() -> bool:
 		return false
 	
 	# Step 10: Verify the Childbearer is now in play
-	var cards_in_base = game.game_data.get_cards_in_zone(GameZone.e.BATTLEFIELD_PLAYER)
+	var cards_in_base = game.game_data.get_cards_in_zone(GameZone.e.LOCATION_1_PLAYER_CAMP)
 	var childbearer_in_play = false
 	for card_data in cards_in_base:
 		if card_data.cardName == "Punglynd Childbearer":
@@ -917,10 +1195,10 @@ func test_eyepatch_cast_from_deck():
 	var goblin_token = createCardFromName("Goblin", GameZone.e.HAND_PLAYER)
 	
 	# Step 3: Count cards in play before
-	var initial_base_count = game.game_data.get_cards_in_zone(GameZone.e.BATTLEFIELD_PLAYER).size()
+	var initial_base_count = game.game_data.get_cards_in_zone(GameZone.e.LOCATION_1_PLAYER_CAMP).size()
 	
 	# Step 4: Play the goblin token - this should trigger Eyepatch from deck
-	await game.tryPlayCard(goblin_token, GameZone.e.BATTLEFIELD_PLAYER)
+	await game.tryPlayCard(goblin_token, GameZone.e.LOCATION_1_PLAYER_CAMP)
 	
 	# Wait for trigger resolution
 	await test_runner.get_tree().create_timer(0.5).timeout
@@ -931,7 +1209,7 @@ func test_eyepatch_cast_from_deck():
 		return false
 	
 	# Step 6: Verify Eyepatch is now on battlefield
-	var cards_in_play = game.game_data.get_cards_in_zone(GameZone.e.BATTLEFIELD_PLAYER)
+	var cards_in_play = game.game_data.get_cards_in_zone(GameZone.e.LOCATION_1_PLAYER_CAMP)
 	var eyepatch_in_play = cards_in_play.any(func(card_data): return card_data.cardName == "Eyepatch the Pirate")
 	if not assert_test_true(eyepatch_in_play, "Eyepatch should be on battlefield"):
 		return false
@@ -949,15 +1227,15 @@ func test_goblin_emblem_replacement_effect():
 	setPlayerGold(99)
 	
 	# Step 2: Create and play Goblin Emblem (capture reference)
-	var goblin_emblem = createCardFromName("Goblin Emblem", GameZone.e.BATTLEFIELD_PLAYER)
+	var goblin_emblem = createCardFromName("Goblin Emblem", GameZone.e.LOCATION_1_PLAYER_CAMP)
 	
 	# Step 3: Create and play first Goblin Pair
 	var goblin_pair_1 = createCardFromName("Goblin pair", GameZone.e.HAND_PLAYER)
 	
-	await game.tryPlayCard(goblin_pair_1, GameZone.e.BATTLEFIELD_PLAYER)
+	await game.tryPlayCard(goblin_pair_1, GameZone.e.LOCATION_1_PLAYER_CAMP)
 	
 	# Step 4: Count all cards in play
-	var all_cards = game.game_data.get_cards_in_zone(GameZone.e.BATTLEFIELD_PLAYER)
+	var all_cards = game.game_data.get_cards_in_zone(GameZone.e.LOCATION_1_PLAYER_CAMP)
 	var total_cards = all_cards.size()
 	# Step 5: Count Goblin tokens specifically
 	var goblin_tokens = all_cards.filter(func(card_data): 
@@ -990,11 +1268,11 @@ func test_goblin_emblem_replacement_effect():
 	# Step 10: Play a second Goblin Pair
 	print("🃏 Playing second Goblin Pair without emblem...")
 	var goblin_pair_2 = createCardFromName("Goblin pair", GameZone.e.HAND_PLAYER)
-	await game.tryPlayCard(goblin_pair_2, GameZone.e.BATTLEFIELD_PLAYER)
+	await game.tryPlayCard(goblin_pair_2, GameZone.e.LOCATION_1_PLAYER_CAMP)
 	await test_runner.get_tree().process_frame
 	
 	# Step 11: Count Goblin tokens again (should only have 1 more, not 2)
-	var all_cards_after = game.game_data.get_cards_in_zone(GameZone.e.BATTLEFIELD_PLAYER)
+	var all_cards_after = game.game_data.get_cards_in_zone(GameZone.e.LOCATION_1_PLAYER_CAMP)
 	var goblin_tokens_after = all_cards_after.filter(func(card_data): 
 		return card_data.cardName.to_lower() == "goblin" and card_data.isToken
 	)
@@ -1017,7 +1295,7 @@ func test_activated_ability_sacrifice_controller_filter() -> bool:
 	source_card.playerControlled = true
 	source_card.playerOwned = true
 	source_card.addType(CardData.CardType.CREATURE)
-	game.game_data.add_card_to_zone(source_card, GameZone.e.BATTLEFIELD_PLAYER)
+	game.game_data.add_card_to_zone(source_card, GameZone.e.LOCATION_1_PLAYER_CAMP)
 
 	var activated_ability = ActivatedAbility.new(source_card, EffectType.Type.DRAW)
 	activated_ability.with_activation_cost({
@@ -1046,7 +1324,7 @@ func test_activated_ability_sacrifice_controller_filter() -> bool:
 	ally_card.playerControlled = true
 	ally_card.playerOwned = true
 	ally_card.addType(CardData.CardType.CREATURE)
-	game.game_data.add_card_to_zone(ally_card, GameZone.e.BATTLEFIELD_PLAYER)
+	game.game_data.add_card_to_zone(ally_card, GameZone.e.LOCATION_1_PLAYER_CAMP)
 
 	if not assert_test_true(CardPaymentManagerAL.canPayCosts(activated_ability.activation_costs, source_card), "Should be able to pay sacrifice cost with two player-controlled creatures"):
 		return false
@@ -1069,10 +1347,10 @@ func test_warcamp_activated_ability() -> bool:
 	"""Test Punglynd Warcamp's activated ability with tap and sacrifice cost"""
 	
 	# Step 1: Create Warcamp card in play
-	var warcamp_card = createCardFromName("Punglynd Warcamp", GameZone.e.BATTLEFIELD_PLAYER)
+	var warcamp_card = createCardFromName("Punglynd Warcamp", GameZone.e.LOCATION_1_PLAYER_CAMP)
 	
 	# Step 2: Create Punglynd Child token in play (without Grown-up subtype initially)
-	var child_card:CardData = createCardFromName("Punglynd Child", GameZone.e.BATTLEFIELD_PLAYER)
+	var child_card:CardData = createCardFromName("Punglynd Child", GameZone.e.LOCATION_1_PLAYER_CAMP)
 	
 	# Step 3: Add Goblin Pair to deck
 	game.game_data.get_cards_in_zone(GameZone.e.DECK_PLAYER).clear()
@@ -1105,7 +1383,7 @@ func test_warcamp_activated_ability() -> bool:
 	
 	# Step 7: Store initial state
 	var initial_hand_count = game.game_data.get_cards_in_zone(GameZone.e.HAND_PLAYER).size()
-	var initial_base_count = game.game_data.get_cards_in_zone(GameZone.e.BATTLEFIELD_PLAYER).size()
+	var initial_base_count = game.game_data.get_cards_in_zone(GameZone.e.LOCATION_1_PLAYER_CAMP).size()
 	
 	# Verify warcamp is untapped
 	if not assert_test_false(warcamp_card.is_tapped(), "Warcamp should be untapped"):
@@ -1124,7 +1402,7 @@ func test_warcamp_activated_ability() -> bool:
 		return false
 	
 	# Step 10: Verify child was sacrificed (removed from play)
-	var cards_in_base = game.game_data.get_cards_in_zone(GameZone.e.BATTLEFIELD_PLAYER)
+	var cards_in_base = game.game_data.get_cards_in_zone(GameZone.e.LOCATION_1_PLAYER_CAMP)
 	var child_still_in_play = false
 	for card_data in cards_in_base:
 		if card_data == child_card:
@@ -1135,7 +1413,7 @@ func test_warcamp_activated_ability() -> bool:
 		return false
 	
 	# Step 11: Verify base count decreased by 1 (child removed)
-	var final_base_count = game.game_data.get_cards_in_zone(GameZone.e.BATTLEFIELD_PLAYER).size()
+	var final_base_count = game.game_data.get_cards_in_zone(GameZone.e.LOCATION_1_PLAYER_CAMP).size()
 	if not assert_test_equal(final_base_count, initial_base_count - 1, "Base should have one less card"):
 		return false
 	
@@ -1170,7 +1448,7 @@ func test_move_effect() -> bool:
 	# Wait for scene tree to update
 	await test_runner.get_tree().process_frame
 	
-	if not assert_test_equal(game.game_data.get_cards_in_zone(GameZone.e.COMBAT_OPPONENT_1).size(), 1, "Should have 1 card in play"):
+	if not assert_test_equal(game.game_data.get_cards_in_zone(GameZone.e.LOCATION_1_OPPONENT_CAMP).size(), 1, "Should have 1 card in play"):
 		return false
 	
 	# Step 4: Verify initial graveyard state
@@ -1373,10 +1651,10 @@ func test_elusive_position_swap() -> bool:
 	dummy_template.goldCost = 1
 	
 	# Step 2: Use game.createCardData to properly create cards with all abilities registered
-	var elusive_card = game.createCardData(elusive_template, GameZone.e.BATTLEFIELD_PLAYER, true)
-	var regular_card_1 = game.createCardData(regular_template_1, GameZone.e.BATTLEFIELD_PLAYER, true)
-	var regular_card_2 = game.createCardData(regular_template_2, GameZone.e.BATTLEFIELD_PLAYER, true)
-	var dummy_card = game.createCardData(dummy_template, GameZone.e.BATTLEFIELD_PLAYER, true)
+	var elusive_card = game.createCardData(elusive_template, GameZone.e.LOCATION_1_PLAYER_CAMP, true)
+	var regular_card_1 = game.createCardData(regular_template_1, GameZone.e.LOCATION_1_PLAYER_CAMP, true)
+	var regular_card_2 = game.createCardData(regular_template_2, GameZone.e.LOCATION_1_PLAYER_CAMP, true)
+	var dummy_card = game.createCardData(dummy_template, GameZone.e.LOCATION_1_PLAYER_CAMP, true)
 	
 	# Add keyword abilities via KeywordRegistry (same logic as production CardLoader)
 	# Then register each new ability to game signals since createCardData already called subscribe_to_game_signals
@@ -1475,7 +1753,7 @@ func test_casting_condition() -> bool:
 	setPlayerGold(10)
 	
 	# Step 3: Create Punglynd Child in play (initially without Grown-up subtype)
-	var child_card = createCardFromName("Punglynd Child", GameZone.e.BATTLEFIELD_PLAYER)
+	var child_card = createCardFromName("Punglynd Child", GameZone.e.LOCATION_1_PLAYER_CAMP)
 	if not assert_test_not_null(child_card, "Punglynd Child should be created"):
 		return false
 	
@@ -1580,7 +1858,7 @@ func test_delayed_effect_sacrifice() -> bool:
 	print("=== Testing Delayed Sacrifice at End of Turn ===")
 	
 	# Step 1: Create a creature in play
-	var target_creature = createCardFromName("Goblin", GameZone.e.BATTLEFIELD_PLAYER)
+	var target_creature = createCardFromName("Goblin", GameZone.e.LOCATION_1_PLAYER_CAMP)
 	print("  📦 Created creature: ", target_creature.cardName)
 	
 	# Step 2: Create a spell with delayed sacrifice trigger at end of turn
@@ -1618,7 +1896,7 @@ func test_delayed_effect_sacrifice() -> bool:
 	selections.add_spell_target(target_creature)
 	
 	print("  🎯 Casting delayed sacrifice spell...")
-	await game.tryPlayCard(spell_card, GameZone.e.BATTLEFIELD_PLAYER, selections)
+	await game.tryPlayCard(spell_card, GameZone.e.LOCATION_1_PLAYER_CAMP, selections)
 	await test_runner.get_tree().process_frame
 	
 	# Step 6: Verify orphaned ability was created
@@ -1666,7 +1944,7 @@ func test_delayed_effect_cleanup_on_turn_end() -> bool:
 	print("=== Testing Delayed Sacrifice Cleanup When Target Dies Early ===")
 	
 	# Step 1: Create a creature in play
-	var target_creature = createCardFromName("Goblin", GameZone.e.BATTLEFIELD_PLAYER)
+	var target_creature = createCardFromName("Goblin", GameZone.e.LOCATION_1_PLAYER_CAMP)
 	print("  📦 Created creature: ", target_creature.cardName)
 	
 	# Step 2: Create a spell with delayed sacrifice trigger at end of turn
@@ -1700,7 +1978,7 @@ func test_delayed_effect_cleanup_on_turn_end() -> bool:
 	selections.add_spell_target(target_creature)
 	
 	print("  🎯 Casting delayed sacrifice spell...")
-	await game.tryPlayCard(spell_card, GameZone.e.BATTLEFIELD_PLAYER, selections)
+	await game.tryPlayCard(spell_card, GameZone.e.LOCATION_1_PLAYER_CAMP, selections)
 	await test_runner.get_tree().process_frame
 	
 	# Step 5: Verify orphaned ability was created
@@ -1847,7 +2125,7 @@ func test_death_trigger_adds_gold() -> bool:
 	template.addType(CardData.CardType.CREATURE)
 
 	# Place on battlefield via game.createCardData so abilities are registered properly
-	var creature = game.createCardData(template, GameZone.e.BATTLEFIELD_PLAYER, true)
+	var creature = game.createCardData(template, GameZone.e.LOCATION_1_PLAYER_CAMP, true)
 	if not assert_test_not_null(creature, "Creature should be created"):
 		return false
 
@@ -1896,18 +2174,18 @@ func test_crumbling_zombie_death_replacement() -> bool:
 	print("=== Testing Crumbling Zombie Death Replacement ===")
 	
 	# Step 1: Create Crumbling Zombie on battlefield (loads with its replacement effect)
-	var zombie = createCardFromName("Crumbling Zombie", GameZone.e.BATTLEFIELD_PLAYER)
+	var zombie = createCardFromName("Crumbling Zombie", GameZone.e.LOCATION_1_PLAYER_CAMP)
 	if not assert_test_not_null(zombie, "Crumbling Zombie should be created"):
 		return false
 	
 	# Step 2: Verify zombie is on battlefield initially
 	var initial_zone = game.game_data.get_card_zone(zombie)
-	if not assert_test_equal(initial_zone, GameZone.e.BATTLEFIELD_PLAYER, "Zombie should start on battlefield"):
+	if not assert_test_equal(initial_zone, GameZone.e.LOCATION_1_PLAYER_CAMP, "Zombie should start on battlefield"):
 		return false
 	print("  ✅ Crumbling Zombie on battlefield")
 	
 	# Step 3: Count cards in play before death
-	var cards_before = game.game_data.get_cards_in_zone(GameZone.e.BATTLEFIELD_PLAYER).size()
+	var cards_before = game.game_data.get_cards_in_zone(GameZone.e.LOCATION_1_PLAYER_CAMP).size()
 	print("  📊 Cards in play before death: ", cards_before)
 	
 	# Step 4: Deal lethal damage to the zombie (power = 2, so 2 damage is lethal)
@@ -1932,7 +2210,7 @@ func test_crumbling_zombie_death_replacement() -> bool:
 	var all_zones = [
 		GameZone.e.HAND_PLAYER,
 		GameZone.e.DECK_PLAYER,
-		GameZone.e.BATTLEFIELD_PLAYER,
+		GameZone.e.LOCATION_1_PLAYER_CAMP,
 		GameZone.e.GRAVEYARD_PLAYER,
 		GameZone.e.EXILE_PLAYER
 	]
@@ -1946,7 +2224,7 @@ func test_crumbling_zombie_death_replacement() -> bool:
 	print("  ✅ Zombie completely removed from game")
 	
 	# Step 7: Verify Upper half token is in play
-	var battlefield_cards = game.game_data.get_cards_in_zone(GameZone.e.BATTLEFIELD_PLAYER)
+	var battlefield_cards = game.game_data.get_cards_in_zone(GameZone.e.LOCATION_1_PLAYER_CAMP)
 	var upper_half = battlefield_cards.filter(func(c): return c.cardName == "Upper half")
 	if not assert_test_equal(upper_half.size(), 1, "Should have 1 Upper half token in play"):
 		print("  ❌ Expected 1 Upper half, found ", upper_half.size())
@@ -1981,7 +2259,7 @@ func test_crumbling_zombie_death_replacement() -> bool:
 	print("  ✅ Both tokens are 1 power Zombie creatures")
 	
 	# Step 10: Verify final card count (original cards - zombie + 2 tokens)
-	var cards_after = game.game_data.get_cards_in_zone(GameZone.e.BATTLEFIELD_PLAYER).size()
+	var cards_after = game.game_data.get_cards_in_zone(GameZone.e.LOCATION_1_PLAYER_CAMP).size()
 	var expected_count = cards_before - 1 + 2  # -1 zombie, +2 tokens
 	if not assert_test_equal(cards_after, expected_count, 
 		"Should have " + str(expected_count) + " cards in play (before: " + str(cards_before) + ", -1 zombie, +2 tokens)"):
@@ -1999,7 +2277,7 @@ func _make_death_draw_creature(card_name: String) -> CardData:
 	template.playerControlled = true
 	template.playerOwned = true
 	template.addType(CardData.CardType.CREATURE)
-	var creature = game.createCardData(template, GameZone.e.BATTLEFIELD_PLAYER, true)
+	var creature = game.createCardData(template, GameZone.e.LOCATION_1_PLAYER_CAMP, true)
 
 	var death_ability = TriggeredAbility.new(
 		creature,
@@ -2041,7 +2319,7 @@ func test_simultaneous_deaths_replacements_and_triggers() -> bool:
 		for key in order:
 			match key:
 				"zombie1", "zombie2":
-					cards_by_key[key] = createCardFromName("Crumbling Zombie", GameZone.e.BATTLEFIELD_PLAYER)
+					cards_by_key[key] = createCardFromName("Crumbling Zombie", GameZone.e.LOCATION_1_PLAYER_CAMP)
 				"drawer1", "drawer2":
 					cards_by_key[key] = _make_death_draw_creature(key)
 
@@ -2069,7 +2347,7 @@ func test_simultaneous_deaths_replacements_and_triggers() -> bool:
 		await test_runner.get_tree().process_frame
 		await test_runner.get_tree().process_frame  # Extra frame for triggers/replacements to resolve
 
-		var battlefield_cards = game.game_data.get_cards_in_zone(GameZone.e.BATTLEFIELD_PLAYER)
+		var battlefield_cards = game.game_data.get_cards_in_zone(GameZone.e.LOCATION_1_PLAYER_CAMP)
 		var graveyard_cards = game.game_data.get_cards_in_zone(GameZone.e.GRAVEYARD_PLAYER)
 
 		# Zombies should be fully replaced: not in graveyard, not on battlefield
@@ -2137,22 +2415,22 @@ func test_relic_durability() -> bool:
 	var tpl_relic_perm = CardData.new()
 	tpl_relic_perm.cardName = "TestRelicPermanent"
 	tpl_relic_perm.addType(CardData.CardType.RELIC)
-	var relic_permanent = game.createCardData(tpl_relic_perm, GameZone.e.BATTLEFIELD_PLAYER, true)
+	var relic_permanent = game.createCardData(tpl_relic_perm, GameZone.e.LOCATION_1_PLAYER_CAMP, true)
 	
 	var tpl_relic_loses = CardData.new()
 	tpl_relic_loses.cardName = "TestRelicLosesType"
 	tpl_relic_loses.addType(CardData.CardType.RELIC)
-	var relic_loses_type = game.createCardData(tpl_relic_loses, GameZone.e.BATTLEFIELD_PLAYER, true)
+	var relic_loses_type = game.createCardData(tpl_relic_loses, GameZone.e.LOCATION_1_PLAYER_CAMP, true)
 	
 	var tpl_becomes_relic = CardData.new()
 	tpl_becomes_relic.cardName = "TestCreatureBecomesRelic"
 	tpl_becomes_relic.addType(CardData.CardType.CREATURE)
-	var creature_becomes_relic = game.createCardData(tpl_becomes_relic, GameZone.e.BATTLEFIELD_PLAYER, true)
+	var creature_becomes_relic = game.createCardData(tpl_becomes_relic, GameZone.e.LOCATION_1_PLAYER_CAMP, true)
 	
 	var tpl_creature = CardData.new()
 	tpl_creature.cardName = "TestCreaturePermanent"
 	tpl_creature.addType(CardData.CardType.CREATURE)
-	var creature_permanent = game.createCardData(tpl_creature, GameZone.e.BATTLEFIELD_PLAYER, true)
+	var creature_permanent = game.createCardData(tpl_creature, GameZone.e.LOCATION_1_PLAYER_CAMP, true)
 	
 	# Verify all 4 start in play with full durability
 	assert_test_equal(GameZone.is_in_play(game.game_data.get_card_zone(relic_permanent)), true,
@@ -2238,18 +2516,18 @@ func test_alternative_resolve() -> bool:
 	)
 
 	var count_children = func() -> int:
-		return game.game_data.get_cards_in_zone(GameZone.e.BATTLEFIELD_PLAYER).filter(
+		return game.game_data.get_cards_in_zone(GameZone.e.LOCATION_1_PLAYER_CAMP).filter(
 			func(c: CardData): return c.cardName.to_lower() == "punglynd child"
 		).size()
 
 	var count_non_grownup = func() -> int:
-		return game.game_data.get_cards_in_zone(GameZone.e.BATTLEFIELD_PLAYER).filter(
+		return game.game_data.get_cards_in_zone(GameZone.e.LOCATION_1_PLAYER_CAMP).filter(
 			func(c: CardData): return c.cardName.to_lower() == "punglynd child" and not ("Grown-up" in c.subtypes)
 		).size()
 
 	# Promotes all existing Punglynd Children to Grown-up so the next scenario starts clean.
 	var promote_all = func():
-		for c in game.game_data.get_cards_in_zone(GameZone.e.BATTLEFIELD_PLAYER):
+		for c in game.game_data.get_cards_in_zone(GameZone.e.LOCATION_1_PLAYER_CAMP):
 			if c.cardName.to_lower() == "punglynd child" and not ("Grown-up" in c.subtypes):
 				c.addSubtype("Grown-up")
 
@@ -2259,7 +2537,7 @@ func test_alternative_resolve() -> bool:
 	var test_card1 = game.createCardData(template1, GameZone.e.HAND_PLAYER, true)
 	var children_before_s1 = count_children.call()
 
-	await game.execute_move_card(test_card1, GameZone.e.BATTLEFIELD_PLAYER)
+	await game.execute_move_card(test_card1, GameZone.e.LOCATION_1_PLAYER_CAMP)
 	await test_runner.get_tree().process_frame
 	await test_runner.get_tree().process_frame
 
@@ -2273,14 +2551,14 @@ func test_alternative_resolve() -> bool:
 
 	# --- Scenario 2: only Grown-up children → excluded → AlternativeResolve → token created ---
 	print("--- AlternativeResolve S2: only Grown-up child → token created ---")
-	var grownup_child = createCardFromName("Punglynd Child", GameZone.e.BATTLEFIELD_PLAYER)
+	var grownup_child = createCardFromName("Punglynd Child", GameZone.e.LOCATION_1_PLAYER_CAMP)
 	grownup_child.addSubtype("Grown-up")
 
 	var template2 = CardLoaderAL.parse_card_data(card_text)
 	var test_card2 = game.createCardData(template2, GameZone.e.HAND_PLAYER, true)
 	var children_before_s2 = count_children.call()
 
-	await game.execute_move_card(test_card2, GameZone.e.BATTLEFIELD_PLAYER)
+	await game.execute_move_card(test_card2, GameZone.e.LOCATION_1_PLAYER_CAMP)
 	await test_runner.get_tree().process_frame
 	await test_runner.get_tree().process_frame
 
@@ -2294,7 +2572,7 @@ func test_alternative_resolve() -> bool:
 
 	# --- Scenario 3: non-Grown-up child present → AddType fires, no token ---
 	print("--- AlternativeResolve S3: non-Grown-up child → AddType fires ---")
-	var child = createCardFromName("Punglynd Child", GameZone.e.BATTLEFIELD_PLAYER)
+	var child = createCardFromName("Punglynd Child", GameZone.e.LOCATION_1_PLAYER_CAMP)
 	if not assert_test_false("Grown-up" in child.subtypes,
 			"S3 setup: fresh child should not have Grown-up yet"):
 		return false
@@ -2304,7 +2582,7 @@ func test_alternative_resolve() -> bool:
 	var total_before_s3 = count_children.call()
 	var non_grownup_before_s3 = count_non_grownup.call()  # should be 1 (just `child`)
 
-	await game.execute_move_card(test_card3, GameZone.e.BATTLEFIELD_PLAYER)
+	await game.execute_move_card(test_card3, GameZone.e.LOCATION_1_PLAYER_CAMP)
 	await test_runner.get_tree().process_frame
 	await test_runner.get_tree().process_frame
 
@@ -2387,12 +2665,12 @@ func test_sub_ability_move_and_pump() -> bool:
 	var sel_a = SelectionManager.CardPlaySelections.new()
 	sel_a.add_spell_target(gc)   # slot 0 → MoveCard
 	sel_a.add_spell_target(opp)  # slot 1 → DealDamage
-	await game.tryPlayCard(spell_a, GameZone.e.BATTLEFIELD_PLAYER, sel_a)
+	await game.tryPlayCard(spell_a, GameZone.e.LOCATION_1_PLAYER_CAMP, sel_a)
 	await test_runner.get_tree().process_frame
 	await test_runner.get_tree().process_frame
 
 	# Graveyard creature should now be on battlefield
-	if not assert_test_equal(game.game_data.get_card_zone(gc), GameZone.e.BATTLEFIELD_PLAYER,
+	if not assert_test_equal(game.game_data.get_card_zone(gc), GameZone.e.LOCATION_1_PLAYER_CAMP,
 			"Graveyard creature should be on battlefield after spell"):
 		return false
 	print("  ✅ Creature returned to battlefield")
@@ -2427,12 +2705,12 @@ func test_sub_ability_move_and_pump() -> bool:
 	sel_b.add_spell_target(gc2)
 	var opp_damage_before = opp.getDamage()  # Should be 3 from Cast A
 
-	await game.tryPlayCard(spell_b, GameZone.e.BATTLEFIELD_PLAYER, sel_b)
+	await game.tryPlayCard(spell_b, GameZone.e.LOCATION_1_PLAYER_CAMP, sel_b)
 	await test_runner.get_tree().process_frame
 	await test_runner.get_tree().process_frame
 
 	# gc2 should be on battlefield
-	if not assert_test_equal(game.game_data.get_card_zone(gc2), GameZone.e.BATTLEFIELD_PLAYER,
+	if not assert_test_equal(game.game_data.get_card_zone(gc2), GameZone.e.LOCATION_1_PLAYER_CAMP,
 			"Second graveyard creature should be on battlefield"):
 		return false
 	print("  ✅ Second creature returned to battlefield")
@@ -2479,7 +2757,7 @@ func test_recycle_spell_sub_ability() -> bool:
 	var graveyard_before_cast1 = game.game_data.get_cards_in_zone(GameZone.e.GRAVEYARD_PLAYER).size()
 
 	var spell1 = make_spell.call()
-	await game.tryPlayCard(spell1, GameZone.e.BATTLEFIELD_PLAYER)
+	await game.tryPlayCard(spell1, GameZone.e.LOCATION_1_PLAYER_CAMP)
 	await test_runner.get_tree().process_frame
 
 	if not assert_test_equal(game.game_data.player_gold.getValue(), initial_gold,
@@ -2509,7 +2787,7 @@ func test_recycle_spell_sub_ability() -> bool:
 	# === Cast 2: 3 creatures in graveyard → Recycle succeeds → SubAbility AddGold fires ===
 	print("  --- Cast 2: 3 creatures in graveyard (should succeed) ---")
 	var spell2 = make_spell.call()
-	await game.tryPlayCard(spell2, GameZone.e.BATTLEFIELD_PLAYER)
+	await game.tryPlayCard(spell2, GameZone.e.LOCATION_1_PLAYER_CAMP)
 	await test_runner.get_tree().process_frame
 
 	# Verify 3 cards were exiled to Recycle Zone

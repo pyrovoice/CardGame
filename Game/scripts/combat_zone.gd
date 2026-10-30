@@ -1,3 +1,4 @@
+@tool
 extends Node3D
 class_name CombatZone
 
@@ -8,8 +9,22 @@ class_name CombatZone
 @onready var resolve_fight_button: ResolveFightButton = $Button
 @onready var ally_side: GridContainer3D = $AllySide
 @onready var opponent_side: GridContainer3D = $OpponentSide
+@onready var ally_camp: GridContainer3D = $AllyCamp
+@onready var opponent_camp: GridContainer3D = $OpponentCamp
 @onready var lieutenant_hand: CardHand = $LieutenantHand
 @onready var lieutenant_deck: Deck = $LieutenantDeck
+@onready var floor_mesh: MeshInstance3D = $combatZone
+@onready var collision_shape: CollisionShape3D = $CollisionShape3D
+
+## Overview mode shrinks the floor/collision width so all three locations fit on screen at once.
+## Children (cards, camps, hand, deck, button) are intentionally left untouched for now.
+const COMPACT_WIDTH_SCALE := 1.0 / 3.0
+const _DEFAULT_RESIZE_DURATION := 0.35
+
+var is_compact: bool = false
+var _base_mesh_size: Vector2
+var _base_collision_size: Vector3
+var _resize_tween: Tween = null
 
 func get_lieutenant_hand() -> CardHand:
 	"""The hand belonging to the Lieutenant assigned to this location"""
@@ -19,7 +34,60 @@ func get_lieutenant_deck() -> Deck:
 	"""The deck belonging to the Lieutenant assigned to this location"""
 	return lieutenant_deck
 
+func get_ally_camp() -> GridContainer3D:
+	"""The player's pre-combat staging area at this location"""
+	return ally_camp
+
+func get_opponent_camp() -> GridContainer3D:
+	"""The opponent's pre-combat staging area at this location"""
+	return opponent_camp
+
+func set_location_highlight(active: bool) -> void:
+	"""Simple yellow tint on the location floor to show it's a valid discounted drop target"""
+	if not is_instance_valid(floor_mesh):
+		return
+	if active:
+		var mat := StandardMaterial3D.new()
+		mat.albedo_color = Color(1.0, 0.9, 0.2)
+		floor_mesh.material_override = mat
+	else:
+		floor_mesh.material_override = null
+
+func set_compact(compact: bool, duration: float = _DEFAULT_RESIZE_DURATION) -> void:
+	"""Smoothly shrink (or restore) this zone's floor and collision width for the 3-battlefield overview.
+	Safe to call every time set_battlefield_focus() runs - no-ops if already in that state."""
+	if compact == is_compact:
+		return
+	is_compact = compact
+
+	var scale_x := COMPACT_WIDTH_SCALE if compact else 1.0
+	var target_mesh_width := _base_mesh_size.x * scale_x
+	var target_collision_width := _base_collision_size.x * scale_x
+
+	if _resize_tween and _resize_tween.is_valid():
+		_resize_tween.kill()
+	_resize_tween = create_tween().set_parallel(true).set_ease(Tween.EASE_IN_OUT).set_trans(Tween.TRANS_CUBIC)
+
+	if floor_mesh.mesh is QuadMesh:
+		_resize_tween.tween_property(floor_mesh.mesh, "size:x", target_mesh_width, duration)
+
+	if collision_shape.shape is BoxShape3D:
+		_resize_tween.tween_property(collision_shape.shape, "size:x", target_collision_width, duration)
+
+func get_compact_width() -> float:
+	"""Floor width this zone shrinks to when compact - i.e. the width of one third of the screen."""
+	return _base_mesh_size.x * COMPACT_WIDTH_SCALE
+
 func _ready() -> void:
+	# Duplicate shared mesh/collision resources so resizing this zone doesn't affect its siblings
+	# (all three CombatZone instances come from the same PackedScene sub-resources).
+	if floor_mesh.mesh:
+		floor_mesh.mesh = floor_mesh.mesh.duplicate()
+		_base_mesh_size = (floor_mesh.mesh as QuadMesh).size
+	if collision_shape.shape:
+		collision_shape.shape = collision_shape.shape.duplicate()
+		_base_collision_size = (collision_shape.shape as BoxShape3D).size
+
 	# Connect to child changes for both sides
 	ally_side.child_entered_tree.connect(_on_child_change)
 	ally_side.child_exiting_tree.connect(_on_child_change)
@@ -55,22 +123,14 @@ func getTotalStrengthForSide(playerSide: bool):
 	
 	return total
 
-func set_card(card: Card, target_position: int = -1) -> void:
-	"""Add a card to the combat zone. Cards are automatically arranged by GridContainer3D"""
+func _place_in_grid(card: Card, target_container: GridContainer3D) -> void:
 	if not card or not is_instance_valid(card):
-		push_error("CombatZone.set_card: card is null or invalid")
+		push_error("CombatZone._place_in_grid: card is null or invalid")
 		return
-	if not card.cardData or not is_instance_valid(card.cardData):
-		push_error("CombatZone.set_card: card has no valid cardData")
+	if not is_instance_valid(target_container):
+		push_error("CombatZone._place_in_grid: Target container is invalid")
 		return
 
-	var ally_team: bool = card.cardData.playerControlled
-	var target_container = ally_side if ally_team else opponent_side
-	
-	if not is_instance_valid(target_container):
-		push_error("CombatZone.set_card: Target container is invalid")
-		return
-	
 	# Reparent without triggering auto-reorganize (child_entered_tree not connected)
 	# false = don't preserve global transform, so no compensating local scale is baked in.
 	# Cards inherit the zone's scale naturally (Option A sizing).
@@ -81,6 +141,24 @@ func set_card(card: Card, target_position: int = -1) -> void:
 	
 	# Reorganize explicitly: sets all card positions without moving representations
 	target_container.reorganize(card)
+
+func set_card(card: Card, _target_position: int = -1) -> void:
+	"""Add a card to the active combat grid (fighting side). Cards are automatically arranged by GridContainer3D"""
+	if not card or not is_instance_valid(card) or not card.cardData or not is_instance_valid(card.cardData):
+		push_error("CombatZone.set_card: card has no valid cardData")
+		return
+
+	var ally_team: bool = card.cardData.playerControlled
+	_place_in_grid(card, ally_side if ally_team else opponent_side)
+
+func place_in_camp(card: Card) -> void:
+	"""Add a card to the pre-combat Camp for its controller's side at this location"""
+	if not card or not is_instance_valid(card) or not card.cardData or not is_instance_valid(card.cardData):
+		push_error("CombatZone.place_in_camp: card has no valid cardData")
+		return
+
+	var ally_team: bool = card.cardData.playerControlled
+	_place_in_grid(card, ally_camp if ally_team else opponent_camp)
 
 func update_resolve_fight_display(is_resolved: bool):
 	"""Update the appearance of the resolve fight label based on resolution status"""

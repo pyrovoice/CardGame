@@ -43,7 +43,7 @@ func test_animation_completion():
 	setPlayerGold(3)
 	
 	var start_time = Time.get_ticks_msec()
-	await game.tryPlayCard(card, GameZone.e.BATTLEFIELD_PLAYER)
+	await game.tryPlayCard(card, GameZone.e.LOCATION_1_PLAYER_CAMP)
 	var end_time = Time.get_ticks_msec()
 	
 	# Should take some time for animation: ~1s base duration, divided by animation speed
@@ -64,7 +64,7 @@ func test_goblin_boss_extra_deck_casting():
 	var goblin_pair_1 = createCardFromName("goblin pair", GameZone.e.HAND_PLAYER)
 	
 	# Play first Goblin Pair and wait for animation to complete
-	await game.tryPlayCard(goblin_pair_1, GameZone.e.BATTLEFIELD_PLAYER)
+	await game.tryPlayCard(goblin_pair_1, GameZone.e.LOCATION_1_PLAYER_CAMP)
 	if not assertCardCount(2, "play"):  # Should have 2 goblins now
 		return false
 	
@@ -105,7 +105,7 @@ func test_goblin_boss_extra_deck_casting():
 	selections.add_sacrifice_target(goblins_in_play[0])
 	selections.add_sacrifice_target(goblins_in_play[1])
 	
-	await game.tryPlayCard(goblin_boss_card.cardData, GameZone.e.BATTLEFIELD_PLAYER, selections)
+	await game.tryPlayCard(goblin_boss_card.cardData, GameZone.e.LOCATION_1_PLAYER_CAMP, selections)
 	
 	# Step 5: Assert final state
 	var final_cards = getCardsInPlayData()
@@ -125,7 +125,7 @@ func test_combat_zone_button_click():
 	var combat_zone = game.game_view.combat_zones[0] as CombatZone
 	var first_ally_spot: GridContainer3D = combat_zone.getFirstEmptyLocation(true)
 	var card_template = CardLoaderAL.getCardByName("goblin pair")
-	var card_data = game.createCardData(card_template, GameZone.e.BATTLEFIELD_PLAYER, true)
+	var card_data = game.createCardData(card_template, GameZone.e.LOCATION_1_PLAYER_CAMP, true)
 	var zone_index = game.game_view.get_combat_zones().find(combat_zone)
 	var dest_zone = (GameZone.e.COMBAT_PLAYER_1 + zone_index) as GameZone.e
 	await game.execute_move_card(card_data, dest_zone)
@@ -151,7 +151,7 @@ func test_replace_ui_optional_selection() -> bool:
 	"""Test that Replace UI allows optional selection - confirm button works even with no selection"""
 	
 	# Setup - create a child in play and add grown-up type
-	var child_card = createCardFromName("Punglynd Child", GameZone.e.BATTLEFIELD_PLAYER)
+	var child_card = createCardFromName("Punglynd Child", GameZone.e.LOCATION_1_PLAYER_CAMP)
 	
 	# Add grown-up subtype to make it a better Replace target
 	child_card.addSubtype("Grown-up")
@@ -165,7 +165,7 @@ func test_replace_ui_optional_selection() -> bool:
 	
 	# Store initial state
 	var initial_hand_count = game.game_data.get_cards_in_zone(GameZone.e.HAND_PLAYER).size()
-	var initial_base_count = game.game_data.get_cards_in_zone(GameZone.e.BATTLEFIELD_PLAYER).size()
+	var initial_base_count = game.game_data.get_cards_in_zone(GameZone.e.LOCATION_1_PLAYER_CAMP).size()
 	
 	# Simulate user clicking confirm on the Replace UI without selecting a target (normal casting)
 	# Use call_deferred so _on_validate_pressed fires AFTER await selection_completed is set up
@@ -177,12 +177,12 @@ func test_replace_ui_optional_selection() -> bool:
 	)
 	
 	# Play the childbearer card - will open Replace UI, our handler confirms it immediately
-	await game.tryPlayCard(childbearer_card, GameZone.e.BATTLEFIELD_PLAYER)
+	await game.tryPlayCard(childbearer_card, GameZone.e.LOCATION_1_PLAYER_CAMP)
 	await test_runner.get_tree().process_frame
 	
 	# Verify final state - both cards should be in play (normal casting)
 	var final_hand_count = game.game_data.get_cards_in_zone(GameZone.e.HAND_PLAYER).size()
-	var final_base_count = game.game_data.get_cards_in_zone(GameZone.e.BATTLEFIELD_PLAYER).size()
+	var final_base_count = game.game_data.get_cards_in_zone(GameZone.e.LOCATION_1_PLAYER_CAMP).size()
 	
 	if not assert_test_equal(final_hand_count, initial_hand_count - 1, "Hand should have one less card"):
 		return false
@@ -324,7 +324,7 @@ func test_container_visualizer_graveyard_selection() -> bool:
 	CONNECT_ONE_SHOT
 )	
 	# Cast the spell - this should trigger the selection
-	await game.tryPlayCard(test_spell, GameZone.e.BATTLEFIELD_PLAYER)
+	await game.tryPlayCard(test_spell, GameZone.e.LOCATION_1_PLAYER_CAMP)
 	
 	# Wait for async handler to complete (give it a few frames)
 	for i in range(5):
@@ -345,7 +345,7 @@ func test_container_visualizer_graveyard_selection() -> bool:
 	
 	# Step 5: Assert the selected card was correctly used (moved from graveyard to battlefield)
 	var graveyard_cards = game.game_data.get_cards_in_zone(GameZone.e.GRAVEYARD_PLAYER)
-	var battlefield_size = game.game_data.get_cards_in_zone(GameZone.e.BATTLEFIELD_PLAYER).size()
+	var battlefield_size = game.game_data.get_cards_in_zone(GameZone.e.LOCATION_1_PLAYER_CAMP).size()
 	
 	var creature_still_in_graveyard = false
 	for card in graveyard_cards:
@@ -359,7 +359,7 @@ func test_container_visualizer_graveyard_selection() -> bool:
 		return false
 	
 	# Verify the creature on battlefield is the one from graveyard
-	var battlefield_cards = game.game_data.get_cards_in_zone(GameZone.e.BATTLEFIELD_PLAYER)
+	var battlefield_cards = game.game_data.get_cards_in_zone(GameZone.e.LOCATION_1_PLAYER_CAMP)
 	if not assert_test_equal(battlefield_cards[0].cardName, "GraveyardCreature", "Moved creature should be the one from graveyard"):
 		return false
 	
@@ -376,12 +376,12 @@ func test_cancel_cast_mid_selection() -> bool:
 	Runs with animations to match real game conditions.
 	"""
 	var bolt_card: CardData = createCardFromName("Bolt", GameZone.e.HAND_PLAYER)
-	var target_creature: CardData = createCardFromName("goblin", GameZone.e.BATTLEFIELD_PLAYER)
+	var target_creature: CardData = createCardFromName("goblin", GameZone.e.LOCATION_1_PLAYER_CAMP)
 	setPlayerGold(5)
 	var gold_before = game.game_data.player_gold.getValue()
 
 	# --- First cast: start, then cancel ---
-	game.tryPlayCard(bolt_card, GameZone.e.BATTLEFIELD_PLAYER)
+	game.tryPlayCard(bolt_card, GameZone.e.LOCATION_1_PLAYER_CAMP)
 	if not await waitForSelectionStart(30):
 		return false
 	game.cancelSelection()
@@ -391,7 +391,7 @@ func test_cancel_cast_mid_selection() -> bool:
 		return false
 
 	# --- Second cast: start, select target, validate ---
-	game.tryPlayCard(bolt_card, GameZone.e.BATTLEFIELD_PLAYER)
+	game.tryPlayCard(bolt_card, GameZone.e.LOCATION_1_PLAYER_CAMP)
 	if not await waitForSelectionStart(30):
 		return false
 
@@ -524,7 +524,7 @@ func test_death_from_the_grave_targeting() -> bool:
 		async_h.call()
 
 	game.selection_manager.selection_started.connect(handler)
-	await game.tryPlayCard(spell, GameZone.e.BATTLEFIELD_PLAYER)
+	await game.tryPlayCard(spell, GameZone.e.LOCATION_1_PLAYER_CAMP)
 	# Allow animations triggered by effects to settle
 	await test_runner.get_tree().create_timer(1.5).timeout
 	game.selection_manager.selection_started.disconnect(handler)
@@ -545,7 +545,7 @@ func test_death_from_the_grave_targeting() -> bool:
 		return false
 	print("  ✅ Optional selection's Confirm was available without picking a card")
 
-	if not assert_test_equal(game.game_data.get_card_zone(gc), GameZone.e.BATTLEFIELD_PLAYER,
+	if not assert_test_equal(game.game_data.get_card_zone(gc), GameZone.e.LOCATION_1_PLAYER_CAMP,
 			"Graveyard creature should now be on battlefield"):
 		return false
 	print("  ✅ Creature returned from graveyard to battlefield")

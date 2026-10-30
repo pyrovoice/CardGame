@@ -6,6 +6,7 @@
 - **No Documentation Files**: Do not create markdown files to document changes or summarize work unless explicitly requested.
 - **Current Checkout Is Authoritative**: Before editing, inspect the current files and branch state relevant to the task. After a branch switch, pull, or rebase, never assume code described in earlier chat history is present in the checkout.
 - **Preserve Existing Work**: Treat staged and unstaged changes as user work. Do not revert or overwrite them unless explicitly asked.
+- **Preserve Godot Version**: Never change the Godot version in `project.godot` during feature work, merges, or cleanup. Preserve the current checkout's version exactly unless the user explicitly requests a version change.
 - **Test Execution Requires Permission**: Do not launch the game, run the Test Manager, or execute test suites unless the user explicitly permits it. A request to add or fix tests is not permission to run them. Static checks and diff checks are okay.
 
 ## Conflict Resolution
