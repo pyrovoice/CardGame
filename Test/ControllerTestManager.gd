@@ -3114,10 +3114,10 @@ func test_custom_countdown_zero_trigger_resolves_before_sacrifice() -> bool:
 		EffectType.Type.ADD_GOLD
 	)
 	zero_ability.trigger_conditions[TriggeredAbility.TriggerCondition.VALID_CARD] = "Card.Self"
-	zero_ability.trigger_conditions[TriggeredAbility.TriggerCondition.TRIGGER_ZONES] = [GameZone.e.BATTLEFIELD_PLAYER]
+	zero_ability.trigger_conditions[TriggeredAbility.TriggerCondition.TRIGGER_ZONES] = GameZone.parse_trigger_zones("Battlefield")
 	zero_ability.effect_parameters = {"Amount": 3}
 	template.triggered_abilities.append(zero_ability)
-	var countdown_card: CardData = game.createCardData(template, GameZone.e.BATTLEFIELD_PLAYER, true)
+	var countdown_card: CardData = game.createCardData(template, GameZone.e.LOCATION_1_PLAYER_CAMP, true)
 	countdown_card.countdown = 2
 	var gold_before: int = game.game_data.player_gold.getValue()
 
