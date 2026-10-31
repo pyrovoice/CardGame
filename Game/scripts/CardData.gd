@@ -31,6 +31,7 @@ var replacement_abilities: Array[ReplacementAbility] = []  # R: effects - replac
 var spell_effects: Array[Dictionary] = []
 # Keyword abilities (separate from complex abilities)
 var _keywords: Array[String] = []  # Simple keywords like "Flying", "Spellshield"
+var keyword_parameters: Dictionary = {}  # Keyword name -> Dictionary of parameters
 # Additional costs beyond gold cost (sacrifice, replace, etc.)
 var additionalCosts: Array[Dictionary] = []
 # Casting conditions (must be met to cast the card)
@@ -468,3 +469,19 @@ func remove_keyword(keyword: String):
 func has_keyword(keyword: String) -> bool:
 	"""Check if this card has a specific keyword (including temporary ones)"""
 	return keyword in self.keywords  # Property accessor automatically includes temp effects
+
+func has_swap() -> bool:
+	"""Check if this card has the Swap mechanic"""
+	return has_keyword("Swap") or keyword_parameters.has("Swap")
+
+func get_swap_cost() -> int:
+	"""Get the gold cost required to Swap this card"""
+	if keyword_parameters.has("Swap"):
+		return keyword_parameters["Swap"].get("cost", 1)
+	return 1
+
+func get_swap_target() -> String:
+	"""Get the target restriction for Swap (e.g. 'unblocked' or 'attacking')"""
+	if keyword_parameters.has("Swap"):
+		return keyword_parameters["Swap"].get("target", "attacking")
+	return "attacking"

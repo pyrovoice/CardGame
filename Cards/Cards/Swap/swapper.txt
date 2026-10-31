@@ -1,0 +1,6 @@
+Name:Swapper
+Types:Creature Warrior
+ManaCost:1
+Power:3
+CardText: Swap {1}
+When I enter, I have +3 might this turn

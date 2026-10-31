@@ -39,8 +39,15 @@ Ability keys can appear multiple times:
 - `AA`: Alternative / additional ability.
 - `T`: Triggered ability.
 - `R`: Replacement effect.
-- `K`: Keyword (e.g., `Charge`, `Taunt`, `Elusive`).
+- `K`: Keyword (e.g., `Charge`, `Taunt`, `Elusive`, `Fast`). `K:Swap | Cost$ 1 | Target$ Unblocked` sets Swap parameters.
 - `SVar`: Stored variable / script variable reference used in dynamic calculations.
+
+### Casting & Activation Timing
+- Cards can normally only be cast outside combat. `K:Fast` lets a card be cast at any time.
+- Combat starts when a player creature enters a location's combat zone and ends once that location has fully resolved.
+- Activated abilities (`A`/`AA`) can be activated at any time by default. Add `Slow$ True` to the ability line to restrict it to outside combat.
+- Keywords such as `Swap` can allow or deny casting in a given mode (`Keyword.get_cast_permission`); deny wins over allow.
+- Timing (`ActionTiming`) and resources (`CardPaymentManager.canAffordCard` / `canAffordActivation`) are separate checks.
 
 ### Syntax Rules
 - Parameters within an ability/effect line are separated by ` | `.

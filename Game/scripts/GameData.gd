@@ -150,6 +150,30 @@ func reset_combat_resolution_flags():
 	"""Reset all combat resolution flags at start of turn"""
 	for c in combatLocationDatas:
 		c.isCombatResolved.setValue(false)
+		c.isCombatStarted = false
+
+func set_combat_started(combat_zone: GameZone.e, started: bool) -> void:
+	"""Mark combat at the location of the given combat zone (player or opponent side) as started/ended.
+	A location that already resolved this turn cannot start combat again."""
+	var data := _get_combat_location_data_for_zone(combat_zone)
+	if data:
+		data.isCombatStarted = started and not data.isCombatResolved.value
+
+func is_any_combat_started() -> bool:
+	for c in combatLocationDatas:
+		if c.isCombatStarted:
+			return true
+	return false
+
+func _get_combat_location_data_for_zone(combat_zone: GameZone.e) -> CombatLocationData:
+	var index := -1
+	if combat_zone >= GameZone.e.COMBAT_PLAYER_1 and combat_zone <= GameZone.e.COMBAT_PLAYER_3:
+		index = combat_zone - GameZone.e.COMBAT_PLAYER_1
+	elif combat_zone >= GameZone.e.COMBAT_OPPONENT_1 and combat_zone <= GameZone.e.COMBAT_OPPONENT_3:
+		index = combat_zone - GameZone.e.COMBAT_OPPONENT_1
+	if index < 0 or index >= combatLocationDatas.size():
+		return null
+	return combatLocationDatas[index]
 
 func get_lieutenant_data(zone: GameZone.e) -> LieutenantData:
 	for lieutenant in lieutenant_datas:

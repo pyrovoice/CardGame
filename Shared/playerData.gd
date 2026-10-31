@@ -61,6 +61,8 @@ func load_data() -> void:
 	unlocked_archetypes.clear()
 	for id in data.get("unlocked_archetypes", []):
 		unlocked_archetypes.append(str(id))
+	if not "swap" in unlocked_archetypes:
+		unlocked_archetypes.append("swap")
 
 func _apply_defaults() -> void:
-	unlocked_archetypes = ["punglynd"]
+	unlocked_archetypes = ["punglynd", "swap"]

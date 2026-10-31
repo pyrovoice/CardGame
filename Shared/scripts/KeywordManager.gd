@@ -26,6 +26,8 @@ static func initialize_keywords():
 	keywords["Elusive"] = "This creature is placed at the end of the combat queue when fighting at a location."
 	keywords["Innert"] = "This creature does not attack or block attacks while innert."
 	keywords["fleeting"] = "This card is discarded at the end of your turn."
+	keywords["Swap"] = "You may play this card at combat speed by returning an attacking creature you control to your hand and playing this card in its place."
+	keywords["Fast"] = "This card can be played at any time, even during combat."
 
 static func get_keyword_text(keyword: String) -> String:
 	if keywords.has(keyword):

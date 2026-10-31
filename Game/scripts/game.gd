@@ -42,6 +42,7 @@ var opponent_ai: OpponentAI
 # Player control system
 var playerControlLock:PlayerControlLock = PlayerControlLock.new()
 var highlightManager: HighlightManager
+var action_timing: ActionTiming
 
 # Active hand for PlayerControl
 var activeHand: CardHand
@@ -126,6 +127,8 @@ func _ready() -> void:
 		print("⚠️ No deck configuration found - decks will be empty")
 	
 	highlightManager = HighlightManager.new(self)
+	action_timing = ActionTiming.new(self)
+	playerControlLock.control_regained.connect(highlightCastableCards)
 	
 	for cz in game_view.get_combat_zones():
 		var data = CombatLocationData.new(cz)
@@ -216,6 +219,11 @@ func _populate_test_graveyard(count: int):
 		print("  📦 Added: ", template.cardName)
 
 func onTurnStart(skipFirstTurn = false):
+	var lock = playerControlLock.addLock()
+	await _onTurnStart(skipFirstTurn)
+	playerControlLock.removeLock(lock)
+
+func _onTurnStart(skipFirstTurn = false):
 	# Start a new turn (increases danger level via SignalInt)
 	if !skipFirstTurn:
 		await resolve_unresolved_combats()
@@ -517,6 +525,10 @@ func _move_base_to_combat(card_data: CardData, destination_zone: GameZone.e, tar
 	"""
 	var entering_play = not GameZone.is_in_play(origin_zone)
 	
+	# A player creature entering a location's combat zone starts combat there
+	if destination_zone >= GameZone.e.COMBAT_PLAYER_1 and destination_zone <= GameZone.e.COMBAT_PLAYER_3:
+		game_data.set_combat_started(destination_zone, true)
+	
 	# View: Animate to combat (await the animation)
 	await game_view.animate_card_to_combat(card_data, destination_zone, targetPosition)
 	
@@ -584,6 +596,17 @@ func tryMoveCard(card_data: CardData, target_location: Node3D) -> void:
 	if not card_data:
 		return
 	
+	if playerControlLock.isLocked():
+		var card_view := card_data.get_card_object()
+		if card_view:
+			card_view.getAnimator().go_to_rest()
+		return
+	
+	var lock = playerControlLock.addLock()
+	await _tryMoveCard(card_data, target_location)
+	playerControlLock.removeLock(lock)
+
+func _tryMoveCard(card_data: CardData, target_location: Node3D) -> void:
 	var source_zone = game_data.get_card_zone(card_data)
 	
 	# Convert target location to zone enum
@@ -612,7 +635,7 @@ func tryMoveCard(card_data: CardData, target_location: Node3D) -> void:
 				dest_zone = GameZone.e.BATTLEFIELD_PLAYER
 			
 			# Try to play the card to the destination zone
-			tryPlayCard(card_data, dest_zone)
+			await tryPlayCard(card_data, dest_zone)
 		
 		GameZone.e.BATTLEFIELD_PLAYER:
 			await _try_move_from_battlefield(card_data, target_location)
@@ -664,6 +687,11 @@ func _canPlayCard(source_zone: GameZone.e) -> bool:
 	return GameZone.is_hand_zone(source_zone) or source_zone == GameZone.e.EXTRA_DECK_PLAYER
 
 func tryPlayCard(card_data: CardData, destination_zone: GameZone.e = GameZone.e.UNKNOWN, pre_selections: SelectionManager.CardPlaySelections = null, pay_cost = true) -> void:
+	var lock = playerControlLock.addLock()
+	await _tryPlayCard(card_data, destination_zone, pre_selections, pay_cost)
+	playerControlLock.removeLock(lock)
+
+func _tryPlayCard(card_data: CardData, destination_zone: GameZone.e = GameZone.e.UNKNOWN, pre_selections: SelectionManager.CardPlaySelections = null, pay_cost = true) -> void:
 	"""Play a card from hand/extra deck to battlefield or combat
 	
 	Args:
@@ -688,6 +716,11 @@ func tryPlayCard(card_data: CardData, destination_zone: GameZone.e = GameZone.e.
 	if destination_zone == GameZone.e.UNKNOWN:
 		destination_zone = GameZone.e.BATTLEFIELD_PLAYER if card_data.playerControlled else _default_combat_zone_for_opponent_card(card_data)
 	
+	# Check casting timing for player casts (effect-based casts and opponent plays are not timing-restricted)
+	if pay_cost and card_data.playerControlled and not action_timing.can_cast_now(card_data):
+		print("❌ [TRYPLAYCARD] Cannot cast %s right now (timing)" % card_data.cardName)
+		return
+
 	print("✅ [TRYPLAYCARD] Passed initial checks, proceeding with card play")
 	
 	# Use CardPlaySelections directly
@@ -735,6 +768,13 @@ func tryPlayCard(card_data: CardData, destination_zone: GameZone.e = GameZone.e.
 		_restore_cancelled_card()
 		return
 	
+	# Verify the chosen cast mode is allowed right now (the player may have chosen a mode that timing forbids)
+	var chosen_cast_mode := ActionTiming.CastMode.SWAP if selection_data.swap_target != null else ActionTiming.CastMode.NORMAL
+	if pay_cost and card_data.playerControlled and not action_timing.can_cast_in_mode(card_data, chosen_cast_mode):
+		print("❌ [TRYPLAYCARD] %s cannot be cast right now in mode %s" % [card_data.cardName, ActionTiming.CastMode.keys()[chosen_cast_mode]])
+		_restore_cancelled_card()
+		return
+	
 	# Execute the card play with all collected selections
 	await tryPayAndSelectsForCardPlay(card_data, selection_data, pay_cost, destination_zone)
 
@@ -744,7 +784,8 @@ func tryPlayCard(card_data: CardData, destination_zone: GameZone.e = GameZone.e.
 
 	# Player creatures enter their battlefield first, then take a second hop into combat if requested.
 	# Opponent creatures have no battlefield staging area - they already entered combat directly.
-	if card_data.playerControlled and GameZone.is_combat_zone(destination_zone):
+	# Swapped creatures already entered combat directly in their replacement slot.
+	if selection_data.swap_target == null and card_data.playerControlled and GameZone.is_combat_zone(destination_zone):
 		await execute_move_card(card_data, destination_zone)
 
 func _default_combat_zone_for_opponent_card(cardData: CardData) -> GameZone.e:
@@ -908,6 +949,7 @@ func resolveCombats():
 	for i in range(game_view.get_combat_zones().size()):
 		var combat_zone_enum := (GameZone.e.COMBAT_PLAYER_1 + i) as GameZone.e
 		await resolveCombatInZone(combat_zone_enum)
+		game_data.set_combat_started(combat_zone_enum, false)
 	playerControlLock.removeLock(lock)
 
 func resolve_unresolved_combats():
@@ -943,6 +985,7 @@ func resolve_combat_for_zone(combat_zone_enum: GameZone.e):
 	if combat_zone_view:
 		game_data.set_combat_resolved(combat_zone_view, true)
 	await emit_game_event(TriggeredAbility.GameEventType.END_OF_COMBAT, combat_zone_enum)
+	game_data.set_combat_started(combat_zone_enum, false)
 	playerControlLock.removeLock(lock)
 
 func reset_all_card_turn_tracking():
@@ -1398,6 +1441,14 @@ func _on_right_click(target: Node3D):
 		game_view.hide_container_visualizer()
 
 func tryActivateAbility(card: Card) -> bool:
+	if not card or not card.cardData or card.cardData.activated_abilities.is_empty():
+		return false
+	var lock = playerControlLock.addLock()
+	var activated: bool = await _tryActivateAbility(card)
+	playerControlLock.removeLock(lock)
+	return activated
+
+func _tryActivateAbility(card: Card) -> bool:
 	"""Try to activate an activated ability on the card"""
 	if not card or not card.cardData:
 		return false
@@ -1412,8 +1463,13 @@ func tryActivateAbility(card: Card) -> bool:
 	# TODO: Add UI to choose between multiple abilities
 	var ability_to_activate = activated_abilities[0]
 	
+	# Check the ability can be activated right now (timing)
+	if not action_timing.can_activate_now(card.cardData, ability_to_activate):
+		print("⚠️ Cannot activate ability of ", card.cardData.cardName, " right now (timing)")
+		return false
+	
 	# Check if the ability can be activated (costs can be paid)
-	if not CardPaymentManagerAL.canPayCosts(ability_to_activate.activation_costs, card.cardData):
+	if not CardPaymentManagerAL.canAffordActivation(card.cardData, ability_to_activate):
 		print("⚠️ Cannot pay activation costs for ", card.cardData.cardName)
 		return false
 	
@@ -1429,10 +1485,12 @@ func _on_left_click(objectUnderMouse):
 		var card = objectUnderMouse as Card
 		if selection_manager.is_selecting():
 			selection_manager.handle_card_click(card)
-		else:
+		elif not playerControlLock.isLocked():
 			if await tryActivateAbility(card):
 				return
 	elif objectUnderMouse is ResolveFightButton:
+		if playerControlLock.isLocked():
+			return
 		# Convert CombatZone to GameZone.e
 		var combat_zone_view = objectUnderMouse.get_parent() as CombatZone
 		var zone_index = game_view.get_combat_zones().find(combat_zone_view)
@@ -1446,7 +1504,7 @@ func _on_main_action_button_pressed():
 	"""Handle main action button press - delegates based on state"""
 	if selection_manager.is_selecting():
 		selection_manager.validate_selection()
-	else:
+	elif not playerControlLock.isLocked():
 		onTurnStart()
 
 func _on_secondary_action_button_pressed():
@@ -1632,6 +1690,37 @@ func _collectAllPlayerSelections(card_data: CardData, pre_selections: SelectionM
 				elif selected_replace_target.size() > 0:
 					selection_data.set_replace_target(selected_replace_target[0])
 	
+	# Step 1b: Check for alternative casting options (Swap)
+	var can_swap_now = action_timing.can_cast_in_mode(card_data, ActionTiming.CastMode.SWAP) and CardPaymentManagerAL.canAffordSwap(card_data)
+	print("🔍 [SWAP CHECK] swap castable now: ", can_swap_now, " for ", card_data.cardName)
+	if can_swap_now:
+		var valid_targets = CardPaymentManagerAL.getValidSwapTargets(card_data)
+		if valid_targets.size() > 0:
+			var preselected_swap: Array[CardData] = []
+			if pre_selections != null and pre_selections.swap_target != null:
+				preselected_swap = [pre_selections.swap_target]
+			
+			# Swap is the only way to cast this card when a normal cast is not allowed right now
+			var is_mandatory = not action_timing.can_cast_in_mode(card_data, ActionTiming.CastMode.NORMAL)
+			var req = SelectionRequest.reset()\
+					.with_pool(valid_targets)\
+					.with_count(1)\
+					.with_context("swap_for_" + card_data.cardName)\
+					.with_casting_card(card_data)\
+					.with_preselected(preselected_swap)
+			if not is_mandatory:
+				req.optional()
+			
+			var selected_swap_target = await start_card_selection()
+			if selected_swap_target == null:
+				selection_data.cancelled = true
+				return selection_data
+			elif selected_swap_target.size() > 0:
+				selection_data.set_swap_target(selected_swap_target[0])
+			elif is_mandatory:
+				selection_data.cancelled = true
+				return selection_data
+
 	# Step 2: Check for additional costs that require selection
 	if card_data.hasAdditionalCosts():
 		var additional_costs = card_data.getAdditionalCosts()
@@ -1784,6 +1873,40 @@ func tryPayAndSelectsForCardPlay(card_data: CardData, selection_data: SelectionM
 		print("💫 Skipping payment for card (cast via effect)")
 		await _executeCardPlay(card_data, [], destination_zone)
 		return
+
+	# Handle Swap casting choice if selected
+	if selection_data.swap_target != null:
+		var swap_target_data: CardData = selection_data.swap_target
+		
+		var valid_targets = CardPaymentManagerAL.getValidSwapTargets(card_data)
+		if swap_target_data not in valid_targets:
+			print("❌ Swap target is not valid: ", swap_target_data.cardName)
+			return
+		
+		var swap_cost = card_data.get_swap_cost()
+		if not game_data.has_gold(swap_cost, card_data):
+			print("❌ Cannot afford Swap cost: ", swap_cost)
+			return
+		
+		# Execute payment: spend gold
+		if not game_data.spend_gold(swap_cost, card_data):
+			print("❌ Failed to spend gold for swap")
+			return
+		
+		# Record swap target's combat location and slot index
+		var target_zone = game_data.get_card_zone(swap_target_data)
+		var target_index = game_data.get_card_combat_index(swap_target_data)
+		
+		# Return swapped creature to controller's hand
+		var hand_zone = GameZone.e.HAND_PLAYER if swap_target_data.playerControlled else GameZone.e.HAND_COMMANDER
+		await execute_move_card(swap_target_data, hand_zone)
+		
+		# Deploy Swap card directly in its place in the combat zone
+		await execute_move_card(card_data, target_zone, GameZone.e.UNKNOWN, target_index)
+		card_data.hasAttackedThisTurn = true
+		
+		await resolveStateBasedAction()
+		return
 	
 	# Pay costs first - selection_data stores CardData
 	var sacrifice_targets_data: Array[CardData] = selection_data.sacrifice_targets
@@ -1893,6 +2016,26 @@ func _startAdditionalCostSelection(card_data: CardData, additional_costs: Array[
 func getControllerCards(playerSide = true) -> Array[Card]:
 	"""Get all cards the player currently controls (in play)"""
 	return GameUtility.getControllerCards(self, playerSide)
+
+func is_creature_unblocked(creature_data: CardData) -> bool:
+	"""Check if an attacking creature in combat is unblocked (no opposing creature in the same slot)"""
+	if not creature_data:
+		return false
+	var zone = game_data.get_card_zone(creature_data)
+	if not GameZone.is_combat_zone(zone):
+		return false
+	var slot_index = game_data.get_card_combat_index(creature_data)
+	if slot_index < 0:
+		return false
+	var opp_zone: GameZone.e
+	if creature_data.playerControlled:
+		opp_zone = (zone + 3) as GameZone.e
+	else:
+		opp_zone = (zone - 3) as GameZone.e
+	var opp_cards = game_data.get_cards_in_zone(opp_zone)
+	if slot_index >= opp_cards.size() or opp_cards[slot_index] == null:
+		return true
+	return false
 
 func can_card_move(card_data: CardData) -> bool:
 	if card_data.is_tapped():

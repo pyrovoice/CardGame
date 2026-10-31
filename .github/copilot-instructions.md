@@ -4,6 +4,7 @@
 
 - **Concise Explanations**: Provide only essential information to understand the subject. Skip narration of actions being performed.
 - **No Documentation Files**: Do not create markdown files to document changes or summarize work unless explicitly requested.
+- **Cannot Run Tests**: You cannot run the Godot test suite or CLI tests yourself. The user runs tests manually in Godot. Do not attempt to execute Godot from the command line.
 
 ## Conflict Resolution
 

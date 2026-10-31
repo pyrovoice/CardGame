@@ -77,6 +77,8 @@ func canPayCosts(costs: Array[Dictionary], source_card_data: CardData) -> bool:
 	return true
 
 func canPayCard(card_data: CardData) -> bool:
+	"""Resource check for a normal cast: casting conditions, gold, additional costs and Replace.
+	Says nothing about timing; see ActionTiming for that."""
 	if not card_data or not current_game:
 		return false
 	
@@ -110,6 +112,28 @@ func canPayCard(card_data: CardData) -> bool:
 				break
 	
 	return false
+
+func canAffordSwap(card_data: CardData) -> bool:
+	"""Resource check for casting through Swap: casting conditions and the Swap gold cost"""
+	if not card_data or not current_game or not card_data.has_swap():
+		return false
+	if not canMeetCastingConditions(card_data):
+		return false
+	return current_game.game_data.has_gold(card_data.get_swap_cost(), card_data)
+
+func canAffordCard(card_data: CardData, mode: ActionTiming.CastMode = ActionTiming.CastMode.NORMAL) -> bool:
+	"""Can the resources for casting this card in the given mode be paid? (timing is ActionTiming's job)"""
+	match mode:
+		ActionTiming.CastMode.SWAP:
+			return canAffordSwap(card_data)
+		_:
+			return canPayCard(card_data)
+
+func canAffordActivation(card_data: CardData, ability: ActivatedAbility) -> bool:
+	"""Can the activation costs of this ability be paid? (timing is ActionTiming's job)"""
+	if not card_data or not ability:
+		return false
+	return canPayCosts(ability.activation_costs, card_data)
 
 func _convertAdditionalCostsToCostArray(additional_costs: Array[Dictionary], skip_replace: bool = false) -> Array[Dictionary]:
 	"""Convert additional costs (SacrificePermanent, Replace) to unified cost array format"""
@@ -461,20 +485,29 @@ func findReplaceTargetsInCards(selected_cards_data: Array[CardData]) -> Array[Ca
 	return replace_targets
 
 func isCardCastable(card_data: CardData) -> bool:
-	"""Check if a card can be cast (affordable including additional costs)"""
-	if not card_data:
+	"""Castable right now: timing allows at least one cast mode AND that mode's resources can be paid"""
+	if not card_data or not current_game:
 		return false
 	
-	# Use the same logic as canPayCard for consistency
-	return canPayCard(card_data)
+	for mode in current_game.action_timing.get_cast_modes(card_data):
+		if canAffordCard(card_data, mode):
+			return true
+	return false
 
 func isCardDataCastable(card_data: CardData) -> bool:
-	"""Check if a card data can be cast (affordable including additional costs)"""
-	if not card_data:
+	"""Same as isCardCastable for cards whose zone-specific cost check is canPayCardData (extra deck)"""
+	if not card_data or not current_game:
 		return false
 	
-	# Use the same logic as canPayCardData for consistency
-	return canPayCardData(card_data)
+	return current_game.action_timing.can_cast_now(card_data) and canPayCardData(card_data)
+
+func canActivateCard(card_data: CardData) -> bool:
+	"""Activatable right now: timing allows it AND its costs can be paid.
+	Mirrors Game.tryActivateAbility, which currently only uses the first activated ability."""
+	if not card_data or not current_game or card_data.activated_abilities.is_empty():
+		return false
+	var ability: ActivatedAbility = card_data.activated_abilities[0]
+	return current_game.action_timing.can_activate_now(card_data, ability) and canAffordActivation(card_data, ability)
 
 func hasReplaceOption(card_data: CardData) -> bool:
 	"""Check if a card has Replace as an alternative casting option"""
@@ -486,6 +519,33 @@ func hasReplaceOption(card_data: CardData) -> bool:
 			return canUseReplace(cost_data, card_data.playerControlled)
 	
 	return false
+
+func getValidSwapTargets(card_data: CardData) -> Array[CardData]:
+	"""Get all valid attacking creatures that can be swapped for this card"""
+	var valid_targets: Array[CardData] = []
+	if not card_data or not current_game:
+		return valid_targets
+	
+	var is_player = card_data.playerControlled
+	var target_filter = card_data.get_swap_target()
+	
+	var combat_zones: Array[GameZone.e] = [
+		GameZone.e.COMBAT_PLAYER_1, GameZone.e.COMBAT_PLAYER_2, GameZone.e.COMBAT_PLAYER_3
+	] if is_player else [
+		GameZone.e.COMBAT_OPPONENT_1, GameZone.e.COMBAT_OPPONENT_2, GameZone.e.COMBAT_OPPONENT_3
+	]
+	
+	for zone_enum in combat_zones:
+		var cards_in_zone = current_game.game_data.get_cards_in_zone(zone_enum)
+		for creature in cards_in_zone:
+			if creature and creature.playerControlled == is_player and creature.hasType(CardData.CardType.CREATURE):
+				if target_filter == "unblocked":
+					if current_game.has_method("is_creature_unblocked") and current_game.is_creature_unblocked(creature):
+						valid_targets.append(creature)
+				else:
+					valid_targets.append(creature)
+	
+	return valid_targets
 
 func canMeetCastingConditions(card_data: CardData) -> bool:
 	"""Check if all casting conditions for the card are met

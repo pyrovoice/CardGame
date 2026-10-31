@@ -5,6 +5,7 @@ class_name ActivatedAbility
 ## Handles activation costs and player-initiated effects
 
 var activation_costs: Array[Dictionary] = []  # Costs to activate (gold, sacrifice, tap, etc.)
+var is_slow: bool = false  # Slow abilities (Slow$ True) cannot be activated while combat is active
 
 func _init(p_owner: CardData, p_effect: EffectType.Type):
 	super(p_owner)
@@ -29,6 +30,7 @@ func to_dictionary() -> Dictionary:
 		"effect_type": EffectType.type_to_string(effect_type),
 		"effect_parameters": effect_parameters.duplicate(),
 		"activation_costs": activation_costs.duplicate(),
+		"is_slow": is_slow,
 		"targeting_requirements": targeting_requirements.duplicate()
 	}
 
@@ -40,6 +42,7 @@ static func from_dictionary(owner: CardData, dict: Dictionary) -> ActivatedAbili
 	var ability = ActivatedAbility.new(owner, effect)
 	ability.effect_parameters = dict.get("effect_parameters", {})
 	ability.activation_costs = dict.get("activation_costs", [])
+	ability.is_slow = dict.get("is_slow", false)
 	ability.targeting_requirements = dict.get("targeting_requirements", {})
 	
 	return ability

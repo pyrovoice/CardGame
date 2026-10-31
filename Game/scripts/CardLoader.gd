@@ -124,6 +124,14 @@ func parse_card_data(card_text: String) -> CardData:
 		if ability:
 			card_data.add_ability(ability)
 	
+	# Parse explicit keyword lines (K:)
+	if properties.has("K"):
+		var k_lines = properties["K"]
+		if typeof(k_lines) == TYPE_STRING:
+			k_lines = [k_lines]
+		for k_line in k_lines:
+			_parse_keyword_line(k_line, card_data)
+
 	# Add automatic triggered abilities for special keywords
 	_add_keyword_triggered_abilities(card_data)
 	
@@ -548,6 +556,37 @@ func _convert_trigger_type_to_game_event(trigger_type: TriggerType.Type, conditi
 			push_warning("Unknown TriggerType: " + str(trigger_type))
 			return TriggeredAbility.GameEventType.CARD_ENTERED_PLAY  # Default fallback
 
+# Parse a single keyword line (K:)
+func _parse_keyword_line(k_line: String, card_data: CardData) -> void:
+	k_line = k_line.strip_edges()
+	if k_line.is_empty():
+		return
+	
+	if "|" in k_line:
+		var parts = k_line.split(" | ")
+		var kw_name = parts[0].strip_edges()
+		if kw_name.begins_with("$ "):
+			kw_name = kw_name.substr(2)
+		card_data.add_keyword(kw_name)
+		var params: Dictionary = {}
+		for i in range(1, parts.size()):
+			var part = parts[i].strip_edges()
+			if part.begins_with("Cost$"):
+				params["cost"] = int(part.substr(5).strip_edges())
+			elif part.begins_with("Target$"):
+				params["target"] = part.substr(7).strip_edges().to_lower()
+			elif part.begins_with("ValidCard$"):
+				params["valid_card"] = part.substr(10).strip_edges()
+		if not params.is_empty():
+			card_data.keyword_parameters[kw_name] = params
+	else:
+		var parts = k_line.split(" ", false, 1)
+		var kw_name = parts[0].strip_edges()
+		card_data.add_keyword(kw_name)
+		if parts.size() > 1:
+			if kw_name == "Swap":
+				card_data.keyword_parameters["Swap"] = SwapKeyword.parse_swap_from_text(k_line)
+
 # Add automatic triggered abilities for special keywords
 func _add_keyword_triggered_abilities(card_data: CardData):
 	"""Delegate to KeywordRegistry — each Keyword subclass handles its own ability setup."""
@@ -723,6 +762,7 @@ func parse_activated_ability(activated_text: String, _svar_effects: Dictionary, 
 	var target_conditions: Dictionary = {}
 	var effect_parameters: Dictionary = {}
 	var description: String = ""
+	var is_slow: bool = false
 	
 	var activated_parts = activated_text.split(" | ")
 	
@@ -753,6 +793,8 @@ func parse_activated_ability(activated_text: String, _svar_effects: Dictionary, 
 			effect_parameters["NumCards"] = part.substr(10)
 		elif part.begins_with("Amount$"):
 			effect_parameters["Amount"] = part.substr(8)
+		elif part.begins_with("Slow$"):
+			is_slow = part.substr(5).strip_edges().to_lower() == "true"
 		elif part.begins_with("Description$"):
 			description = part.substr(13)
 	
@@ -771,6 +813,7 @@ func parse_activated_ability(activated_text: String, _svar_effects: Dictionary, 
 	# Create ActivatedAbility instance
 	var ability = ActivatedAbility.new(card_data, effect_type)
 	ability.activation_costs = activation_costs
+	ability.is_slow = is_slow
 	ability.effect_parameters = effect_parameters
 	ability.targeting_requirements = target_conditions
 	ability.description = description
@@ -1258,6 +1301,7 @@ func _duplicate_activated_ability(original: ActivatedAbility, new_owner: CardDat
 	var copy = ActivatedAbility.new(new_owner, original.effect_type)
 	copy.effect_parameters = original.effect_parameters.duplicate()
 	copy.targeting_requirements = original.targeting_requirements.duplicate()
+	copy.is_slow = original.is_slow
 	for cost in original.activation_costs:
 		copy.activation_costs.append(cost.duplicate())
 	return copy
@@ -1310,6 +1354,7 @@ func duplicateCardScript(original: CardData) -> CardData:
 	
 	# Deep copy keywords array
 	copy._keywords = original._keywords.duplicate()
+	copy.keyword_parameters = original.keyword_parameters.duplicate(true)
 	
 	# Deep copy additional costs
 	var costs: Array[Dictionary] = []

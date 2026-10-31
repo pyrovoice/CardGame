@@ -128,21 +128,15 @@ func test_card_creation_isolated_scripts():
 
 func test_combat_location_independence():
 	"""Test that attacking one combat location doesn't affect another location's state"""
-	# Setup: Create two simple goblin cards
-	var goblin1: CardData = createCardFromName("goblin", GameZone.e.HAND_PLAYER)
-	var goblin2: CardData = createCardFromName("goblin", GameZone.e.HAND_PLAYER)
+	# Setup: Create two simple goblin cards directly in two different combat zones
+	var goblin1: CardData = createCardFromName("goblin", GameZone.e.COMBAT_PLAYER_1)
+	var goblin2: CardData = createCardFromName("goblin", GameZone.e.COMBAT_PLAYER_2)
 	
 	# Get two different combat zones
 	var combat_zone_1 = game.game_view.combat_zones[0] as CombatZone
 	var combat_zone_2 = game.game_view.combat_zones[1] as CombatZone
 	if not assert_test(combat_zone_1 != combat_zone_2, "Should have different combat zones"):
 		return false
-	
-	# Play goblin1 to first combat location
-	await game.tryPlayCard(goblin1, GameZone.e.COMBAT_PLAYER_1)
-	
-	# Play goblin2 to second combat location
-	await game.tryPlayCard(goblin2, GameZone.e.COMBAT_PLAYER_2)
 	
 	# Verify both cards are assigned to their respective combat zones (DATA LAYER)
 	var goblin1_zone = game.game_data.get_card_zone(goblin1)
@@ -2713,5 +2707,358 @@ func test_consumable_cards_match_start_and_refill() -> bool:
 	print("  ✅ Consumables were only added once and not considered on refill")
 
 	print("✅ Consumable cards match start and refill test passed!")
+	return true
+
+func test_swap_keyword_detection_and_parameters():
+	"""Test that Swap keyword and its parameters are correctly detected and parsed"""
+	var ninja: CardData = createCardFromName("Ninja swapper", GameZone.e.HAND_PLAYER)
+	if not assert_test_not_null(ninja, "Ninja swapper should be created"):
+		return false
+	if not assert_test_true(ninja.has_swap(), "Ninja swapper should have Swap keyword"):
+		return false
+	if not assert_test_equal(ninja.get_swap_cost(), 1, "Ninja swapper swap cost should be 1"):
+		return false
+	if not assert_test_equal(ninja.get_swap_target(), "unblocked", "Ninja swapper swap target should be 'unblocked'"):
+		return false
+
+	var swapper: CardData = createCardFromName("Swapper", GameZone.e.HAND_PLAYER)
+	if not assert_test_not_null(swapper, "Swapper should be created"):
+		return false
+	if not assert_test_true(swapper.has_swap(), "Swapper should have Swap keyword"):
+		return false
+	if not assert_test_equal(swapper.get_swap_cost(), 1, "Swapper swap cost should be 1"):
+		return false
+	if not assert_test_equal(swapper.get_swap_target(), "attacking", "Swapper swap target should default to 'attacking'"):
+		return false
+
+	# Test explicit regex parser helper directly
+	var parsed_custom = SwapKeyword.parse_swap_from_text("Swap {3} for an unblocked creature.")
+	if not assert_test_equal(parsed_custom.get("cost"), 3, "Custom parsed cost should be 3"):
+		return false
+	if not assert_test_equal(parsed_custom.get("target"), "unblocked", "Custom parsed target should be 'unblocked'"):
+		return false
+
+	print("✅ Swap keyword detection and parameter parsing passed!")
+	return true
+
+func test_swap_execution_returns_to_hand_and_replaces_in_combat():
+	"""Test that Swapping returns the attacking creature to hand and puts the Swap card into combat in the same slot"""
+	setPlayerGold(10)
+	
+	# Two attacking creatures in combat zone 1: the swapped one is in the FIRST slot so the new card must not just be appended
+	var attacker: CardData = createCardFromName("Goblin", GameZone.e.COMBAT_PLAYER_1)
+	var other_attacker: CardData = createCardFromName("Goblin", GameZone.e.COMBAT_PLAYER_1)
+	attacker.hasAttackedThisTurn = true
+	other_attacker.hasAttackedThisTurn = true
+	game.game_data.set_combat_started(GameZone.e.COMBAT_PLAYER_1, true)
+	var attacker_initial_zone = game.game_data.get_card_zone(attacker)
+	var attacker_initial_index = game.game_data.get_card_combat_index(attacker)
+	if not assert_test_equal(attacker_initial_zone, GameZone.e.COMBAT_PLAYER_1, "Attacker should be in COMBAT_PLAYER_1"):
+		return false
+	if not assert_test_equal(attacker_initial_index, 0, "Attacker should be at index 0 in combat"):
+		return false
+
+	# Create Ninja swapper in hand
+	var ninja: CardData = createCardFromName("Ninja swapper", GameZone.e.HAND_PLAYER)
+	var gold_before = game.game_data.player_gold.getValue()
+
+	# Execute Swap play with preselection
+	var selections = SelectionManager.CardPlaySelections.new()
+	selections.set_swap_target(attacker)
+	await game.tryPlayCard(ninja, GameZone.e.UNKNOWN, selections)
+
+	# Verify gold spent matches swap cost (1)
+	var gold_after = game.game_data.player_gold.getValue()
+	if not assert_test_equal(gold_after, gold_before - 1, "Gold should be reduced by swap cost (1)"):
+		return false
+
+	# Verify attacker returned to player's hand
+	var attacker_new_zone = game.game_data.get_card_zone(attacker)
+	if not assert_test_equal(attacker_new_zone, GameZone.e.HAND_PLAYER, "Attacker should be returned to hand"):
+		return false
+
+	# Verify ninja swapper is now in combat zone 1 at index 0, the other attacker still behind it
+	var ninja_zone = game.game_data.get_card_zone(ninja)
+	var ninja_index = game.game_data.get_card_combat_index(ninja)
+	if not assert_test_equal(ninja_zone, GameZone.e.COMBAT_PLAYER_1, "Ninja swapper should enter COMBAT_PLAYER_1"):
+		return false
+	if not assert_test_equal(ninja_index, 0, "Ninja swapper should be at index 0 (in place of returned attacker)"):
+		return false
+	if not assert_test_equal(game.game_data.get_card_combat_index(other_attacker), 1, "Other attacker should stay in its slot"):
+		return false
+	if not assert_test_true(ninja.hasAttackedThisTurn, "Ninja swapper should be marked as having attacked"):
+		return false
+
+	print("✅ Swap execution returns creature to hand and replaces in combat passed!")
+	return true
+
+func test_swap_unblocked_restriction():
+	"""Test that Ninja swapper requires an unblocked creature and cannot swap a blocked creature"""
+	setPlayerGold(10)
+	
+	# Set up player creature at index 0 in combat zone 1
+	var friendly: CardData = createCardFromName("Goblin", GameZone.e.COMBAT_PLAYER_1)
+	# Set up opponent creature at index 0 in combat zone 1 (opposing slot)
+	var blocker: CardData = createCardFromName("Crumbling Zombie", GameZone.e.COMBAT_OPPONENT_1, false)
+
+	# Friendly creature is now blocked by blocker at index 0
+	if not assert_test_false(game.is_creature_unblocked(friendly), "Friendly creature should be blocked"):
+		return false
+
+	var ninja: CardData = createCardFromName("Ninja swapper", GameZone.e.HAND_PLAYER)
+	var swapper: CardData = createCardFromName("Swapper", GameZone.e.HAND_PLAYER)
+
+	# Ninja swapper requires unblocked -> should have no valid targets
+	var ninja_targets = CardPaymentManagerAL.getValidSwapTargets(ninja)
+	if not assert_test_false(ninja_targets.has(friendly), "Blocked creature should not be valid for Ninja swapper"):
+		return false
+
+	# Swapper only requires attacking -> should have friendly creature as a valid target
+	var swapper_targets = CardPaymentManagerAL.getValidSwapTargets(swapper)
+	if not assert_test_true(swapper_targets.has(friendly), "Blocked creature should be valid for generic Swapper"):
+		return false
+
+	# Remove the blocker: now friendly is unblocked
+	game.game_data.destroy_card(blocker)
+	if not assert_test_true(game.is_creature_unblocked(friendly), "Friendly creature should now be unblocked"):
+		return false
+
+	ninja_targets = CardPaymentManagerAL.getValidSwapTargets(ninja)
+	if not assert_test_true(ninja_targets.has(friendly), "Unblocked creature should now be valid for Ninja swapper"):
+		return false
+
+	print("✅ Swap unblocked restriction test passed!")
+	return true
+
+func test_default_casting_window_blocks_regular_cards_only_during_player_combat():
+	"""Layer 1 + 2: cards are cast outside combat; during combat only Fast cards can be cast"""
+	setPlayerGold(10)
+	var regular_goblin: CardData = createCardFromName("Goblin", GameZone.e.HAND_PLAYER)
+
+	if not assert_test_false(game.action_timing.is_combat_active(), "Combat should not be active initially"):
+		return false
+	if not assert_test_true(game.action_timing.can_cast_now(regular_goblin), "Regular card is castable outside combat"):
+		return false
+
+	# Opponent creatures sitting in their combat zone do not start combat
+	createCardFromName("Crumbling Zombie", GameZone.e.COMBAT_OPPONENT_1, false)
+	if not assert_test_false(game.action_timing.is_combat_active(), "Opponent creatures alone must not start combat"):
+		return false
+
+	# A player creature entering the combat zone starts combat
+	createCardFromName("Goblin", GameZone.e.COMBAT_PLAYER_1)
+	game.game_data.set_combat_started(GameZone.e.COMBAT_PLAYER_1, true)
+	if not assert_test_true(game.action_timing.is_combat_active(), "Combat should be active once started"):
+		return false
+	if not assert_test_false(game.action_timing.can_cast_now(regular_goblin), "Regular card is not castable during combat"):
+		return false
+	if not assert_test_false(CardPaymentManagerAL.isCardCastable(regular_goblin), "Affordable but untimely card is not castable"):
+		return false
+
+	await game.tryPlayCard(regular_goblin, GameZone.e.BATTLEFIELD_PLAYER)
+	if not assert_test_equal(game.game_data.get_card_zone(regular_goblin), GameZone.e.HAND_PLAYER, "tryPlayCard must reject a regular card during combat"):
+		return false
+
+	# Fast cards can always be cast (K:Fast is parsed by the card loader)
+	var fast_goblin: CardData = createCardFromName("Goblin", GameZone.e.HAND_PLAYER)
+	CardLoaderAL._parse_keyword_line("Fast", fast_goblin)
+	if not assert_test_true(fast_goblin.has_keyword("Fast"), "K:Fast should add the Fast keyword"):
+		return false
+	if not assert_test_true(game.action_timing.can_cast_now(fast_goblin), "Fast card is castable during combat"):
+		return false
+	if not assert_test_true(CardPaymentManagerAL.isCardCastable(fast_goblin), "Fast affordable card is castable during combat"):
+		return false
+
+	# Combat ends once the location has fully resolved, and a resolved location cannot start combat again
+	await game.resolve_combat_for_zone(GameZone.e.COMBAT_PLAYER_1)
+	if not assert_test_false(game.action_timing.is_combat_active(), "Combat should be over after the location resolved"):
+		return false
+	game.game_data.set_combat_started(GameZone.e.COMBAT_PLAYER_1, true)
+	if not assert_test_false(game.action_timing.is_combat_active(), "A resolved location must not restart combat this turn"):
+		return false
+	if not assert_test_true(game.action_timing.can_cast_now(regular_goblin), "Regular card is castable again after combat"):
+		return false
+
+	print("✅ Default casting window test passed!")
+	return true
+
+func test_slow_activated_ability_only_outside_combat():
+	"""Layer 1 + 2 for abilities: activation is allowed any time unless the ability is Slow"""
+	setPlayerGold(10)
+	var tap_creature: CardData = createCardFromName("Tap Test Creature", GameZone.e.BATTLEFIELD_PLAYER)
+	var ability: ActivatedAbility = tap_creature.activated_abilities[0]
+	if not assert_test_false(ability.is_slow, "Abilities are not slow by default"):
+		return false
+
+	var parsed_slow: ActivatedAbility = CardLoaderAL.parse_activated_ability("$ PumpAll | Cost$ T | ValidCards$ Creature.YouCtrl | KW$ Spellshield | Duration$ EndOfTurn | Slow$ True", {}, tap_creature)
+	if not assert_test_true(parsed_slow.is_slow, "Slow$ True should mark the ability as slow"):
+		return false
+	var parsed_default: ActivatedAbility = CardLoaderAL.parse_activated_ability("$ PumpAll | Cost$ T | ValidCards$ Creature.YouCtrl | KW$ Spellshield | Duration$ EndOfTurn", {}, tap_creature)
+	if not assert_test_false(parsed_default.is_slow, "An ability without Slow$ is not slow"):
+		return false
+
+	createCardFromName("Goblin", GameZone.e.COMBAT_PLAYER_1)
+	game.game_data.set_combat_started(GameZone.e.COMBAT_PLAYER_1, true)
+
+	if not assert_test_true(game.action_timing.can_activate_now(tap_creature, ability), "Default ability is activatable during combat"):
+		return false
+	if not assert_test_true(CardPaymentManagerAL.canActivateCard(tap_creature), "Default affordable ability is activatable during combat"):
+		return false
+
+	ability.is_slow = true
+	if not assert_test_false(game.action_timing.can_activate_now(tap_creature, ability), "Slow ability is not activatable during combat"):
+		return false
+	if not assert_test_false(CardPaymentManagerAL.canActivateCard(tap_creature), "Affordable but slow ability is not activatable during combat"):
+		return false
+
+	game.game_data.set_combat_started(GameZone.e.COMBAT_PLAYER_1, false)
+	if not assert_test_true(game.action_timing.can_activate_now(tap_creature, ability), "Slow ability is activatable outside combat"):
+		return false
+
+	print("✅ Slow ability test passed!")
+	return true
+
+class _CastPermissionKeyword extends Keyword:
+	var keyword_name: String
+	var permission: ActionTiming.Permission
+
+	func _init(p_name: String, p_permission: ActionTiming.Permission) -> void:
+		keyword_name = p_name
+		permission = p_permission
+
+	func get_keyword_name() -> String:
+		return keyword_name
+
+	func get_cast_permission(_card: CardData, mode: ActionTiming.CastMode, _timing: ActionTiming) -> ActionTiming.Permission:
+		return permission if mode == ActionTiming.CastMode.NORMAL else ActionTiming.Permission.PASS
+
+func test_keyword_cast_permissions_allow_and_deny():
+	"""Layer 3: keywords can allow a cast the window forbids, or deny one it allows. Deny wins"""
+	setPlayerGold(10)
+	KeywordRegistry._add(_CastPermissionKeyword.new("TestAllowCast", ActionTiming.Permission.ALLOW))
+	KeywordRegistry._add(_CastPermissionKeyword.new("TestDenyCast", ActionTiming.Permission.DENY))
+
+	var card: CardData = createCardFromName("Goblin", GameZone.e.HAND_PLAYER)
+	createCardFromName("Goblin", GameZone.e.COMBAT_PLAYER_1)
+	game.game_data.set_combat_started(GameZone.e.COMBAT_PLAYER_1, true)
+
+	if not assert_test_false(game.action_timing.can_cast_now(card), "Regular card is blocked during combat"):
+		return false
+	card.add_keyword("TestAllowCast")
+	if not assert_test_true(game.action_timing.can_cast_now(card), "An ALLOW permission overrides the combat window"):
+		return false
+
+	game.game_data.set_combat_started(GameZone.e.COMBAT_PLAYER_1, false)
+	card.remove_keyword("TestAllowCast")
+	card.add_keyword("Fast")
+	card.add_keyword("TestDenyCast")
+	if not assert_test_false(game.action_timing.can_cast_now(card), "A DENY permission beats Fast and the open window"):
+		return false
+	card.add_keyword("TestAllowCast")
+	if not assert_test_false(game.action_timing.can_cast_now(card), "DENY wins over ALLOW"):
+		return false
+
+	KeywordRegistry._registry.erase("TestAllowCast")
+	KeywordRegistry._registry.erase("TestDenyCast")
+	print("✅ Keyword cast permission test passed!")
+	return true
+
+func test_swap_timing_is_separate_from_affordability():
+	"""Swap is a layer 3 permission (combat + valid target); its gold cost is a separate resource check"""
+	setPlayerGold(10)
+	var attacker: CardData = createCardFromName("Goblin", GameZone.e.COMBAT_PLAYER_1)
+	var ninja: CardData = createCardFromName("Ninja swapper", GameZone.e.HAND_PLAYER)
+
+	# Outside combat: only a normal cast; Swap mode is unavailable even though an attacker exists
+	if not assert_test_false(game.action_timing.can_cast_in_mode(ninja, ActionTiming.CastMode.SWAP), "Swap is not castable before combat starts"):
+		return false
+	if not assert_test_true(game.action_timing.can_cast_in_mode(ninja, ActionTiming.CastMode.NORMAL), "Normal cast is available before combat starts"):
+		return false
+
+	# tryPlayCard re-verifies the chosen mode: a swap attempted outside combat is rejected
+	var gold_before = game.game_data.player_gold.getValue()
+	var selections = SelectionManager.CardPlaySelections.new()
+	selections.set_swap_target(attacker)
+	await game.tryPlayCard(ninja, GameZone.e.UNKNOWN, selections)
+	if not assert_test_equal(game.game_data.get_card_zone(ninja), GameZone.e.HAND_PLAYER, "Swap outside combat must be rejected"):
+		return false
+	if not assert_test_equal(game.game_data.player_gold.getValue(), gold_before, "A rejected swap must not spend gold"):
+		return false
+	if not assert_test_equal(game.game_data.get_card_zone(attacker), GameZone.e.COMBAT_PLAYER_1, "A rejected swap must leave the attacker in combat"):
+		return false
+
+	# During combat: Swap is the only available mode
+	game.game_data.set_combat_started(GameZone.e.COMBAT_PLAYER_1, true)
+	var modes = game.action_timing.get_cast_modes(ninja)
+	if not assert_test_equal(modes, [ActionTiming.CastMode.SWAP], "Only Swap mode should be available during combat"):
+		return false
+
+	# Affordability is a different question: timing still allows Swap with no gold
+	setPlayerGold(0)
+	if not assert_test_true(game.action_timing.can_cast_in_mode(ninja, ActionTiming.CastMode.SWAP), "Swap timing does not depend on gold"):
+		return false
+	if not assert_test_false(CardPaymentManagerAL.canAffordCard(ninja, ActionTiming.CastMode.SWAP), "Swap cannot be afforded without gold"):
+		return false
+	if not assert_test_false(CardPaymentManagerAL.isCardCastable(ninja), "Untimely or unaffordable cards are not castable"):
+		return false
+	setPlayerGold(1)
+	if not assert_test_true(CardPaymentManagerAL.isCardCastable(ninja), "Swap with a valid target and enough gold is castable"):
+		return false
+
+	# Ninja swapper needs an unblocked creature: block the attacker and Swap is no longer valid
+	createCardFromName("Crumbling Zombie", GameZone.e.COMBAT_OPPONENT_1, false)
+	if not assert_test_false(game.action_timing.can_cast_now(ninja), "Swap needs a valid (unblocked) creature"):
+		return false
+
+	print("✅ Swap timing vs affordability test passed!")
+	return true
+
+func test_player_control_lock_emits_control_regained_on_last_release():
+	"""Test that control_regained only fires when the last lock is released"""
+	var lock_manager := PlayerControlLock.new()
+	var regained_count := [0]
+	lock_manager.control_regained.connect(func(): regained_count[0] += 1)
+
+	var lock_a = lock_manager.addLock()
+	var lock_b = lock_manager.addLock()
+	lock_manager.removeLock(lock_a)
+	if not assert_test_equal(regained_count[0], 0, "control_regained should not fire while a lock remains"):
+		return false
+	if not assert_test_true(lock_manager.isLocked(), "Manager should still be locked"):
+		return false
+
+	lock_manager.removeLock(lock_b)
+	if not assert_test_equal(regained_count[0], 1, "control_regained should fire once when last lock is released"):
+		return false
+	if not assert_test_false(lock_manager.isLocked(), "Manager should be unlocked"):
+		return false
+
+	print("✅ Player control lock control_regained test passed!")
+	return true
+
+func test_can_activate_card_requires_payable_costs():
+	"""Test that an in-play card with an activated ability is activatable only when its costs can be paid"""
+	var tap_creature: CardData = createCardFromName("Tap Test Creature", GameZone.e.BATTLEFIELD_PLAYER)
+	if not assert_test_not_null(tap_creature, "Tap Test Creature should be created"):
+		return false
+
+	setPlayerGold(1)
+	if not assert_test_true(CardPaymentManagerAL.canActivateCard(tap_creature), "Should be activatable with 1 gold and untapped"):
+		return false
+
+	setPlayerGold(0)
+	if not assert_test_false(CardPaymentManagerAL.canActivateCard(tap_creature), "Should not be activatable without gold"):
+		return false
+
+	setPlayerGold(1)
+	tap_creature.tap()
+	if not assert_test_false(CardPaymentManagerAL.canActivateCard(tap_creature), "Should not be activatable while tapped"):
+		return false
+
+	var hand_copy: CardData = createCardFromName("Tap Test Creature", GameZone.e.HAND_PLAYER)
+	if not assert_test_false(CardPaymentManagerAL.canActivateCard(hand_copy), "Cards in hand are not activatable"):
+		return false
+
+	print("✅ canActivateCard test passed!")
 	return true
 

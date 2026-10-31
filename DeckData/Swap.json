@@ -1,0 +1,17 @@
+{
+	"name": "Swap",
+	"limits": [
+		{ "color": "Colorless", "rarity": "Common",   "count": 3 },
+		{ "color": "Colorless", "rarity": "Uncommon", "count": 2 },
+		{ "color": "Colorless", "rarity": "Rare",     "count": 1 },
+		{ "color": "Colorless", "rarity": "Mythic",   "count": 1 }
+	],
+	"cards": [
+		"Ninja swapper",
+		"Swapper",
+		"Bounce back",
+		"goblin kid",
+		"goblin pair",
+		"Bolt"
+	]
+}

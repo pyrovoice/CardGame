@@ -7,6 +7,7 @@ var player_capture_current = SignalInt.new(0)
 var opponent_capture_threshold = SignalInt.new(10)
 var opponent_capture_current = SignalInt.new(0)
 var isCombatResolved: SignalBool = SignalBool.new(false)
+var isCombatStarted: bool = false  # True from the first player creature entering this location until its resolution fully completes
 
 func _init(combatZone: CombatZone):
 	if !combatZone:

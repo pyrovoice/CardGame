@@ -20,6 +20,7 @@ applyTo: "Test/**/*.gd"
 - Do not use native GDScript `assert()` for test harness assertions because native asserts halt the execution rather than recording failure metrics in `test_results`.
 
 ## Testing Best Practices
+- **Agent Cannot Run Tests**: The agent cannot execute tests directly via CLI or command line. The user runs tests manually in the Godot editor/engine.
 - Initialize state cleanly before each scenario.
 - Test both sides of triggered/replacement interactions through `ResolvableQueue`.
 - Verify zone transitions (e.g., Hand -> Battlefield -> Graveyard).

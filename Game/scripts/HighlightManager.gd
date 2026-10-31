@@ -10,6 +10,7 @@ enum CardHighlightState {
 	DIMMED,       ## Greyed out (non-castable during a highlight pass)
 	SELECTED,     ## Green tint, green outline (chosen during selection)
 	DRAG_OUTSIDE, ## Red outline (being dragged outside the hand zone)
+	ACTIVATABLE,  ## Gold outline (in-play card with an activated ability the player can pay for)
 }
 
 var game: Game
@@ -65,6 +66,17 @@ func onHighlight() -> void:
 	clear_all()
 	_highlightHandCards()
 	_highlightExtraDeckDisplayCards()
+	_highlightActivatableCardsInPlay()
+
+func _highlightActivatableCardsInPlay() -> void:
+	if not game:
+		return
+	for card_data in game.game_data.get_cards_in_play():
+		if not card_data.playerControlled:
+			continue
+		var card := card_data.get_card_object()
+		if card and CardPaymentManagerAL.canActivateCard(card_data):
+			set_card_highlight(card, CardHighlightState.ACTIVATABLE)
 
 func _highlightHandCards() -> void:
 	if not game or not game.game_view.player_hand:
@@ -141,7 +153,7 @@ func _apply_visual(card: Card, state: CardHighlightState) -> void:
 		card.card_2d.set_base_modulate(color)
 
 	# Outline mesh
-	var show_outline := state in [CardHighlightState.CASTABLE, CardHighlightState.SELECTED, CardHighlightState.DRAG_OUTSIDE]
+	var show_outline := state in [CardHighlightState.CASTABLE, CardHighlightState.SELECTED, CardHighlightState.DRAG_OUTSIDE, CardHighlightState.ACTIVATABLE]
 	if card.highlight_mesh:
 		card.highlight_mesh.visible = show_outline
 		if show_outline:
@@ -150,5 +162,6 @@ func _apply_visual(card: Card, state: CardHighlightState) -> void:
 				CardHighlightState.CASTABLE:     outline_color = Color.BLUE
 				CardHighlightState.SELECTED:     outline_color = Color.GREEN
 				CardHighlightState.DRAG_OUTSIDE: outline_color = Color.RED
+				CardHighlightState.ACTIVATABLE:  outline_color = Color.GOLD
 				_:                               outline_color = Color.WHITE
 			card.set_outline_color(outline_color)

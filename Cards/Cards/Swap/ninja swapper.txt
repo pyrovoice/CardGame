@@ -1,0 +1,6 @@
+Name:Ninja swapper
+Types:Creature ninja
+ManaCost:1
+Power:2
+CardText: Swap {1} for an unblocked creature.
+When I enter during a fight, give another creature -3 damage this turn.

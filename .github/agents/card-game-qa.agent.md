@@ -15,6 +15,7 @@ Your job is to create, run, and maintain test scenarios in:
 - `Test/TestGameRunner.gd`
 
 ## Constraints
+- **Cannot Run Tests**: You cannot run tests directly yourself via CLI; Godot tests are executed manually by the user.
 - **Cards are Source of Truth**: When test expectations contradict card text files in `Cards/`, the card is considered correct. Fix the test to reflect the card definition. If in doubt, ask the user before altering test expectations.
 - **Assertion Standards**: Always use `assert_test_*` helpers (`assert_test_equal`, `assert_test_true`, `assert_test_not_null`) instead of native GDScript `assert()`, allowing the test suite to log errors gracefully without hard crashing.
 - **Isolation**: Ensure tests set up and tear down board states cleanly without leaking side effects to subsequent tests.

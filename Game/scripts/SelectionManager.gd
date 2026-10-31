@@ -10,6 +10,7 @@ signal selection_updated(description: String, can_validate: bool)  # Emitted eac
 class CardPlaySelections:
 	var additional_cost_selections: Array[CardData] = []  # Cards to sacrifice/pay additional costs (deprecated - use specific arrays)
 	var replace_target: CardData = null  # Target for Replace mechanism (if using Replace casting)
+	var swap_target: CardData = null  # Target for Swap mechanism (attacking creature returned to hand)
 	var sacrifice_targets: Array[CardData] = []  # Cards to sacrifice for SacrificePermanent costs
 	var spell_targets: Array[CardData] = []  # Targets for spells and abilities
 	var cancelled: bool = false
@@ -20,6 +21,10 @@ class CardPlaySelections:
 	func set_replace_target(target: CardData):
 		"""Set the card to replace (automatically enables Replace casting)"""
 		replace_target = target
+
+	func set_swap_target(target: CardData):
+		"""Set the attacking creature to swap (automatically enables Swap casting)"""
+		swap_target = target
 	
 	func add_sacrifice_target(card_data: CardData):
 		"""Add a card to sacrifice for additional costs"""
@@ -37,6 +42,7 @@ class CardPlaySelections:
 		"""Check if any selections have been made"""
 		return (additional_cost_selections.size() > 0 or 
 				replace_target != null or 
+				swap_target != null or
 				sacrifice_targets.size() > 0 or
 				spell_targets.size() > 0)
 

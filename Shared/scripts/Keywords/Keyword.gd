@@ -31,3 +31,8 @@ func register_abilities(card: CardData) -> Array[CardAbility]:
 ## Example override: ElusiveKeyword checks card.text_box instead.
 func should_register_for(card: CardData) -> bool:
 	return get_keyword_name() in card._keywords
+
+## Layer 3 of ActionTiming: allow or deny casting this card in the given mode right now.
+## PASS leaves the decision to the default window and to other keywords. Deny wins over allow.
+func get_cast_permission(card: CardData, mode: ActionTiming.CastMode, timing: ActionTiming) -> ActionTiming.Permission:
+	return ActionTiming.Permission.PASS

@@ -1,0 +1,6 @@
+Name:Bounce back
+Types:Creature goblin
+ManaCost:1
+Power:0
+CardText: When I'm returned to the hand, draw a card.
+Your first swap each turn costs {{1}} less.
