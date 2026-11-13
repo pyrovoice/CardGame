@@ -11,14 +11,14 @@ func execute(parameters: Dictionary, source_card_data: CardData, game_context: G
 
 	# target_card, defined, valid_card, and num_cards are already parsed by _parse_parameters()
 	if target_card:
-		await _sacrifice_card(target_card, game_context)
-		sacrificed.append(target_card)
+		if await _sacrifice_card(target_card, game_context, parameters, source_card_data):
+			sacrificed.append(target_card)
 	else:
 		# Otherwise, gather cards matching criteria
 		# Handle "Defined$ Self" - sacrifice the source card
 		if defined == "Self":
-			await _sacrifice_card(source_card_data, game_context)
-			sacrificed.append(source_card_data)
+			if await _sacrifice_card(source_card_data, game_context, parameters, source_card_data):
+				sacrificed.append(source_card_data)
 		else:
 			# Affected$ Card.Remembered overrides filter
 			var affected = Effect.resolve_affected(parameters)
@@ -34,27 +34,36 @@ func execute(parameters: Dictionary, source_card_data: CardData, game_context: G
 			
 			var cards_to_sacrifice = matching_cards.slice(0, min(num_cards, matching_cards.size()))
 			for card in cards_to_sacrifice:
-				await _sacrifice_card(card, game_context)
-				sacrificed.append(card)
+				if await _sacrifice_card(card, game_context, parameters, source_card_data):
+					sacrificed.append(card)
 
 	return sacrificed
 
-func _sacrifice_card(card_data: CardData, game_context: Game):
+func _sacrifice_card(card_data: CardData, game_context: Game, parameters: Dictionary, source_card_data: CardData) -> bool:
 	"""Move a card to its owner's graveyard"""
 	if not card_data:
-		return
+		return false
 	
 	# Check if card is in play
 	var current_zone = game_context.game_data.get_card_zone(card_data)
 	if not GameZone.is_in_play(current_zone):
 		print("⚠️ Cannot sacrifice ", card_data.cardName, " - not in play (zone: ", GameZone.e.keys()[current_zone], ")")
-		return
+		return false
+
+	var context: Dictionary = parameters.duplicate()
+	context["TargetCard"] = card_data
+	context["source_card_data"] = source_card_data
+	context["Cause"] = parameters.get("Cause", EffectCause.Type.UNSPECIFIED)
+	context = ReplacementEffectRegistry.apply_replacement_effects(EffectType.Type.SACRIFICE, context, game_context)
+	if context.get("event_was_replaced", false):
+		return false
 	
 	# Determine graveyard zone based on owner
 	var graveyard_zone = GameZone.e.GRAVEYARD_PLAYER if card_data.playerOwned else GameZone.e.GRAVEYARD_OPPONENT
 	
 	print("💀 Sacrificing ", card_data.cardName, " to graveyard")
 	await game_context.execute_move_card(card_data, graveyard_zone, current_zone)
+	return game_context.game_data.get_card_zone(card_data) == graveyard_zone
 
 func validate_parameters(parameters: Dictionary) -> bool:
 	# Valid if we have TargetCard, Defined, or ValidCards

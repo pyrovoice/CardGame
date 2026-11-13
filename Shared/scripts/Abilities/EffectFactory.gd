@@ -56,6 +56,15 @@ static func create_effect(effect_type: EffectType.Type) -> Effect:
 		
 		EffectType.Type.REDUCE_COST:
 			return ReduceCostEffect.new()
+
+		EffectType.Type.BATTLEFIELD_DECIDED:
+			return BattlefieldDecidedEffect.new()
+
+		EffectType.Type.ADD_PLAYER_POINTS:
+			return AddPlayerPointsEffect.new()
+
+		EffectType.Type.DAMAGE_PLAYER:
+			return DamagePlayerEffect.new()
 		
 		EffectType.Type.RELIC_DURABILITY_TICK:
 			return RelicDurabilityEffect.new()
@@ -68,6 +77,14 @@ static func execute_effect(effect_type: EffectType.Type, parameters: Dictionary,
 	"""Convenience method to create and run an effect in one call"""
 	var effect = create_effect(effect_type)
 	if effect:
+		parameters = parameters.duplicate()
+		parameters["source_card_data"] = source_card_data
+		parameters["Cause"] = parameters.get("Cause", EffectCause.Type.UNSPECIFIED)
+		if effect_type != EffectType.Type.SACRIFICE:
+			parameters = ReplacementEffectRegistry.apply_replacement_effects(effect_type, parameters, game_context)
+			if parameters.get("event_was_replaced", false):
+				Effect.remember([])
+				return
 		if not effect.validate_parameters(parameters):
 			push_error("Invalid parameters for effect type: " + EffectType.type_to_string(effect_type))
 			return

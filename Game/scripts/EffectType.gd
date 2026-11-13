@@ -49,6 +49,9 @@ enum Type {
 	DISCARD,  # Discard cards
 	SEARCH,  # Search library
 	SHUFFLE,  # Shuffle deck
+	BATTLEFIELD_DECIDED,
+	ADD_PLAYER_POINTS,
+	DAMAGE_PLAYER,
 	NONE
 }
 
@@ -109,6 +112,12 @@ static func type_to_string(effect_type: Type) -> String:
 			return "Search"
 		Type.SHUFFLE:
 			return "Shuffle"
+		Type.BATTLEFIELD_DECIDED:
+			return "BattlefieldDecided"
+		Type.ADD_PLAYER_POINTS:
+			return "AddPlayerPoints"
+		Type.DAMAGE_PLAYER:
+			return "DamagePlayer"
 		_:
 			return "UNKNOWN"
 
@@ -172,6 +181,12 @@ static func string_to_type(effect_string: String) -> Type:
 			return Type.SEARCH
 		"Shuffle":
 			return Type.SHUFFLE
+		"BattlefieldDecided":
+			return Type.BATTLEFIELD_DECIDED
+		"AddPlayerPoints":
+			return Type.ADD_PLAYER_POINTS
+		"DamagePlayer":
+			return Type.DAMAGE_PLAYER
 		_:
 			return Type.NONE  # Unknown string — caller should check with is_valid_string first
 

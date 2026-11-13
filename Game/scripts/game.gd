@@ -1194,32 +1194,33 @@ func _apply_damage_to_location(damage: int, is_player_damage: bool, combatZone: 
 	var damage_color = Color.BLUE if is_player_damage else Color.RED
 	AnimationsManagerAL.show_floating_text(self, combatZone.global_position, damage_text, damage_color)
 
+var _deciding_battlefields: Array[CombatZone] = []
+
 func _check_locations_capture():
 	for combat_location_data in game_data.combatLocationDatas:
 		if combat_location_data.opponent_capture_current.value >= combat_location_data.opponent_capture_threshold.value:
-			_handle_location_captured(combat_location_data.relatedLocation, false)
+			await _handle_location_captured(combat_location_data.relatedLocation, false)
 		elif combat_location_data.player_capture_current.value >= combat_location_data.player_capture_threshold.value:
-			_handle_location_captured(combat_location_data.relatedLocation, true)
+			await _handle_location_captured(combat_location_data.relatedLocation, true)
 
 func _handle_location_captured(combatZone: CombatZone, captured_by_player: bool):
+	await on_battlefield_deciding(combatZone, captured_by_player)
+
+func on_battlefield_deciding(combatZone: CombatZone, captured_by_player: bool) -> void:
+	if not combatZone or combatZone in _deciding_battlefields:
+		return
+	_deciding_battlefields.append(combatZone)
 	var capture_text = combatZone.name + " CAPTURED!"
 	var capture_color = Color.GOLD if captured_by_player else Color.PURPLE
 	AnimationsManagerAL.show_floating_text(self, combatZone.global_position, capture_text, capture_color)
-	
-	if captured_by_player:
-		game_data.add_player_points(1)
-		game_data.get_combat_zone_data(combatZone).player_capture_threshold.value += 5
-		# The Lieutenant defending this location was conquered - reset their refill counter
-		var role = _lieutenant_role_for_combat_zone(combatZone)
-		var lieutenant = game_data.get_lieutenant_data_by_role(role)
-		if lieutenant:
-			lieutenant.reset_since_last_conquest()
-	else:
-		game_data.damage_player(1)
-		game_data.add_gold(1)
-		game_data.get_combat_zone_data(combatZone).opponent_capture_threshold.value += 5
-		
-	game_data.reset_combat_zone_data(combatZone)
+	var source := CardData.new()
+	source.cardName = "Battlefield Decided"
+	await EffectFactory.execute_effect(EffectType.Type.BATTLEFIELD_DECIDED, {
+		"CombatZone": combatZone,
+		"CapturedByPlayer": captured_by_player,
+		"Cause": EffectCause.Type.BATTLEFIELD_DECIDED,
+	}, source, self)
+	_deciding_battlefields.erase(combatZone)
 
 func _lieutenant_role_for_combat_zone(combatZone: CombatZone) -> String:
 	"""Map a combat location to its Lieutenant role: index 0=aggro (left), 1=control (middle), 2=combo (right)"""
@@ -1259,7 +1260,7 @@ func resolveStateBasedAction():
 		get_tree().change_scene_to_file("res://MainMenu/scenes/MainMenu.tscn")
 	if game_data.player_points.getValue() >= 6:
 		get_tree().change_scene_to_file("res://MainMenu/scenes/MainMenu.tscn")
-	_check_locations_capture()
+	await _check_locations_capture()
 	# Check and highlight castable cards
 	highlightCastableCards()
 

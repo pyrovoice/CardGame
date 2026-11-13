@@ -8,7 +8,10 @@ class_name AddGoldEffect
 
 func execute(parameters: Dictionary, source_card_data: CardData, game_context: Game) -> Array[CardData]:
 	# amount is already parsed by _parse_parameters()
-	game_context.game_data.get_gold_pool(source_card_data).value += amount
+	if parameters.get("Recipient", "Controller") == "Player":
+		game_context.game_data.add_gold(amount)
+	else:
+		game_context.game_data.get_gold_pool(source_card_data).value += amount
 	return []
 
 func validate_parameters(_parameters: Dictionary) -> bool:

@@ -37,6 +37,138 @@ func runTests():
 
 # === CONTROLLER TESTS (All logic/state tests) ===
 
+class BattlefieldTestReplacement extends ReplacementEffect:
+	var application_count: int = 0
+
+	func apply_modification(effect_context: Dictionary, _game_context: Game) -> Dictionary:
+		application_count += 1
+		var result: Dictionary = effect_context.duplicate()
+		result.merge(modifications, true)
+		return result
+
+func _create_battlefield_test_card(zone: GameZone.e, resolute: bool = false) -> CardData:
+	var template := CardData.new()
+	template.cardName = "Battlefield test permanent"
+	template.addType(CardData.CardType.CREATURE)
+	template._power = 5
+	if resolute:
+		template.add_keyword("Resolute")
+		for ability: CardAbility in KeywordRegistry.get_all_abilities_for_card(template):
+			template.add_ability(ability)
+	return game.createCardData(template, zone, GameZone.is_player_zone(zone))
+
+func test_resolute_battlefield_decided() -> bool:
+	var survivor: CardData = _create_battlefield_test_card(GameZone.e.LOCATION_1_PLAYER_CAMP, true)
+	var opponent_survivor: CardData = _create_battlefield_test_card(GameZone.e.COMBAT_OPPONENT_1, true)
+	var player_casualty: CardData = _create_battlefield_test_card(GameZone.e.COMBAT_PLAYER_1)
+	var opponent_casualty: CardData = _create_battlefield_test_card(GameZone.e.LOCATION_1_OPPONENT_CAMP)
+	var other_location: CardData = _create_battlefield_test_card(GameZone.e.LOCATION_2_PLAYER_CAMP, true)
+	var combat_zone: CombatZone = game.game_view.get_combat_zones()[0]
+	var location_data: CombatLocationData = game.game_data.get_combat_zone_data(combat_zone)
+	location_data.player_capture_current.value = location_data.player_capture_threshold.value
+	await game._check_locations_capture()
+	if not assert_test_equal(game.game_data.player_points.value, 1, "A decided player win awards one point"):
+		return false
+	if not assert_test_equal(game.game_data.get_card_zone(survivor), GameZone.e.LOCATION_1_PLAYER_CAMP, "Resolute protects its permanent"):
+		return false
+	if not assert_test_equal(game.game_data.get_card_zone(opponent_survivor), GameZone.e.COMBAT_OPPONENT_1, "Resolute protects either side"):
+		return false
+	if not assert_test_false(survivor.has_keyword("Resolute") or opponent_survivor.has_keyword("Resolute"), "Protection consumes Resolute"):
+		return false
+	if not assert_test_equal(game.game_data.get_card_zone(player_casualty), GameZone.e.GRAVEYARD_PLAYER, "Combat permanent is sacrificed"):
+		return false
+	if not assert_test_equal(game.game_data.get_card_zone(opponent_casualty), GameZone.e.GRAVEYARD_OPPONENT, "Camp permanent is sacrificed"):
+		return false
+	if not assert_test_true(other_location.has_keyword("Resolute"), "Other locations are unaffected"):
+		return false
+	if not assert_test_equal(location_data.player_capture_current.value, 0, "Capture progress resets"):
+		return false
+	if not assert_test_equal(location_data.player_capture_threshold.value, 15, "Winning capture threshold increases"):
+		return false
+	await game.on_battlefield_deciding(combat_zone, true)
+	return assert_test_equal(game.game_data.get_card_zone(survivor), GameZone.e.GRAVEYARD_PLAYER, "Consumed Resolute cannot protect again")
+
+func test_resolute_ordinary_sacrifice() -> bool:
+	var permanent: CardData = _create_battlefield_test_card(GameZone.e.LOCATION_1_PLAYER_CAMP, true)
+	await EffectFactory.execute_effect(EffectType.Type.SACRIFICE, {"TargetCard": permanent}, permanent, game)
+	if not assert_test_equal(game.game_data.get_card_zone(permanent), GameZone.e.GRAVEYARD_PLAYER, "Resolute does not prevent unrelated sacrifices"):
+		return false
+	return assert_test_true(permanent.has_keyword("Resolute"), "Unrelated sacrifices do not consume Resolute")
+
+func test_resolute_temporary_grant() -> bool:
+	var permanent: CardData = _create_battlefield_test_card(GameZone.e.LOCATION_1_PLAYER_CAMP)
+	CardModifier.modify_card(permanent, "keyword", {"keyword": "Resolute"}, "EndOfTurn", game)
+	var parameters: Dictionary = {"TargetCard": permanent, "Cause": EffectCause.Type.BATTLEFIELD_DECIDED}
+	await EffectFactory.execute_effect(EffectType.Type.SACRIFICE, parameters, permanent, game)
+	if not assert_test_equal(game.game_data.get_card_zone(permanent), GameZone.e.LOCATION_1_PLAYER_CAMP, "Dynamically granted Resolute protects"):
+		return false
+	if not assert_test_false(permanent.has_keyword("Resolute"), "Temporary Resolute is consumed"):
+		return false
+	CardModifier.modify_card(permanent, "keyword", {"keyword": "Resolute"}, "Permanent", game)
+	if not assert_test_equal(permanent.replacement_abilities.size(), 1, "Regranting reuses the replacement ability"):
+		return false
+	await EffectFactory.execute_effect(EffectType.Type.SACRIFICE, parameters, permanent, game)
+	return assert_test_equal(game.game_data.get_card_zone(permanent), GameZone.e.LOCATION_1_PLAYER_CAMP, "Regranted Resolute protects again")
+
+func test_resolute_multi_card_sacrifice() -> bool:
+	var survivor: CardData = _create_battlefield_test_card(GameZone.e.LOCATION_1_PLAYER_CAMP, true)
+	var casualty: CardData = _create_battlefield_test_card(GameZone.e.LOCATION_1_PLAYER_CAMP)
+	Effect.remember([survivor, casualty])
+	await EffectFactory.execute_effect(EffectType.Type.SACRIFICE, {
+		"Affected": "Card.Remembered", "Num": 2, "ValidCards": "Card",
+		"Cause": EffectCause.Type.BATTLEFIELD_DECIDED,
+	}, survivor, game)
+	if not assert_test_equal(game.game_data.get_card_zone(survivor), GameZone.e.LOCATION_1_PLAYER_CAMP, "Only the Resolute card is protected"):
+		return false
+	if not assert_test_equal(game.game_data.get_card_zone(casualty), GameZone.e.GRAVEYARD_PLAYER, "Other sacrifices continue"):
+		return false
+	return assert_test_equal(Effect.remembered_cards, [casualty], "Only successfully sacrificed cards are remembered")
+
+func test_battlefield_decided_loss() -> bool:
+	var combat_zone: CombatZone = game.game_view.get_combat_zones()[0]
+	game.game_data.player_shield.value = 1
+	game.game_data.player_life.value = 3
+	game.game_data.player_gold.value = 0
+	await game.on_battlefield_deciding(combat_zone, false)
+	if not assert_test_equal(game.game_data.player_shield.value, 0, "Losing consumes shield first"):
+		return false
+	if not assert_test_equal(game.game_data.player_life.value, 3, "Shield protects life"):
+		return false
+	await game.on_battlefield_deciding(combat_zone, false)
+	if not assert_test_equal(game.game_data.player_life.value, 2, "Without shield losing costs life"):
+		return false
+	return assert_test_equal(game.game_data.player_gold.value, 2, "Each loss still grants one gold")
+
+func test_battlefield_outcome_replacements() -> bool:
+	var host: CardData = _create_battlefield_test_card(GameZone.e.LOCATION_2_PLAYER_CAMP)
+	var points := BattlefieldTestReplacement.new(host, {"EventType": EffectType.Type.ADD_PLAYER_POINTS}, {"Amount": 2})
+	var damage := BattlefieldTestReplacement.new(host, {"EventType": EffectType.Type.DAMAGE_PLAYER}, {"event_was_replaced": true})
+	var gold := BattlefieldTestReplacement.new(host, {"EventType": EffectType.Type.ADD_GOLD}, {"Amount": 3})
+	ReplacementEffectRegistry.register_replacement_effect(points)
+	ReplacementEffectRegistry.register_replacement_effect(damage)
+	ReplacementEffectRegistry.register_replacement_effect(gold)
+	var combat_zone: CombatZone = game.game_view.get_combat_zones()[0]
+	await game.on_battlefield_deciding(combat_zone, true)
+	if not assert_test_equal(game.game_data.player_points.value, 2, "Point awards are replaceable"):
+		return false
+	if not assert_test_equal(points.application_count, 1, "Replacement is applied exactly once"):
+		return false
+	game.game_data.player_gold.value = 0
+	game.game_data.player_shield.value = 1
+	await game.on_battlefield_deciding(combat_zone, false)
+	if not assert_test_equal(game.game_data.player_shield.value, 1, "Player damage can be replaced"):
+		return false
+	return assert_test_equal(game.game_data.player_gold.value, 3, "Loss gold can be replaced")
+
+func test_battlefield_decision_replacement() -> bool:
+	var host: CardData = _create_battlefield_test_card(GameZone.e.LOCATION_1_PLAYER_CAMP)
+	var replacement := BattlefieldTestReplacement.new(host, {"EventType": EffectType.Type.BATTLEFIELD_DECIDED}, {"event_was_replaced": true})
+	ReplacementEffectRegistry.register_replacement_effect(replacement)
+	await game.on_battlefield_deciding(game.game_view.get_combat_zones()[0], true)
+	if not assert_test_equal(game.game_data.player_points.value, 0, "Replacing a decision prevents its reward"):
+		return false
+	return assert_test_equal(game.game_data.get_card_zone(host), GameZone.e.LOCATION_1_PLAYER_CAMP, "Replacing a decision prevents its sacrifices")
+
 func test_card_creation():
 	"""Test that cards can be created from card data"""
 	var card: CardData = createCardFromName("goblin pair", GameZone.e.HAND_PLAYER)

@@ -139,15 +139,6 @@ func executeAbilityEffect(source_card_data: CardData, ability, game_context: Gam
 			print("🚫 [ABILITY MGR] Effect cannot execute and no alternativeResolve - skipping")
 		return
 
-	# Apply replacement effects from the registry
-	# This happens before the effect executes
-	resolved_parameters = ReplacementEffectRegistry.apply_replacement_effects(
-		effect_type_enum, 
-		resolved_parameters, 
-		game_context
-	)
-	
-	# Execute the effect with resolved and modified parameters
 	await EffectFactory.execute_effect(effect_type_enum, resolved_parameters, source_card_data, game_context)
 
 ## Replacement Effect System (Legacy - kept for compatibility)
