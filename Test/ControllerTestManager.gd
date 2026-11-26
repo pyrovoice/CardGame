@@ -2896,6 +2896,206 @@ func test_player_deck_refill_end_of_turn() -> bool:
 	print("✅ Player deck refill test passed!")
 	return true
 
+func test_deck_list_consumable_cards() -> bool:
+	"""Test that DeckList and PlayerDeckBuildingData properly handle consumable_cards array"""
+	print("=== Testing DeckList Consumable Cards Structure ===")
+
+	# Step 1: Default DeckList initialization
+	var empty_deck = DeckList.new()
+	if not assert_test_equal(empty_deck.consumable_cards.size(), 0, "Default DeckList should have empty consumable_cards"):
+		return false
+
+	# Step 2: Custom DeckList initialization with consumable_cards
+	var regular_card = CardData.new()
+	regular_card.cardName = "RegularCard"
+	var extra_card = CardData.new()
+	extra_card.cardName = "ExtraCard"
+	var consumable_card = CardData.new()
+	consumable_card.cardName = "ConsumablePotion"
+
+	var custom_deck = DeckList.new([regular_card], [extra_card], [consumable_card])
+	if not assert_test_equal(custom_deck.deck_cards.size(), 1, "custom_deck should have 1 deck_card"):
+		return false
+	if not assert_test_equal(custom_deck.extra_deck_cards.size(), 1, "custom_deck should have 1 extra_deck_card"):
+		return false
+	if not assert_test_equal(custom_deck.consumable_cards.size(), 1, "custom_deck should have 1 consumable_card"):
+		return false
+	if not assert_test_equal(custom_deck.consumable_cards[0].cardName, "ConsumablePotion", "consumable_card name should match"):
+		return false
+
+	# Step 3: PlayerDeckBuildingData builds DeckList with consumable_cards
+	var builder = PlayerDeckBuildingData.new()
+	builder.consumable_cards.append(consumable_card)
+	var built_deck = builder.build_deck_list()
+	if not assert_test_equal(built_deck.consumable_cards.size(), 1, "built_deck should have 1 consumable card"):
+		return false
+	if not assert_test_equal(built_deck.consumable_cards[0].cardName, "ConsumablePotion", "built consumable card should match"):
+		return false
+
+	print("✅ DeckList consumable cards structure test passed!")
+	return true
+
+func test_consumable_cards_match_start_and_refill() -> bool:
+	"""Test that consumable cards are added to the deck once at match start,
+	and are NOT added when the deck is refilled."""
+	print("=== Testing Consumable Cards at Match Start and Refill ===")
+
+	# Step 1: Create 4 regular deck templates and 2 consumable card templates
+	var regular_templates: Array[CardData] = []
+	for i in range(4):
+		var card = CardData.new()
+		card.cardName = "RegularDeckCard" + str(i)
+		card.addType(CardData.CardType.CREATURE)
+		regular_templates.append(card)
+
+	var consumable_templates: Array[CardData] = []
+	for i in range(2):
+		var card = CardData.new()
+		card.cardName = "ConsumableItem" + str(i)
+		card.addType(CardData.CardType.SPELL)
+		consumable_templates.append(card)
+
+	# Step 2: Assign to playerDeckList
+	game.game_data.playerDeckList.deck_cards = regular_templates
+	game.game_data.playerDeckList.consumable_cards = consumable_templates
+
+	# Step 3: Populate decks (simulating match start)
+	game.game_data.get_cards_in_zone(GameZone.e.DECK_PLAYER).clear()
+	game.populate_decks()
+
+	# Initial deck should have: 2 copies of 4 regular cards (8) + 1 copy of 2 consumables (2) = 10 cards
+	var initial_deck = game.game_data.get_cards_in_zone(GameZone.e.DECK_PLAYER)
+	if not assert_test_equal(initial_deck.size(), 10,
+			"Initial deck should have 10 cards (8 regular + 2 consumables)"):
+		return false
+
+	var consumable_0_count = _count_cards_by_name(initial_deck, "ConsumableItem0")
+	var consumable_1_count = _count_cards_by_name(initial_deck, "ConsumableItem1")
+	if not assert_test_equal(consumable_0_count, 1, "ConsumableItem0 should appear exactly once in initial deck"):
+		return false
+	if not assert_test_equal(consumable_1_count, 1, "ConsumableItem1 should appear exactly once in initial deck"):
+		return false
+	print("  ✅ Consumable cards added once at match start")
+
+	# Step 4: Draw 6 cards so 4 cards remain in the deck (deck_cards.size() == 4, triggering refill threshold)
+	await game.drawCard(6, true)
+	var deck_size_after_draw = game.game_data.get_cards_in_zone(GameZone.e.DECK_PLAYER).size()
+	if not assert_test_equal(deck_size_after_draw, 4, "Deck should have 4 cards remaining after drawing 6"):
+		return false
+
+	# Step 5: Advance turn to trigger end-of-turn deck refill
+	await game.onTurnStart()
+	await test_runner.get_tree().process_frame
+
+	# Step 6: Verify refill occurred with regular cards only
+	# Deck should have: 4 remaining + 4 (1 copy of regular deck_cards) - 3 (drawn at new turn start) = 5 cards
+	var deck_size_after_turn = game.game_data.get_cards_in_zone(GameZone.e.DECK_PLAYER).size()
+	if not assert_test_equal(deck_size_after_turn, 5,
+			"Deck should have 5 cards (4 remainder + 4 refilled regular cards - 3 drawn)"):
+		return false
+	print("  ✅ Deck refilled to expected size without re-adding consumables")
+
+	# Step 7: Verify that across ALL player zones (deck, hand, graveyard, etc.),
+	# each consumable card still exists at most once (was never re-added during refill)
+	var all_cards_in_game: Array[CardData] = []
+	for zone in GameZone.e.values():
+		if zone != GameZone.e.UNKNOWN:
+			all_cards_in_game.append_array(game.game_data.get_cards_in_zone(zone))
+
+	var total_consumable_0 = _count_cards_by_name(all_cards_in_game, "ConsumableItem0")
+	var total_consumable_1 = _count_cards_by_name(all_cards_in_game, "ConsumableItem1")
+	if not assert_test_equal(total_consumable_0, 1, "ConsumableItem0 should still only exist once in total"):
+		return false
+	if not assert_test_equal(total_consumable_1, 1, "ConsumableItem1 should still only exist once in total"):
+		return false
+	print("  ✅ Consumables were only added once and not considered on refill")
+
+	print("✅ Consumable cards match start and refill test passed!")
+	return true
+
+func _make_weaken_template() -> CardData:
+	var card_text: String = (
+		"Name:Test Weaken Golem\n" +
+		"Types:Creature Construct\n" +
+		"Power:2\n" +
+		"T:Mode$ WouldFight | Execute$ WeakenOpponent\n" +
+		"SVar:WeakenOpponent$ Weaken | Affected$ Card.InFrontOfMe | TargetCondition$ Target.Power>Self.Power | Duration$ EndOfTurn\n"
+	)
+	return CardLoaderAL.parse_card_data(card_text)
+
+func _make_weaken_opponent(power: int) -> CardData:
+	var template: CardData = CardData.new()
+	template.cardName = "Test Opponent Fighter"
+	template.addType(CardData.CardType.CREATURE)
+	template._power = power
+	return template
+
+func test_weaken_before_strike_power_boundary() -> bool:
+	var template: CardData = _make_weaken_template()
+	if not assert_test_equal(template.triggered_abilities.size(), 1, "WouldFight ability should parse"):
+		return false
+	var scenarios: Array[Dictionary] = [
+		{"power": 5, "alive": true},
+		{"power": 2, "alive": false},
+		{"power": 1, "alive": true},
+	]
+	for index: int in range(scenarios.size()):
+		var player_zone: GameZone.e = GameZone.combat_zone_for(index, true)
+		var opponent_zone: GameZone.e = GameZone.combat_zone_for(index, false)
+		var golem: CardData = game.createCardData(template, player_zone, true)
+		var opponent: CardData = game.createCardData(_make_weaken_opponent(scenarios[index]["power"]), opponent_zone, false)
+		await game.resolveCombatInZone(player_zone)
+		var golem_alive: bool = GameZone.is_in_play(game.game_data.get_card_zone(golem))
+		if not assert_test_equal(golem_alive, scenarios[index]["alive"], "Golem survival for opponent power " + str(scenarios[index]["power"])):
+			return false
+		if index == 0 and not assert_test_equal(opponent.power, 0, "Stronger opponent should be weakened before dealing damage"):
+			return false
+	return true
+
+func test_weaken_before_strike_location_and_duration() -> bool:
+	var template: CardData = _make_weaken_template()
+	game.createCardData(template, GameZone.e.COMBAT_PLAYER_1, true)
+	var opponent_target: CardData = game.createCardData(_make_weaken_opponent(5), GameZone.e.COMBAT_OPPONENT_1, false)
+	var other_target: CardData = game.createCardData(_make_weaken_opponent(5), GameZone.e.COMBAT_PLAYER_2, true)
+	game.createCardData(template, GameZone.e.COMBAT_OPPONENT_2, false)
+	var camp_source: CardData = game.createCardData(template, GameZone.e.LOCATION_1_PLAYER_CAMP, true)
+	var camp_ability: TriggeredAbility = camp_source.triggered_abilities[0]
+	if not assert_test_false(camp_ability._check_trigger_conditions(camp_source, null, game, GameZone.e.COMBAT_PLAYER_1), "Camp creatures should not trigger before combat strikes"):
+		return false
+	await game.emit_game_event(TriggeredAbility.GameEventType.BEFORE_STRIKE, GameZone.e.COMBAT_PLAYER_1)
+	if not assert_test_equal(opponent_target.power, 0, "Source should weaken its opposing creature"):
+		return false
+	if not assert_test_equal(other_target.power, 5, "Another location should not trigger"):
+		return false
+	await game.emit_game_event(TriggeredAbility.GameEventType.BEFORE_STRIKE, GameZone.e.COMBAT_PLAYER_2)
+	if not assert_test_equal(other_target.power, 0, "Opponent source should weaken the opposing player creature"):
+		return false
+	await game.emit_game_event(TriggeredAbility.GameEventType.END_OF_TURN, null)
+	if not assert_test_equal(opponent_target.power, 5, "Weaken should expire at end of turn"):
+		return false
+	if not assert_test_equal(other_target.power, 5, "Opponent weaken should expire at end of turn"):
+		return false
+	return true
+
+func test_weaken_before_strike_columns_and_fixed_amount() -> bool:
+	var template: CardData = CardLoaderAL.parse_card_data(
+		"Name:Test Giant\nTypes:Creature\nPower:2\n" +
+		"T:Mode$ WouldFight | Execute$ WeakenOpponent\n" +
+		"SVar:WeakenOpponent$ Weaken | Affected$ Card.InFrontOfMe | Pow$ 2 | Duration$ EndOfTurn\n"
+	)
+	template.add_keyword("Giant")
+	game.createCardData(template, GameZone.e.COMBAT_PLAYER_1, true)
+	var first: CardData = game.createCardData(_make_weaken_opponent(5), GameZone.e.COMBAT_OPPONENT_1, false)
+	var second: CardData = game.createCardData(_make_weaken_opponent(4), GameZone.e.COMBAT_OPPONENT_1, false)
+	var third: CardData = game.createCardData(_make_weaken_opponent(7), GameZone.e.COMBAT_OPPONENT_1, false)
+	await game.emit_game_event(TriggeredAbility.GameEventType.BEFORE_STRIKE, GameZone.e.COMBAT_PLAYER_1)
+	if not assert_test_equal(first.power, 3, "Weaken should reduce the first overlapping creature by Pow"):
+		return false
+	if not assert_test_equal(second.power, 2, "Giant should also affect the second overlapping creature"):
+		return false
+	if not assert_test_equal(third.power, 7, "Creatures outside the source's columns should not be affected"):
+		return false
+	return true
 ## === ABILITY EXHAUSTION TESTS (Triggered / Activated / Replacement) ===
 ## All three use "add 1 gold" as a cheap, fully repeatable, board-state-safe "situation":
 ## - Triggered: manually emit SPELL_CAST for the owning creature
@@ -3162,7 +3362,7 @@ func test_replacement_ability_one_time_never_refreshes() -> bool:
 	print("✅ One-time replacement ability did not refresh after resting")
 	return true
 
-func test_weaken_before_strike_power_boundary() -> bool:
+func test_resting_branch_weaken_before_strike_power_boundary() -> bool:
 	"""Test a 'weaken before strike' ability (same shape as Stone Golem), built from scratch as a
 	custom CardData + TriggeredAbility rather than loading Stone Golem's own card file.
 	Golem has power 2, TargetCondition$ Target.Power>Self.Power (strictly greater):
@@ -3212,121 +3412,4 @@ func test_weaken_before_strike_power_boundary() -> bool:
 		print("    ✅ Golem alive = ", golem_alive, " as expected")
 
 	print("✅ Weaken-before-strike ability test passed for all power scenarios!")
-	return true
-
-func test_deck_list_consumable_cards() -> bool:
-	"""Test that DeckList and PlayerDeckBuildingData properly handle consumable_cards array"""
-	print("=== Testing DeckList Consumable Cards Structure ===")
-
-	# Step 1: Default DeckList initialization
-	var empty_deck = DeckList.new()
-	if not assert_test_equal(empty_deck.consumable_cards.size(), 0, "Default DeckList should have empty consumable_cards"):
-		return false
-
-	# Step 2: Custom DeckList initialization with consumable_cards
-	var regular_card = CardData.new()
-	regular_card.cardName = "RegularCard"
-	var extra_card = CardData.new()
-	extra_card.cardName = "ExtraCard"
-	var consumable_card = CardData.new()
-	consumable_card.cardName = "ConsumablePotion"
-
-	var custom_deck = DeckList.new([regular_card], [extra_card], [consumable_card])
-	if not assert_test_equal(custom_deck.deck_cards.size(), 1, "custom_deck should have 1 deck_card"):
-		return false
-	if not assert_test_equal(custom_deck.extra_deck_cards.size(), 1, "custom_deck should have 1 extra_deck_card"):
-		return false
-	if not assert_test_equal(custom_deck.consumable_cards.size(), 1, "custom_deck should have 1 consumable_card"):
-		return false
-	if not assert_test_equal(custom_deck.consumable_cards[0].cardName, "ConsumablePotion", "consumable_card name should match"):
-		return false
-
-	# Step 3: PlayerDeckBuildingData builds DeckList with consumable_cards
-	var builder = PlayerDeckBuildingData.new()
-	builder.consumable_cards.append(consumable_card)
-	var built_deck = builder.build_deck_list()
-	if not assert_test_equal(built_deck.consumable_cards.size(), 1, "built_deck should have 1 consumable card"):
-		return false
-	if not assert_test_equal(built_deck.consumable_cards[0].cardName, "ConsumablePotion", "built consumable card should match"):
-		return false
-
-	print("✅ DeckList consumable cards structure test passed!")
-	return true
-
-func test_consumable_cards_match_start_and_refill() -> bool:
-	"""Test that consumable cards are added to the deck once at match start,
-	and are NOT added when the deck is refilled."""
-	print("=== Testing Consumable Cards at Match Start and Refill ===")
-
-	# Step 1: Create 4 regular deck templates and 2 consumable card templates
-	var regular_templates: Array[CardData] = []
-	for i in range(4):
-		var card = CardData.new()
-		card.cardName = "RegularDeckCard" + str(i)
-		card.addType(CardData.CardType.CREATURE)
-		regular_templates.append(card)
-
-	var consumable_templates: Array[CardData] = []
-	for i in range(2):
-		var card = CardData.new()
-		card.cardName = "ConsumableItem" + str(i)
-		card.addType(CardData.CardType.SPELL)
-		consumable_templates.append(card)
-
-	# Step 2: Assign to playerDeckList
-	game.game_data.playerDeckList.deck_cards = regular_templates
-	game.game_data.playerDeckList.consumable_cards = consumable_templates
-
-	# Step 3: Populate decks (simulating match start)
-	game.game_data.get_cards_in_zone(GameZone.e.DECK_PLAYER).clear()
-	game.populate_decks()
-
-	# Initial deck should have: 2 copies of 4 regular cards (8) + 1 copy of 2 consumables (2) = 10 cards
-	var initial_deck = game.game_data.get_cards_in_zone(GameZone.e.DECK_PLAYER)
-	if not assert_test_equal(initial_deck.size(), 10,
-			"Initial deck should have 10 cards (8 regular + 2 consumables)"):
-		return false
-
-	var consumable_0_count = _count_cards_by_name(initial_deck, "ConsumableItem0")
-	var consumable_1_count = _count_cards_by_name(initial_deck, "ConsumableItem1")
-	if not assert_test_equal(consumable_0_count, 1, "ConsumableItem0 should appear exactly once in initial deck"):
-		return false
-	if not assert_test_equal(consumable_1_count, 1, "ConsumableItem1 should appear exactly once in initial deck"):
-		return false
-	print("  ✅ Consumable cards added once at match start")
-
-	# Step 4: Draw 6 cards so 4 cards remain in the deck (deck_cards.size() == 4, triggering refill threshold)
-	await game.drawCard(6, true)
-	var deck_size_after_draw = game.game_data.get_cards_in_zone(GameZone.e.DECK_PLAYER).size()
-	if not assert_test_equal(deck_size_after_draw, 4, "Deck should have 4 cards remaining after drawing 6"):
-		return false
-
-	# Step 5: Advance turn to trigger end-of-turn deck refill
-	await game.onTurnStart()
-	await test_runner.get_tree().process_frame
-
-	# Step 6: Verify refill occurred with regular cards only
-	# Deck should have: 4 remaining + 4 (1 copy of regular deck_cards) - 3 (drawn at new turn start) = 5 cards
-	var deck_size_after_turn = game.game_data.get_cards_in_zone(GameZone.e.DECK_PLAYER).size()
-	if not assert_test_equal(deck_size_after_turn, 5,
-			"Deck should have 5 cards (4 remainder + 4 refilled regular cards - 3 drawn)"):
-		return false
-	print("  ✅ Deck refilled to expected size without re-adding consumables")
-
-	# Step 7: Verify that across ALL player zones (deck, hand, graveyard, etc.),
-	# each consumable card still exists at most once (was never re-added during refill)
-	var all_cards_in_game: Array[CardData] = []
-	for zone in GameZone.e.values():
-		if zone != GameZone.e.UNKNOWN:
-			all_cards_in_game.append_array(game.game_data.get_cards_in_zone(zone))
-
-	var total_consumable_0 = _count_cards_by_name(all_cards_in_game, "ConsumableItem0")
-	var total_consumable_1 = _count_cards_by_name(all_cards_in_game, "ConsumableItem1")
-	if not assert_test_equal(total_consumable_0, 1, "ConsumableItem0 should still only exist once in total"):
-		return false
-	if not assert_test_equal(total_consumable_1, 1, "ConsumableItem1 should still only exist once in total"):
-		return false
-	print("  ✅ Consumables were only added once and not considered on refill")
-
-	print("✅ Consumable cards match start and refill test passed!")
 	return true

@@ -240,13 +240,12 @@ static var remembered_cards: Array[CardData] = []
 static func remember(cards: Array[CardData]) -> void:
 	remembered_cards = cards
 
-## If parameters include Affected$ Card.Remembered or Card.InFrontOfMe, resolve accordingly.
+## Resolve Card.Remembered or Card.InFrontOfMe to their affected cards.
 ## Otherwise returns an empty array — caller should fall through to its own targeting.
 static func resolve_affected(parameters: Dictionary, source_card_data: CardData = null, game_context: Game = null) -> Array[CardData]:
-	var affected_str: String = parameters.get("Affected", "")
-	if affected_str == "Card.Remembered":
+	if parameters.get("Affected", "") == "Card.Remembered":
 		return remembered_cards
-	if affected_str == "Card.InFrontOfMe" and source_card_data and game_context:
+	if parameters.get("Affected", "") == "Card.InFrontOfMe" and source_card_data and game_context:
 		return game_context.get_creatures_in_front(source_card_data)
 	return []
 

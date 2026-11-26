@@ -17,8 +17,8 @@ signal strike(card_data: CardData)
 signal card_recycled(card_data: CardData)
 signal end_of_combat(card_data: CardData, zone: GameZone.e)
 signal opponent_turn_ended()  # Fires after the opponent AI completes its main phase
+signal before_strike(card_data: CardData, zone: GameZone.e)
 signal card_rested(card_data: CardData)  # A creature rests (heals) after not joining its location's fight
-signal before_strike(card_data, zone: GameZone.e)  # Once per location, before any strikes happen this combat
 
 # Controller references (MVC: Controller layer)
 @onready var player_control: PlayerControl = $GameView/playerControl
@@ -1079,11 +1079,7 @@ func resolveCombatInZone(combat_zone: GameZone.e):
 	var player_entries = _assign_combat_columns(player_cards)
 	var opponent_entries = _assign_combat_columns(opponent_cards)
 	var max_columns = max(_entries_end(player_entries), _entries_end(opponent_entries))
-	
-	# New pre-strike phase: combatants and their overlaps are now fixed for this fight, but no
-	# damage has been dealt yet. Fires once for the whole location (not per creature) - abilities
-	# listening here (e.g. Stone Golem) look up "who's in front of me" themselves via
-	# get_creatures_in_front() rather than the event carrying a specific opponent.
+
 	await emit_game_event(TriggeredAbility.GameEventType.BEFORE_STRIKE, player_zone)
 	
 	var resolved: Array[CardData] = []
@@ -1172,19 +1168,15 @@ func _find_overlapping(entry: Dictionary, other_entries: Array) -> Array[CardDat
 	return result
 
 func get_creatures_in_front(card_data: CardData) -> Array[CardData]:
-	"""Every opposing creature currently overlapping this card's combat column(s) at its location.
-	Recomputed fresh from current zone contents - safe to call any time the card is in a combat zone
-	(e.g. from the BEFORE_STRIKE phase, before the real strike loop uses the same computation)."""
-	var zone = game_data.get_card_zone(card_data)
+	var zone: GameZone.e = game_data.get_card_zone(card_data)
 	if not GameZone.is_combat_zone(zone):
 		return []
-	
-	var location_index = GameZone.location_index_of(zone)
-	var is_player_side = zone in [GameZone.e.COMBAT_PLAYER_1, GameZone.e.COMBAT_PLAYER_2, GameZone.e.COMBAT_PLAYER_3]
-	var own_entries = _assign_combat_columns(game_data.get_cards_in_zone(GameZone.combat_zone_for(location_index, is_player_side)))
-	var opposing_entries = _assign_combat_columns(game_data.get_cards_in_zone(GameZone.combat_zone_for(location_index, not is_player_side)))
-	
-	for entry in own_entries:
+	var location_index: int = GameZone.location_index_of(zone)
+	var is_player_side: bool = zone in [GameZone.e.COMBAT_PLAYER_1, GameZone.e.COMBAT_PLAYER_2, GameZone.e.COMBAT_PLAYER_3]
+	var own_entries: Array = _assign_combat_columns(game_data.get_cards_in_zone(zone))
+	var opposite_zone: GameZone.e = GameZone.combat_zone_for(location_index, not is_player_side)
+	var opposing_entries: Array = _assign_combat_columns(game_data.get_cards_in_zone(opposite_zone))
+	for entry: Dictionary in own_entries:
 		if entry["card"] == card_data:
 			return _find_overlapping(entry, opposing_entries)
 	return []

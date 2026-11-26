@@ -11,8 +11,8 @@ enum Type {
 	PHASE,  # Phase-based triggers (beginning of turn, combat, end of turn)
 	STRIKE,  # Creature strikes in combat
 	Card_DIES,  # Card going to graveyard from battlefield
+	WOULD_FIGHT,  # Once per location, before strikes
 	RESTS,  # Creature rests (heals) after not joining its location's fight
-	WOULD_FIGHT  # Once per location, before any strikes happen this combat
 }
 
 # Convert trigger type enum to string representation
@@ -81,7 +81,7 @@ static func string_to_type(trigger_string: String) -> Type:
 
 # Get all available trigger type strings (in card file format)
 static func get_all_strings() -> Array[String]:
-	return ["CardDraw", "CardPlayed", "CardEnters", "StartAttack", "ChangedZone", "Phase"]
+	return ["CardDraw", "CardPlayed", "CardEnters", "StartAttack", "ChangedZone", "Phase", "WouldFight"]
 
 # Check if a trigger type represents a card entering the battlefield
 static func is_battlefield_entry(trigger_type: Type) -> bool:

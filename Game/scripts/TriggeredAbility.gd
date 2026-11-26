@@ -43,8 +43,8 @@ enum GameEventType {
 	CARD_RECYCLED,        # When a card is recycled from hand
 	END_OF_COMBAT,        # After all combat in a zone is resolved
 	OPPONENT_TURN_END,    # After the opponent AI finishes its main phase
+	BEFORE_STRIKE,        # Before any strikes at a location
 	ON_REST,              # A creature rests (heals) after not joining its location's fight
-	BEFORE_STRIKE,        # Once per location, after combatants are set but before any strikes happen
 }
 
 enum TriggerCondition {
@@ -191,12 +191,12 @@ func _check_trigger_conditions(cardData: CardData, event_card_data: CardData, ga
 		if game_event_trigger == GameEventType.END_OF_COMBAT and from_zone != null:
 			if cardData_zone != from_zone:
 				return false
-	
-	# BEFORE_STRIKE fires once per location (either side) - match by location index, not exact zone,
-	# since the ability's owner may be on the opposing side of the same location.
-	if game_event_trigger == GameEventType.BEFORE_STRIKE and from_zone != null:
-		var cardData_zone_for_location = game.game_data.get_card_zone(cardData)
-		if GameZone.location_index_of(cardData_zone_for_location) != GameZone.location_index_of(from_zone):
+
+	if game_event_trigger == GameEventType.BEFORE_STRIKE:
+		var owner_zone: GameZone.e = game.game_data.get_card_zone(cardData)
+		if from_zone == null or not GameZone.is_combat_zone(owner_zone):
+			return false
+		if GameZone.location_index_of(owner_zone) != GameZone.location_index_of(from_zone):
 			return false
 	
 	# Check Origin condition for zone changes (e.g., "Origin$ Hand")

@@ -379,15 +379,13 @@ func isValidCardCondition(condition: String, triggerSource_data: CardData, abili
 	return false
 
 func evaluateCondition(condition: String, triggeringCard_data: CardData, game: Game = null, compare_card_data: CardData = null) -> bool:
-	"""Evaluate trigger conditions like Self.Attacked+ThisTurn, or a comparison between two cards
-	like Target.Power>Self.Power (compare_card_data is whichever card "Target" refers to)"""
-	
-	# Comparison format: "<Ref>.<Property><op><Ref>.<Property>" e.g. "Target.Power>Self.Power"
-	for op in [">=", "<=", "==", ">", "<"]:
+	"""Evaluate trigger conditions like Self.Attacked+ThisTurn"""
+	for op: String in [">=", "<=", "==", ">", "<"]:
 		if op in condition:
-			var sides = condition.split(op, false, 1)
+			var sides: PackedStringArray = condition.split(op, false, 1)
 			if sides.size() != 2:
-				continue
+				push_warning("Invalid comparison condition: " + condition)
+				return false
 			var left = _resolve_condition_value(sides[0].strip_edges(), triggeringCard_data, compare_card_data)
 			var right = _resolve_condition_value(sides[1].strip_edges(), triggeringCard_data, compare_card_data)
 			if left == null or right == null:
@@ -399,7 +397,7 @@ func evaluateCondition(condition: String, triggeringCard_data: CardData, game: G
 				"==": return left == right
 				">": return left > right
 				"<": return left < right
-	
+
 	# Parse condition format: Target.Property+Timing
 	# Example: Self.Attacked+ThisTurn
 	
@@ -459,12 +457,10 @@ func evaluateCondition(condition: String, triggeringCard_data: CardData, game: G
 			return false
 
 func _resolve_condition_value(ref: String, self_card: CardData, target_card: CardData):
-	"""Resolve a '<Ref>.<Property>' token for comparison conditions - "Self" is the ability's own
-	card, "Target" is whichever card was passed in as compare_card_data. Returns null if unresolvable."""
-	var parts = ref.split(".")
+	var parts: PackedStringArray = ref.split(".")
 	if parts.size() != 2:
+		push_warning("Invalid comparison reference: " + ref)
 		return null
-	
 	var card: CardData
 	match parts[0]:
 		"Self": card = self_card
@@ -474,7 +470,6 @@ func _resolve_condition_value(ref: String, self_card: CardData, target_card: Car
 			return null
 	if not card:
 		return null
-	
 	match parts[1]:
 		"Power": return card.power
 		"Cost": return card.goldCost

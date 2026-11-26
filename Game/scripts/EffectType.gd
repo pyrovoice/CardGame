@@ -5,7 +5,6 @@ class_name EffectType
 enum Type {
 	# Spell effects
 	DEAL_DAMAGE,  # Deal damage to target(s)
-	HEAL,  # Heal damage off a creature (used by the Resting mechanic; replacement-modifiable)
 	PUMP,  # Temporarily boost creature power
 	DRAW,  # Draw cards
 	
@@ -32,9 +31,6 @@ enum Type {
 	DEATH,  # A permanent would die (move from battlefield to graveyard)
 	CREATURE_ATTACK,  # A creature attacks with no blocker in its slot (Defender can intercept)
 	
-	# Debuff effects
-	WEAKEN,  # Reduce a creature's power - opposite of Pump
-	
 	# Draft effects
 	DRAFT,  # Draft a card from an archetype pool to hand
 
@@ -53,6 +49,8 @@ enum Type {
 	DISCARD,  # Discard cards
 	SEARCH,  # Search library
 	SHUFFLE,  # Shuffle deck
+	WEAKEN,  # Reduce a creature's power
+	HEAL,  # Heal damage off a resting creature
 	NONE
 }
 
@@ -194,7 +192,7 @@ static func is_valid_string(s: String) -> bool:
 # Get all available effect type strings
 static func get_all_strings() -> Array[String]:
 	return [
-		"DealDamage", "Heal", "Pump", "Draw", "CreateToken", "CreateCard", "Cast", "AddType", 
+		"DealDamage", "Heal", "Pump", "Weaken", "Draw", "CreateToken", "CreateCard", "Cast", "AddType",
 		"AddKeyword", "MoveCard", "SwitchPositions", "Destroy", "Bounce", "Exile", "Mill", 
 		"Discard", "Search", "Shuffle"
 	]
@@ -218,7 +216,7 @@ static func is_spell_effect(effect_type: Type) -> bool:
 # Check if an effect type is a triggered ability effect
 static func is_triggered_effect(effect_type: Type) -> bool:
 	match effect_type:
-		Type.CREATE_TOKEN, Type.DRAW, Type.ADD_TYPE, Type.ADD_KEYWORD:
+		Type.CREATE_TOKEN, Type.DRAW, Type.ADD_TYPE, Type.ADD_KEYWORD, Type.WEAKEN:
 			return true
 		_:
 			return false

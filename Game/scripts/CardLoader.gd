@@ -277,6 +277,8 @@ func _parse_effect_parameters_from_parts(parts: Array) -> Dictionary:
 			parameters["subAbility"] = part.substr(12)
 		elif part.begins_with("Affected$"):
 			parameters["Affected"] = part.substr(10)
+		elif part.begins_with("TargetCondition$"):
+			parameters["TargetCondition"] = part.substr(17)
 	
 	return parameters
 
