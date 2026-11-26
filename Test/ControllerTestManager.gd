@@ -37,8 +37,25 @@ func runTests():
 
 # === CONTROLLER TESTS (All logic/state tests) ===
 
-func test_intentional_failure_detection() -> bool:
-	return assert_test(false, "Intentional failure: verifies the test runner detects failed assertions")
+func test_trigger_valid_card_filter() -> bool:
+	var owner := CardData.new()
+	var creature := CardData.new()
+	creature.addType(CardData.CardType.CREATURE)
+	var spell := CardData.new()
+	spell.addType(CardData.CardType.SPELL)
+	var ability := TriggeredAbility.new(owner, TriggeredAbility.GameEventType.CARD_ENTERED_PLAY, EffectType.Type.DRAW)
+	ability.trigger_conditions[TriggeredAbility.TriggerCondition.VALID_CARD] = "Creature"
+	if not assert_test_true(ability._check_trigger_conditions(owner, creature, game), "Matching event card should trigger"):
+		return false
+	if not assert_test_false(ability._check_trigger_conditions(owner, spell, game), "Non-matching event card should not trigger"):
+		return false
+	owner.addType(CardData.CardType.CREATURE)
+	ability.trigger_conditions[TriggeredAbility.TriggerCondition.VALID_CARD] = "Card.Other+Creature"
+	if not assert_test_true(ability._check_trigger_conditions(owner, creature, game), "Other matching card should trigger"):
+		return false
+	if not assert_test_false(ability._check_trigger_conditions(owner, owner, game), "Other should exclude the ability owner"):
+		return false
+	return true
 
 func test_card_creation():
 	"""Test that cards can be created from card data"""

@@ -3,12 +3,14 @@
 
 import argparse
 from collections import Counter
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import json
 import os
 from pathlib import Path
 import re
 import subprocess
 import sys
+import tempfile
 
 PROJECT = Path(__file__).resolve().parent.parent
 PREFIX = "CARDGAME_TEST_RESULT:"
@@ -21,10 +23,17 @@ def run_godot(godot, suite, test_name, timeout):
         "--script", "res://Test/CliTestRunner.gd", "--", suite, test_name,
     ]
     try:
-        completed = subprocess.run(
-            command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-            text=True, encoding="utf-8", errors="replace", timeout=timeout,
-        )
+        with tempfile.TemporaryDirectory(prefix="cardgame-test-") as home:
+            env = os.environ.copy()
+            env.update(
+                HOME=home, USERPROFILE=home, APPDATA=home, LOCALAPPDATA=home,
+                XDG_DATA_HOME=home, XDG_CONFIG_HOME=home, XDG_CACHE_HOME=home,
+            )
+            completed = subprocess.run(
+                command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                text=True, encoding="utf-8", errors="replace", timeout=timeout,
+                env=env,
+            )
     except subprocess.TimeoutExpired as exc:
         output = exc.stdout or ""
         if isinstance(output, bytes):
@@ -72,11 +81,15 @@ def main(argv=None):
     parser.add_argument("--test", help="Run one exact controller test name")
     parser.add_argument("--timeout", type=float, default=30,
                         help="Maximum seconds per Godot process (default: 30)")
+    parser.add_argument("--jobs", type=int, default=min(4, os.cpu_count() or 1),
+                        help="Maximum concurrent Godot processes (default: up to 4; 1 for serial)")
     parser.add_argument("--log-dir", type=Path, help="Save complete Godot output per process")
     parser.add_argument("--verbose", action="store_true", help="Print complete Godot output")
     args = parser.parse_args(argv)
     if args.timeout <= 0 or not args.timeout < float("inf"):
         parser.error("--timeout must be a positive finite number")
+    if args.jobs < 1:
+        parser.error("--jobs must be positive")
     if args.log_dir:
         args.log_dir.mkdir(parents=True, exist_ok=True)
 
@@ -87,8 +100,8 @@ def main(argv=None):
     tests_with_engine_errors = 0
     suites = (args.suite,)
 
-    def execute(suite, name):
-        record, output, problem = run_godot(args.godot, suite, name, args.timeout)
+    def collect(suite, name, outcome):
+        record, output, problem = outcome
         errors = engine_errors(output)
         error_counts.update(errors)
         if args.verbose:
@@ -99,7 +112,9 @@ def main(argv=None):
         return record, problem, len(errors)
 
     for suite in suites:
-        record, problem, _ = execute(suite, "--list")
+        record, problem, _ = collect(
+            suite, "--list", run_godot(args.godot, suite, "--list", args.timeout)
+        )
         if problem:
             print(f"ERROR {suite} discovery: {problem}", flush=True)
             infrastructure_failures += 1
@@ -117,25 +132,31 @@ def main(argv=None):
                 infrastructure_failures += 1
                 continue
             tests = [args.test]
-        print(f"\nRunning {len(tests)} {suite} test(s)", flush=True)
-        for test_name in tests:
-            record, problem, error_count = execute(suite, test_name)
-            if error_count:
-                tests_with_engine_errors += 1
-            error_suffix = f"; {error_count} Godot error messages" if error_count else ""
-            if problem is None and not valid_test_result(record, test_name):
-                problem = "Invalid test result record"
-            if problem:
-                infrastructure_failures += 1
-                print(f"ERROR {suite}/{test_name}: {problem}{error_suffix}", flush=True)
-            elif record["result"]["passed"]:
-                passed += 1
-                print(f"ASSERTIONS PASS {suite}/{test_name} "
-                      f"({record['result']['duration_ms']}ms{error_suffix})", flush=True)
-            else:
-                failed += 1
-                print(f"ASSERTIONS FAIL {suite}/{test_name}: "
-                      f"{record['result']['error']}{error_suffix}", flush=True)
+        print(f"\nRunning {len(tests)} {suite} test(s) with up to {args.jobs} workers", flush=True)
+        with ThreadPoolExecutor(max_workers=args.jobs) as executor:
+            futures = {
+                executor.submit(run_godot, args.godot, suite, test_name, args.timeout): test_name
+                for test_name in tests
+            }
+            for future in as_completed(futures):
+                test_name = futures[future]
+                record, problem, error_count = collect(suite, test_name, future.result())
+                if error_count:
+                    tests_with_engine_errors += 1
+                error_suffix = f"; {error_count} Godot error messages" if error_count else ""
+                if problem is None and not valid_test_result(record, test_name):
+                    problem = "Invalid test result record"
+                if problem:
+                    infrastructure_failures += 1
+                    print(f"ERROR {suite}/{test_name}: {problem}{error_suffix}", flush=True)
+                elif record["result"]["passed"]:
+                    passed += 1
+                    print(f"ASSERTIONS PASS {suite}/{test_name} "
+                          f"({record['result']['duration_ms']}ms{error_suffix})", flush=True)
+                else:
+                    failed += 1
+                    print(f"ASSERTIONS FAIL {suite}/{test_name}: "
+                          f"{record['result']['error']}{error_suffix}", flush=True)
 
     if error_counts:
         print("\nGodot errors (counts across discovery and test processes):")

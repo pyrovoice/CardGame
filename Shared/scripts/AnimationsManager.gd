@@ -13,10 +13,10 @@ func show_floating_text(scene_node: Node3D, text_position: Vector3, text: String
 	floating_label.modulate = color
 	floating_label.font_size = 48
 	floating_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	floating_label.global_position = text_position + Vector3(0, 0.1, 0)  # Start slightly above the position
 	
 	# Add to scene
 	scene_node.add_child(floating_label)
+	floating_label.global_position = text_position + Vector3(0, 0.1, 0)  # Start slightly above the position
 	
 	# Create animation tween
 	var tween = scene_node.create_tween()

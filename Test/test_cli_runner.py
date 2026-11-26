@@ -3,6 +3,7 @@ import io
 import json
 import subprocess
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -21,6 +22,7 @@ class CliRunnerTests(unittest.TestCase):
         self.assertEqual(captured, output)
         self.assertIsNone(problem)
         self.assertIn("--headless", run.call_args.args[0])
+        self.assertNotEqual(run.call_args.kwargs["env"]["HOME"], str(Path.home()))
 
     def test_run_godot_reports_timeout_and_partial_output(self):
         timeout = subprocess.TimeoutExpired(["godot"], 5, output=b"partial")
@@ -123,6 +125,34 @@ class CliRunnerTests(unittest.TestCase):
         ]), contextlib.redirect_stdout(io.StringIO()):
             code = run_tests.main([])
         self.assertEqual(code, 1)
+
+    def test_runs_tests_concurrently_and_collects_all_results(self):
+        discovery = {"suite": "controller", "tests": ["test_one", "test_two"]}
+        barrier = threading.Barrier(2, timeout=5)
+
+        def fake_run(_godot, suite, name, _timeout):
+            if name == "--list":
+                return discovery, "", None
+            barrier.wait()
+            return {"suite": suite, "result": {
+                "test": name, "passed": name == "test_one",
+                "error": "" if name == "test_one" else "expected failure",
+                "duration_ms": 10
+            }}, "", None
+
+        output = io.StringIO()
+        with mock.patch.object(run_tests, "run_godot", side_effect=fake_run):
+            with contextlib.redirect_stdout(output):
+                code = run_tests.main(["--jobs", "2"])
+        self.assertEqual(code, 1)
+        self.assertIn("ASSERTIONS PASS controller/test_one", output.getvalue())
+        self.assertIn("ASSERTIONS FAIL controller/test_two", output.getvalue())
+        self.assertIn("1 assertion passes, 1 assertion failures", output.getvalue())
+
+    def test_rejects_nonpositive_jobs(self):
+        with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as exc:
+            run_tests.main(["--jobs", "0"])
+        self.assertEqual(exc.exception.code, 2)
 
 
 if __name__ == "__main__":

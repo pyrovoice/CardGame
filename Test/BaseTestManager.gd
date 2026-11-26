@@ -228,9 +228,9 @@ func addCardToHand(card: Card):
 	GameUtility.reparentWithoutMoving(card, game.game_view.player_hand)
 
 func addCardToBattlefield(card: Card):
-	"""Helper to add card to the player's battlefield (opponent has no battlefield staging area)"""
+	"""Helper to add a card to the player's first location camp"""
 	game.game_data.add_card_to_zone(card.cardData, GameZone.e.LOCATION_1_PLAYER_CAMP)
-	GameUtility.reparentWithoutMoving(card, game.game_view.player_base)
+	game.game_view.combat_zones[0].place_in_camp(card)
 	
 func addCardToExtraDeck(card: CardData):
 	card.playerOwned = true
@@ -339,8 +339,13 @@ func waitForCastGuardCleared(max_frames: int = 10) -> bool:
 	return false
 
 func getCardsInPlay() -> Array[Card]:
-	"""Helper to get all cards in play (returns Card objects from view)"""
-	return game.game_view.player_base.getCards()
+	"""Return card views in the player's first location camp"""
+	var cards: Array[Card] = []
+	for card_data: CardData in getCardsInPlayData():
+		var card := card_data.get_card_object()
+		if card:
+			cards.append(card)
+	return cards
 
 func getCardsInPlayData() -> Array[CardData]:
 	"""Helper to get all card data in play"""

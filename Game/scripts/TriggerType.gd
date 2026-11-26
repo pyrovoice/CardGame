@@ -6,7 +6,7 @@ enum Type {
 	CARD_DRAWN,
 	CARD_PLAYED,  # Card played from hand
 	CARD_ENTERS,  # Card entering the battlefield (played from hand or created by effects)
-	CARD_ATTACKS,  # Card moving from PlayerBase to CombatLocation
+	CARD_ATTACKS,  # Card moving from camp to a combat location
 	CHANGED_ZONE,  # Card changing zones (with Origin/Destination filtering)
 	PHASE,  # Phase-based triggers (beginning of turn, combat, end of turn)
 	STRIKE,  # Creature strikes in combat

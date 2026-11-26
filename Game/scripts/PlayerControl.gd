@@ -93,7 +93,7 @@ func _unhandled_input(event):
 					# Card was dropped on a specific target
 					tryMoveCard.emit(dragged_card.cardData, drop_target)
 				elif is_outside_hand:
-					# Card was dragged outside hand zone but no specific target - let game default to PlayerBase
+					# Card was dragged outside hand without a specific target.
 					tryMoveCard.emit(dragged_card.cardData, null)
 				
 				# HighlightManager will be notified by CardAnimator signals

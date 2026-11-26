@@ -395,7 +395,7 @@ func parse_zone_string_to_enum(zone_str: String, from_player_perspective: bool) 
 			return GameZone.e.HAND_COMMANDER
 		"ExtraDeck.Player":
 			return GameZone.e.EXTRA_DECK_PLAYER
-		"Battlefield.Player", "PlayerBase":
+		"Battlefield.Player":
 			return GameZone.e.LOCATION_1_PLAYER_CAMP
 		_:
 			push_error("Unknown zone string: ", zone_str, " (resolved to: ", resolved_zone, ")")

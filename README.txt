@@ -4,11 +4,11 @@ Automated game tests:
 - The command runs only controller tests. Use --test test_card_creation to run
   one exact test. View tests remain available through the in-game test UI.
   Controller tests skip view updates but still load the game scene and assets.
-- Each test runs in its own Godot process with a 30-second timeout. Set
-  --timeout SECONDS to change it; use --verbose or --log-dir PATH for full logs.
+- Each test runs in its own Godot process with isolated user data and a
+  30-second timeout. Up to four tests run concurrently; use --jobs 1 for serial
+  execution or --jobs N to set concurrency. Set --timeout SECONDS to change
+  the timeout; use --verbose or --log-dir PATH for full logs.
   GODOT_BIN can supply the executable instead of --godot.
-- The controller suite includes test_intentional_failure_detection, which
-  deliberately fails to verify failure reporting and makes the suite fail.
 - The command exits nonzero for assertion failures, timeouts, missing results,
   or any Godot ERROR/SCRIPT ERROR, including startup and shutdown errors.
   A reported PASS only means that test's assertions passed; check the final

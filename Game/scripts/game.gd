@@ -1589,7 +1589,7 @@ func start_card_selection():
 ## Single source of truth for matching cards against filter criteria.
 ## Used by: effects, abilities, payment logic, targeting systems.
 
-func _matches_card_filter(filter: String) -> Array[CardData]:
+func _matches_card_filter(filter: String, possible_cards: Array[CardData] = [], source_card: CardData = null) -> Array[CardData]:
 	"""Return all cards from possible_cards that match the filter string.
 	
 	If possible_cards is empty, searches all cards in play.
@@ -1611,7 +1611,7 @@ func _matches_card_filter(filter: String) -> Array[CardData]:
 	- "HasReplace" - cards with Replace additional cost
 	- Any other token - treated as subtype check (e.g., "Goblin", "Punglynd", "Grown-up")
 	"""
-	var all_cards: Array = game_data.get_cards_in_play()
+	var all_cards: Array = possible_cards if not possible_cards.is_empty() else game_data.get_cards_in_play()
 	var result_cards: Array[CardData] = []
 	
 	# Handle OR logic first - split by '/'
@@ -1630,6 +1630,13 @@ func _matches_card_filter(filter: String) -> Array[CardData]:
 				match key:
 					"", "Card":
 						pass
+
+					"Other":
+						if not source_card:
+							push_error("_matches_card_filter: Other requires a source card")
+							cards = []
+						else:
+							cards = cards.filter(func(c): return c != source_card)
 					
 					"Creature":
 						cards = cards.filter(func(c): return c.hasType(CardData.CardType.CREATURE))
