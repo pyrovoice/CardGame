@@ -37,6 +37,9 @@ func runTests():
 
 # === CONTROLLER TESTS (All logic/state tests) ===
 
+func test_intentional_failure_detection() -> bool:
+	return assert_test(false, "Intentional failure: verifies the test runner detects failed assertions")
+
 func test_card_creation():
 	"""Test that cards can be created from card data"""
 	var card: CardData = createCardFromName("goblin pair", GameZone.e.HAND_PLAYER)
@@ -2992,4 +2995,3 @@ func test_consumable_cards_match_start_and_refill() -> bool:
 
 	print("✅ Consumable cards match start and refill test passed!")
 	return true
-
