@@ -120,3 +120,8 @@ Find a way to have a Sphere mask transition: https://www.reddit.com/r/unrealengi
 Make each location resolved on player choice, with possibility to play in-between each fight? Offers more startegy to the player, less confusion, gameplay possibility of repeating a battle...
 - Difficulty levels like StS: Opponent gets extra resource, danger level grows faster, specific events on specific turns...
 - How to manage flying units? Evasive
+
+
+Github:
+gh auth switch --user MaximeGEgym
+gh auth switch --user pyrovoice
