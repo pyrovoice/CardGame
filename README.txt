@@ -1,3 +1,22 @@
+Automated game tests:
+- Install Godot 4.5 and Python 3. From the project root, run:
+  python3 Test/run_tests.py --godot /path/to/godot
+- The command runs only controller tests. Use --test test_card_creation to run
+  one exact test. View tests remain available through the in-game test UI.
+  Controller tests skip view updates but still load the game scene and assets.
+- Each test runs in its own Godot process with a 30-second timeout. Set
+  --timeout SECONDS to change it; use --verbose or --log-dir PATH for full logs.
+  GODOT_BIN can supply the executable instead of --godot.
+- The controller suite includes test_intentional_failure_detection, which
+  deliberately fails to verify failure reporting and makes the suite fail.
+- The command exits nonzero for assertion failures, timeouts, missing results,
+  or any Godot ERROR/SCRIPT ERROR, including startup and shutdown errors.
+  A reported PASS only means that test's assertions passed; check the final
+  summary for engine errors. Logs in --log-dir are overwritten on later runs.
+  First-time checkouts may need a Godot import:
+  /path/to/godot --headless --path . --import
+  Inspect its output for errors; Godot may report errors while exiting with 0.
+
 Design philosophy and goals:
 In-Game:
 - Players build boards over multiple turns. Each archetype uses this differently, creating varied and interesting effects that develop over time.
