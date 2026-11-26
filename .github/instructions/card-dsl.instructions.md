@@ -47,8 +47,3 @@ Ability keys can appear multiple times:
 - Effect specifications use `$` (e.g. `E:$ DealDamage | ValidTgts$ Any | NumDmg$ 3`).
 - `CardText:` marks the beginning of the UI text box; everything after this tag represents display text.
 - Consult `Game/scripts/EffectType.gd` and `Game/scripts/AbilityParser.gd` to confirm supported parameter names and effect types.
-
-### Before-strike weakening
-- `Mode$ WouldFight` triggers for a card in the combat zone before that location's strikes.
-- `Weaken | Affected$ Card.InFrontOfMe` affects opposing creatures whose combat columns overlap the source. It reduces each target by its current power unless `Pow$ N` specifies a fixed reduction.
-- `TargetCondition$ Target.Power>Self.Power` filters targets by comparing their power with the source. `Duration$ EndOfTurn` makes the reduction temporary.
