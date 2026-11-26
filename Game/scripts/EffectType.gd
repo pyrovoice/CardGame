@@ -49,6 +49,7 @@ enum Type {
 	DISCARD,  # Discard cards
 	SEARCH,  # Search library
 	SHUFFLE,  # Shuffle deck
+	WEAKEN,  # Reduce a creature's power
 	NONE
 }
 
@@ -87,6 +88,8 @@ static func type_to_string(effect_type: Type) -> String:
 			return "Death"
 		Type.CREATURE_ATTACK:
 			return "CreatureAttack"
+		Type.WEAKEN:
+			return "Weaken"
 		Type.DRAFT:
 			return "Draft"
 		Type.ADD_GOLD:
@@ -150,6 +153,8 @@ static func string_to_type(effect_string: String) -> Type:
 			return Type.DEATH
 		"CreatureAttack":
 			return Type.CREATURE_ATTACK
+		"Weaken":
+			return Type.WEAKEN
 		"Draft":
 			return Type.DRAFT
 		"AddGold":
@@ -182,7 +187,7 @@ static func is_valid_string(s: String) -> bool:
 # Get all available effect type strings
 static func get_all_strings() -> Array[String]:
 	return [
-		"DealDamage", "Pump", "Draw", "CreateToken", "CreateCard", "Cast", "AddType", 
+		"DealDamage", "Pump", "Weaken", "Draw", "CreateToken", "CreateCard", "Cast", "AddType",
 		"AddKeyword", "MoveCard", "SwitchPositions", "Destroy", "Bounce", "Exile", "Mill", 
 		"Discard", "Search", "Shuffle"
 	]
@@ -206,7 +211,7 @@ static func is_spell_effect(effect_type: Type) -> bool:
 # Check if an effect type is a triggered ability effect
 static func is_triggered_effect(effect_type: Type) -> bool:
 	match effect_type:
-		Type.CREATE_TOKEN, Type.DRAW, Type.ADD_TYPE, Type.ADD_KEYWORD:
+		Type.CREATE_TOKEN, Type.DRAW, Type.ADD_TYPE, Type.ADD_KEYWORD, Type.WEAKEN:
 			return true
 		_:
 			return false

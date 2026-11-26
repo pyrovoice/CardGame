@@ -43,6 +43,7 @@ enum GameEventType {
 	CARD_RECYCLED,        # When a card is recycled from hand
 	END_OF_COMBAT,        # After all combat in a zone is resolved
 	OPPONENT_TURN_END,    # After the opponent AI finishes its main phase
+	BEFORE_STRIKE,        # Before any strikes at a location
 }
 
 enum TriggerCondition {
@@ -72,6 +73,7 @@ const EVENT_TO_SIGNAL = {
 	GameEventType.CARD_RECYCLED: "card_recycled",
 	GameEventType.END_OF_COMBAT: "end_of_combat",
 	GameEventType.OPPONENT_TURN_END: "opponent_turn_ended",
+	GameEventType.BEFORE_STRIKE: "before_strike",
 }
 
 var game_event_trigger: GameEventType
@@ -176,6 +178,13 @@ func _check_trigger_conditions(cardData: CardData, event_card_data: CardData, ga
 		if game_event_trigger == GameEventType.END_OF_COMBAT and from_zone != null:
 			if cardData_zone != from_zone:
 				return false
+
+	if game_event_trigger == GameEventType.BEFORE_STRIKE:
+		var owner_zone: GameZone.e = game.game_data.get_card_zone(cardData)
+		if from_zone == null or not GameZone.is_combat_zone(owner_zone):
+			return false
+		if GameZone.location_index_of(owner_zone) != GameZone.location_index_of(from_zone):
+			return false
 	
 	# Check Origin condition for zone changes (e.g., "Origin$ Hand")
 	var origin_filter = trigger_conditions.get(TriggerCondition.ORIGIN, "")
@@ -247,6 +256,8 @@ static func event_to_string(event: GameEventType) -> String:
 			return "EndOfTurnCleanup"
 		GameEventType.STRIKE:
 			return "Strike"
+		GameEventType.BEFORE_STRIKE:
+			return "BeforeStrike"
 	return "Unknown"
 
 static func string_to_event(event_str: String) -> GameEventType:
@@ -272,4 +283,6 @@ static func string_to_event(event_str: String) -> GameEventType:
 			return GameEventType.BEGINNING_OF_TURN
 		"EndOfTurnCleanup":
 			return GameEventType.END_OF_TURN_CLEANUP
+		"BeforeStrike":
+			return GameEventType.BEFORE_STRIKE
 	return GameEventType.CARD_ENTERED_PLAY  # Default

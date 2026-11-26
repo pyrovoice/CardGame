@@ -11,6 +11,9 @@ static func create_effect(effect_type: EffectType.Type) -> Effect:
 		
 		EffectType.Type.PUMP:
 			return PumpEffect.new()
+
+		EffectType.Type.WEAKEN:
+			return WeakenEffect.new()
 		
 		EffectType.Type.ADD_KEYWORD:
 			return AddKeywordEffect.new()

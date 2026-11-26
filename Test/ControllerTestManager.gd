@@ -3012,3 +3012,87 @@ func test_consumable_cards_match_start_and_refill() -> bool:
 
 	print("✅ Consumable cards match start and refill test passed!")
 	return true
+
+func _make_weaken_template() -> CardData:
+	var card_text: String = (
+		"Name:Test Weaken Golem\n" +
+		"Types:Creature Construct\n" +
+		"Power:2\n" +
+		"T:Mode$ WouldFight | Execute$ WeakenOpponent\n" +
+		"SVar:WeakenOpponent$ Weaken | Affected$ Card.InFrontOfMe | TargetCondition$ Target.Power>Self.Power | Duration$ EndOfTurn\n"
+	)
+	return CardLoaderAL.parse_card_data(card_text)
+
+func _make_weaken_opponent(power: int) -> CardData:
+	var template: CardData = CardData.new()
+	template.cardName = "Test Opponent Fighter"
+	template.addType(CardData.CardType.CREATURE)
+	template._power = power
+	return template
+
+func test_weaken_before_strike_power_boundary() -> bool:
+	var template: CardData = _make_weaken_template()
+	if not assert_test_equal(template.triggered_abilities.size(), 1, "WouldFight ability should parse"):
+		return false
+	var scenarios: Array[Dictionary] = [
+		{"power": 5, "alive": true},
+		{"power": 2, "alive": false},
+		{"power": 1, "alive": true},
+	]
+	for index: int in range(scenarios.size()):
+		var player_zone: GameZone.e = GameZone.combat_zone_for(index, true)
+		var opponent_zone: GameZone.e = GameZone.combat_zone_for(index, false)
+		var golem: CardData = game.createCardData(template, player_zone, true)
+		var opponent: CardData = game.createCardData(_make_weaken_opponent(scenarios[index]["power"]), opponent_zone, false)
+		await game.resolveCombatInZone(player_zone)
+		var golem_alive: bool = GameZone.is_in_play(game.game_data.get_card_zone(golem))
+		if not assert_test_equal(golem_alive, scenarios[index]["alive"], "Golem survival for opponent power " + str(scenarios[index]["power"])):
+			return false
+		if index == 0 and not assert_test_equal(opponent.power, 0, "Stronger opponent should be weakened before dealing damage"):
+			return false
+	return true
+
+func test_weaken_before_strike_location_and_duration() -> bool:
+	var template: CardData = _make_weaken_template()
+	game.createCardData(template, GameZone.e.COMBAT_PLAYER_1, true)
+	var opponent_target: CardData = game.createCardData(_make_weaken_opponent(5), GameZone.e.COMBAT_OPPONENT_1, false)
+	var other_target: CardData = game.createCardData(_make_weaken_opponent(5), GameZone.e.COMBAT_PLAYER_2, true)
+	game.createCardData(template, GameZone.e.COMBAT_OPPONENT_2, false)
+	var camp_source: CardData = game.createCardData(template, GameZone.e.LOCATION_1_PLAYER_CAMP, true)
+	var camp_ability: TriggeredAbility = camp_source.triggered_abilities[0]
+	if not assert_test_false(camp_ability._check_trigger_conditions(camp_source, null, game, GameZone.e.COMBAT_PLAYER_1), "Camp creatures should not trigger before combat strikes"):
+		return false
+	await game.emit_game_event(TriggeredAbility.GameEventType.BEFORE_STRIKE, GameZone.e.COMBAT_PLAYER_1)
+	if not assert_test_equal(opponent_target.power, 0, "Source should weaken its opposing creature"):
+		return false
+	if not assert_test_equal(other_target.power, 5, "Another location should not trigger"):
+		return false
+	await game.emit_game_event(TriggeredAbility.GameEventType.BEFORE_STRIKE, GameZone.e.COMBAT_PLAYER_2)
+	if not assert_test_equal(other_target.power, 0, "Opponent source should weaken the opposing player creature"):
+		return false
+	await game.emit_game_event(TriggeredAbility.GameEventType.END_OF_TURN, null)
+	if not assert_test_equal(opponent_target.power, 5, "Weaken should expire at end of turn"):
+		return false
+	if not assert_test_equal(other_target.power, 5, "Opponent weaken should expire at end of turn"):
+		return false
+	return true
+
+func test_weaken_before_strike_columns_and_fixed_amount() -> bool:
+	var template: CardData = CardLoaderAL.parse_card_data(
+		"Name:Test Giant\nTypes:Creature\nPower:2\n" +
+		"T:Mode$ WouldFight | Execute$ WeakenOpponent\n" +
+		"SVar:WeakenOpponent$ Weaken | Affected$ Card.InFrontOfMe | Pow$ 2 | Duration$ EndOfTurn\n"
+	)
+	template.add_keyword("Giant")
+	game.createCardData(template, GameZone.e.COMBAT_PLAYER_1, true)
+	var first: CardData = game.createCardData(_make_weaken_opponent(5), GameZone.e.COMBAT_OPPONENT_1, false)
+	var second: CardData = game.createCardData(_make_weaken_opponent(4), GameZone.e.COMBAT_OPPONENT_1, false)
+	var third: CardData = game.createCardData(_make_weaken_opponent(7), GameZone.e.COMBAT_OPPONENT_1, false)
+	await game.emit_game_event(TriggeredAbility.GameEventType.BEFORE_STRIKE, GameZone.e.COMBAT_PLAYER_1)
+	if not assert_test_equal(first.power, 3, "Weaken should reduce the first overlapping creature by Pow"):
+		return false
+	if not assert_test_equal(second.power, 2, "Giant should also affect the second overlapping creature"):
+		return false
+	if not assert_test_equal(third.power, 7, "Creatures outside the source's columns should not be affected"):
+		return false
+	return true

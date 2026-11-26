@@ -274,6 +274,8 @@ func _parse_effect_parameters_from_parts(parts: Array) -> Dictionary:
 			parameters["subAbility"] = part.substr(12)
 		elif part.begins_with("Affected$"):
 			parameters["Affected"] = part.substr(10)
+		elif part.begins_with("TargetCondition$"):
+			parameters["TargetCondition"] = part.substr(17)
 	
 	return parameters
 
@@ -544,6 +546,8 @@ func _convert_trigger_type_to_game_event(trigger_type: TriggerType.Type, conditi
 			return TriggeredAbility.GameEventType.STRIKE
 		TriggerType.Type.Card_DIES:
 			return TriggeredAbility.GameEventType.CARD_DIED
+		TriggerType.Type.WOULD_FIGHT:
+			return TriggeredAbility.GameEventType.BEFORE_STRIKE
 		_:
 			push_warning("Unknown TriggerType: " + str(trigger_type))
 			return TriggeredAbility.GameEventType.CARD_ENTERED_PLAY  # Default fallback

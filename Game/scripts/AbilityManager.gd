@@ -373,8 +373,26 @@ func isValidCardCondition(condition: String, triggerSource_data: CardData, abili
 	
 	return false
 
-func evaluateCondition(condition: String, triggeringCard_data: CardData, game: Game = null) -> bool:
+func evaluateCondition(condition: String, triggeringCard_data: CardData, game: Game = null, compare_card_data: CardData = null) -> bool:
 	"""Evaluate trigger conditions like Self.Attacked+ThisTurn"""
+	for op: String in [">=", "<=", "==", ">", "<"]:
+		if op in condition:
+			var sides: PackedStringArray = condition.split(op, false, 1)
+			if sides.size() != 2:
+				push_warning("Invalid comparison condition: " + condition)
+				return false
+			var left = _resolve_condition_value(sides[0].strip_edges(), triggeringCard_data, compare_card_data)
+			var right = _resolve_condition_value(sides[1].strip_edges(), triggeringCard_data, compare_card_data)
+			if left == null or right == null:
+				push_warning("Could not resolve comparison condition: " + condition)
+				return false
+			match op:
+				">=": return left >= right
+				"<=": return left <= right
+				"==": return left == right
+				">": return left > right
+				"<": return left < right
+
 	# Parse condition format: Target.Property+Timing
 	# Example: Self.Attacked+ThisTurn
 	
@@ -432,6 +450,27 @@ func evaluateCondition(condition: String, triggeringCard_data: CardData, game: G
 		_:
 			push_warning("Unsupported condition property: " + property)
 			return false
+
+func _resolve_condition_value(ref: String, self_card: CardData, target_card: CardData):
+	var parts: PackedStringArray = ref.split(".")
+	if parts.size() != 2:
+		push_warning("Invalid comparison reference: " + ref)
+		return null
+	var card: CardData
+	match parts[0]:
+		"Self": card = self_card
+		"Target": card = target_card
+		_:
+			push_warning("Unsupported comparison reference: " + parts[0])
+			return null
+	if not card:
+		return null
+	match parts[1]:
+		"Power": return card.power
+		"Cost": return card.goldCost
+		_:
+			push_warning("Unsupported comparison property: " + parts[1])
+			return null
 
 func _is_alone_at_location(card_data: CardData, game: Game) -> bool:
 	"""Check whether card_data is the only creature its controller has at its current location (Camp or combat)"""

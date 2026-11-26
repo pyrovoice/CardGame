@@ -17,6 +17,7 @@ signal strike(card_data: CardData)
 signal card_recycled(card_data: CardData)
 signal end_of_combat(card_data: CardData, zone: GameZone.e)
 signal opponent_turn_ended()  # Fires after the opponent AI completes its main phase
+signal before_strike(card_data: CardData, zone: GameZone.e)
 
 # Controller references (MVC: Controller layer)
 @onready var player_control: PlayerControl = $GameView/playerControl
@@ -1075,6 +1076,8 @@ func resolveCombatInZone(combat_zone: GameZone.e):
 	var player_entries = _assign_combat_columns(player_cards)
 	var opponent_entries = _assign_combat_columns(opponent_cards)
 	var max_columns = max(_entries_end(player_entries), _entries_end(opponent_entries))
+
+	await emit_game_event(TriggeredAbility.GameEventType.BEFORE_STRIKE, player_zone)
 	
 	var resolved: Array[CardData] = []
 	for column in range(max_columns):
@@ -1130,6 +1133,20 @@ func _find_overlapping(entry: Dictionary, other_entries: Array) -> Array[CardDat
 		if entry["start"] < other["end"] and other["start"] < entry["end"]:
 			result.append(other["card"])
 	return result
+
+func get_creatures_in_front(card_data: CardData) -> Array[CardData]:
+	var zone: GameZone.e = game_data.get_card_zone(card_data)
+	if not GameZone.is_combat_zone(zone):
+		return []
+	var location_index: int = GameZone.location_index_of(zone)
+	var is_player_side: bool = zone in [GameZone.e.COMBAT_PLAYER_1, GameZone.e.COMBAT_PLAYER_2, GameZone.e.COMBAT_PLAYER_3]
+	var own_entries: Array = _assign_combat_columns(game_data.get_cards_in_zone(zone))
+	var opposite_zone: GameZone.e = GameZone.combat_zone_for(location_index, not is_player_side)
+	var opposing_entries: Array = _assign_combat_columns(game_data.get_cards_in_zone(opposite_zone))
+	for entry: Dictionary in own_entries:
+		if entry["card"] == card_data:
+			return _find_overlapping(entry, opposing_entries)
+	return []
 
 func _resolve_creature_combat(attacker: CardData, targets: Array[CardData], attacker_is_player: bool, combatZone: CombatZone):
 	"""Resolve a single creature's one-time strike: full damage to every overlapping opponent,
@@ -2177,6 +2194,8 @@ func emit_game_event(event_type: TriggeredAbility.GameEventType, card_data):
 			card_recycled.emit(card_data)
 		TriggeredAbility.GameEventType.END_OF_COMBAT:
 			end_of_combat.emit(null, card_data)
+		TriggeredAbility.GameEventType.BEFORE_STRIKE:
+			before_strike.emit(null, card_data)
 	
 	# After emitting the event, resolve any resolvables that were added to the queue
 	await resolve_queue()
