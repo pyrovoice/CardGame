@@ -69,7 +69,6 @@ static func get_zone_from_string(game: Game, zone: String, from_perspective_of_p
 	- Graveyard.Player / Graveyard.Opponent / Graveyard.Controller
 	- Deck.Player / Deck.Opponent / Deck.Controller
 	- Hand.Player / Hand.Opponent / Hand.Controller
-	- PlayerBase (battlefield)
 	- ExtraDeck.Player
 	- CombatZone.X.Y.Player/Opponent (where X is zone index 0-2, Y is slot index)
 	
@@ -109,8 +108,6 @@ static func get_zone_from_string(game: Game, zone: String, from_perspective_of_p
 		"Hand.Opponent":
 			# Ambiguous across the 3 Lieutenant hands - falls back to the Commander's hand
 			return game.game_view.commander_hand
-		"PlayerBase":
-			return game.game_view.player_base
 		"ExtraDeck.Player":
 			return game.game_view.extra_deck
 		_:

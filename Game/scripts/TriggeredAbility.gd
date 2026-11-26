@@ -229,7 +229,7 @@ func _check_trigger_conditions(cardData: CardData, event_card_data: CardData, ga
 			
 			# Use unified filter from game (works in both headless and normal mode)
 			var single_card: Array[CardData] = [event_card_data]
-			if game._matches_card_filter(valid_card_filter).has(single_card):
+			if not game._matches_card_filter(valid_card_filter, single_card, cardData).has(event_card_data):
 				return false
 	
 	# Check "Condition" field (e.g., "Self.Attacked+ThisTurn")

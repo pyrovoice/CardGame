@@ -299,7 +299,7 @@ static func place_token_at_location(token_card: Card, location: Node3D):
 	token_card.call_deferred("_set_token_rotation")
 	
 	if location.has_method("getNextEmptyLocation"):
-		# This is a PlayerBase
+		# Place in a container that provides empty positions.
 		var target_pos = location.getNextEmptyLocation()
 		if target_pos != Vector3.INF:
 			# Use position relative to parent

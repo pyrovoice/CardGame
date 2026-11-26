@@ -22,7 +22,6 @@ class_name GameView
 @onready var player_hand: CardHand = $PlayerHand
 @onready var extra_hand: CardHand = $ExtraHand
 @onready var commander_hand: CardHand = $CommanderHand
-@onready var player_base: PlayerBase = $playerBase
 @onready var deck: Deck = $Deck
 @onready var deck_opponent: Deck = $DeckOpponent
 @onready var extra_deck: CardContainer = $extraDeck
@@ -517,10 +516,6 @@ func set_zone_names() -> void:
 	if combat_zones.size() > 2:
 		combat_zones[2].get_lieutenant_deck().zone_name = GameZone.e.DECK_COMBO
 
-## Get next empty location on battlefield (opponent has no battlefield staging area)
-func get_next_battlefield_location() -> Vector3:
-	return player_base.getNextEmptyLocation()
-
 ## Update deck visual size
 func update_deck_visuals() -> void:
 	deck.update_size()
@@ -724,10 +719,6 @@ func set_battlefield_focus(index: int) -> void:
 			var offset := (i - index) * _FOCUS_SPACING
 			var target := _reference_zone_position + Vector3(offset, 0.0, 0.0)
 			tween.tween_property(combat_zones[i], "position", target, _FOCUS_TWEEN_DURATION)
-
-## Get player base
-func get_player_base() -> PlayerBase:
-	return player_base
 
 ## Get alternative cast choice control
 func get_alternative_cast_choice() -> Control:
