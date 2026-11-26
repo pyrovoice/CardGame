@@ -20,10 +20,10 @@ func apply_to_game(game: Node):
 	if replacement_effect:
 		ReplacementEffectRegistry.register_replacement_effect(replacement_effect)
 		print("  🔧 [REPLACEMENT] Registered ", EffectType.type_to_string(effect_type), " from ", get_owner().cardName)
-	if refreshes_on_turn_start and not game.is_connected("beginning_of_turn", _on_refresh_signal):
-		game.connect("beginning_of_turn", _on_refresh_signal)
+	if refreshes_on_turn_start and not game.is_connected("between_turns", _on_refresh_signal):
+		game.connect("between_turns", _on_refresh_signal)
 
-func _on_refresh_signal(_card_data: CardData = null) -> void:
+func _on_refresh_signal() -> void:
 	refresh()
 
 func remove_from_game(game: Node):
@@ -31,5 +31,5 @@ func remove_from_game(game: Node):
 	if replacement_effect:
 		ReplacementEffectRegistry.unregister_replacement_effect(replacement_effect)
 		print("  🔧 [REPLACEMENT] Unregistered from ", get_owner().cardName if get_owner() else "unknown")
-	if game.is_connected("beginning_of_turn", _on_refresh_signal):
-		game.disconnect("beginning_of_turn", _on_refresh_signal)
+	if game.is_connected("between_turns", _on_refresh_signal):
+		game.disconnect("between_turns", _on_refresh_signal)

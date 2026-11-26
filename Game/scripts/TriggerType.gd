@@ -12,7 +12,8 @@ enum Type {
 	STRIKE,  # Creature strikes in combat
 	Card_DIES,  # Card going to graveyard from battlefield
 	WOULD_FIGHT,  # Once per location, before strikes
-	RESTS,  # Creature rests (heals) after not joining its location's fight
+	RESTS,  # Creature rests in its location's camp
+	CARD_HEALED,  # A creature has damage removed by a healing effect
 }
 
 # Convert trigger type enum to string representation
@@ -38,6 +39,8 @@ static func type_to_string(trigger_type: Type) -> String:
 			return "Rests"
 		Type.WOULD_FIGHT:
 			return "WouldFight"
+		Type.CARD_HEALED:
+			return "CardHealed"
 		_:
 			return "UNKNOWN"
 
@@ -64,6 +67,8 @@ static func string_to_type(trigger_string: String) -> Type:
 			return Type.RESTS
 		"WouldFight":
 			return Type.WOULD_FIGHT
+		"CardHealed":
+			return Type.CARD_HEALED
 		# Support old format for backwards compatibility
 		"ChangesZone":
 			return Type.CHANGED_ZONE  # Legacy mapping
@@ -81,7 +86,7 @@ static func string_to_type(trigger_string: String) -> Type:
 
 # Get all available trigger type strings (in card file format)
 static func get_all_strings() -> Array[String]:
-	return ["CardDraw", "CardPlayed", "CardEnters", "StartAttack", "ChangedZone", "Phase", "WouldFight"]
+	return ["CardDraw", "CardPlayed", "CardEnters", "StartAttack", "ChangedZone", "Phase", "WouldFight", "CardHealed"]
 
 # Check if a trigger type represents a card entering the battlefield
 static func is_battlefield_entry(trigger_type: Type) -> bool:

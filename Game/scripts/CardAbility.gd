@@ -8,8 +8,8 @@ var description = ""
 
 # Exhaustion/refresh state - shared by triggered, activated and replacement abilities.
 # Not all ability types currently wire up automatic refresh (see each subclass).
-var exhausted: bool = false  # True once this ability has resolved/activated/replaced since its last refresh
-var refreshes_on_turn_start: bool = true  # If true, auto-refreshes at Beginning of Turn
+var exhausted: bool = false  # True once this ability has triggered/activated/replaced since its last refresh
+var refreshes_on_turn_start: bool = true  # If true, auto-refreshes between turns
 var exhausts_on_use: bool = true  # If false, resolving/activating/replacing never sets exhausted (Activated/Replacement default)
 var is_one_time: bool = false  # If true, this ability can only ever resolve once - refresh never brings it back
 var _used_up: bool = false  # Permanent flag for one-time abilities that already resolved once
@@ -24,7 +24,7 @@ func is_available() -> bool:
 	return not exhausted and not _used_up
 
 func mark_exhausted() -> void:
-	"""Mark this ability as exhausted - call when it actually resolves/activates/replaces"""
+	"""Mark this ability as exhausted when it triggers, activates, or replaces an effect."""
 	if is_one_time:
 		_used_up = true
 	if exhausts_on_use:

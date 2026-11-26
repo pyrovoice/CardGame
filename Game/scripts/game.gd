@@ -9,6 +9,7 @@ signal card_died(card_data: CardData)
 signal attack_declared(combat_zone: CombatZone)
 signal spell_cast(card_data: CardData)
 signal beginning_of_turn(card_data: CardData)
+signal between_turns()
 signal end_of_turn(card_data: CardData)
 signal end_of_turn_cleanup()  # Fires after end_of_turn for cleanup (remove temporary effects, orphaned abilities)
 signal card_drawn(cards: Array, is_player: bool)
@@ -18,7 +19,8 @@ signal card_recycled(card_data: CardData)
 signal end_of_combat(card_data: CardData, zone: GameZone.e)
 signal opponent_turn_ended()  # Fires after the opponent AI completes its main phase
 signal before_strike(card_data: CardData, zone: GameZone.e)
-signal card_rested(card_data: CardData)  # A creature rests (heals) after not joining its location's fight
+signal card_rested(card_data: CardData)  # A creature rests in its location's camp
+signal card_healed(card_data: CardData)
 
 # Controller references (MVC: Controller layer)
 @onready var player_control: PlayerControl = $GameView/playerControl
@@ -27,6 +29,8 @@ signal card_rested(card_data: CardData)  # A creature rests (heals) after not jo
 # Trigger queue for managing triggered abilities
 var trigger_queue: ResolvableQueue = ResolvableQueue.new()
 var is_resolving_triggers: bool = false  # Track if we're currently resolving the trigger queue
+var trigger_resolution_defer_count: int = 0
+var deferred_game_events: Array[Dictionary] = []
 
 # Orphaned abilities - triggered abilities not attached to any card (e.g., delayed effects)
 # These persist independently and clean up after resolution
@@ -224,6 +228,7 @@ func onTurnStart(skipFirstTurn = false):
 		# Trigger end of turn phase (cards will clean up their own temporary effects)
 		await trigger_phase("EndOfTurn")
 		_refill_decks_at_end_of_turn()
+		await trigger_phase("BetweenTurns")
 		game_data.start_new_turn()
 		reset_all_card_turn_tracking()
 		# Untap all player cards at start of turn
@@ -1099,7 +1104,7 @@ func resolveCombatInZone(combat_zone: GameZone.e):
 	await resolveStateBasedAction()
 	resolve_queue()
 	
-	# Creatures left in Camp (didn't join the fight) rest: heal and fire OnRest
+	# Creatures in either Camp rest before surviving fighters return.
 	await _rest_camped_creatures(GameZone.location_index_of(player_zone))
 	
 	# Combat is over: return every surviving creature to its controller's Camp and clear the fighting grid
@@ -1114,14 +1119,25 @@ func resolveCombatInZone(combat_zone: GameZone.e):
 			cld.isCombatStarted = false
 
 func _rest_camped_creatures(location_index: int) -> void:
-	"""Heal and fire OnRest for every creature sitting in either side's Camp at this location
-	while combat resolved there - they didn't join the fight, so they rest instead."""
+	"""Rest all creatures in either Camp, then resolve the triggers they generated."""
 	if location_index < 0:
 		return
+	var resting_creatures: Array[CardData] = []
 	for player_side in [true, false]:
 		var camp_zone = GameZone.camp_zone_for(location_index, player_side)
-		for card_data in game_data.get_cards_in_zone(camp_zone).duplicate():
-			await _rest_creature(card_data)
+		for card_data in game_data.get_cards_in_zone(camp_zone):
+			if card_data.hasType(CardData.CardType.CREATURE):
+				resting_creatures.append(card_data)
+	trigger_resolution_defer_count += 1
+	for card_data in resting_creatures:
+		await _rest_creature(card_data)
+	trigger_resolution_defer_count -= 1
+	if trigger_resolution_defer_count == 0:
+		var events: Array[Dictionary] = deferred_game_events.duplicate()
+		deferred_game_events.clear()
+		for event: Dictionary in events:
+			_dispatch_game_event(event["type"], event["card"])
+	await resolve_queue()
 
 func _rest_creature(card_data: CardData) -> void:
 	"""Resolve a HealGameEffect (replacement-modifiable) on a resting creature and emit OnRest"""
@@ -2105,6 +2121,9 @@ func exchange_card_positions_in_combat(card1_data: CardData, card2_data: CardDat
 func trigger_phase(phase_name: String):
 	"""Trigger all phase-based abilities for a specific phase"""
 	match phase_name:
+		"BetweenTurns":
+			between_turns.emit()
+			await resolve_queue()
 		"BeginningOfTurn":
 			await emit_game_event(TriggeredAbility.GameEventType.BEGINNING_OF_TURN, null)
 		"EndOfTurn":
@@ -2160,6 +2179,8 @@ func _cleanup_one_shot_orphaned_abilities():
 
 func resolve_queue():
 	"""Resolve all resolvables in the queue one by one"""
+	if trigger_resolution_defer_count > 0:
+		return
 	if is_resolving_triggers:
 		print("⚠️ [RESOLVABLE QUEUE] Already resolving, skipping nested resolution")
 		return
@@ -2181,13 +2202,18 @@ func resolve_queue():
 		# Execute the resolvable ability with event context
 		await AbilityManagerAL.executeAbilityEffect(queued_resolvable.source_card_data, queued_resolvable.ability, self)
 		
-		if queued_resolvable.ability is CardAbility:
-			queued_resolvable.ability.mark_exhausted()
 	is_resolving_triggers = false
 	print("✅ [RESOLVABLE QUEUE] Resolution complete")
 
 func emit_game_event(event_type: TriggeredAbility.GameEventType, card_data):
 	"""Emit a game event signal - abilities listening to this event will add themselves to the trigger queue"""
+	if trigger_resolution_defer_count > 0:
+		deferred_game_events.append({"type": event_type, "card": card_data})
+		return
+	_dispatch_game_event(event_type, card_data)
+	await resolve_queue()
+
+func _dispatch_game_event(event_type: TriggeredAbility.GameEventType, card_data) -> void:
 	match event_type:
 		TriggeredAbility.GameEventType.CARD_ENTERED_PLAY:
 			card_entered_play.emit(card_data)
@@ -2232,10 +2258,9 @@ func emit_game_event(event_type: TriggeredAbility.GameEventType, card_data):
 			end_of_combat.emit(null, card_data)
 		TriggeredAbility.GameEventType.ON_REST:
 			card_rested.emit(card_data)
+		TriggeredAbility.GameEventType.CARD_HEALED:
+			card_healed.emit(card_data)
 		TriggeredAbility.GameEventType.BEFORE_STRIKE:
 			before_strike.emit(null, card_data)
 	
-	# After emitting the event, resolve any resolvables that were added to the queue
-	await resolve_queue()
-
 # Note: card_changed_zones is emitted directly in movement handlers, not through emit_game_event

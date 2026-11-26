@@ -551,6 +551,8 @@ func _convert_trigger_type_to_game_event(trigger_type: TriggerType.Type, conditi
 			return TriggeredAbility.GameEventType.CARD_DIED
 		TriggerType.Type.RESTS:
 			return TriggeredAbility.GameEventType.ON_REST
+		TriggerType.Type.CARD_HEALED:
+			return TriggeredAbility.GameEventType.CARD_HEALED
 		TriggerType.Type.WOULD_FIGHT:
 			return TriggeredAbility.GameEventType.BEFORE_STRIKE
 		_:
@@ -1265,12 +1267,14 @@ func _duplicate_triggered_ability(original: TriggeredAbility, new_owner: CardDat
 	copy.effect_parameters = original.effect_parameters.duplicate()
 	copy.trigger_conditions = original.trigger_conditions.duplicate()
 	copy.targeting_requirements = original.targeting_requirements.duplicate()
+	_copy_ability_exhaustion_configuration(original, copy)
 	return copy
 
 func _duplicate_activated_ability(original: ActivatedAbility, new_owner: CardData) -> ActivatedAbility:
 	var copy = ActivatedAbility.new(new_owner, original.effect_type)
 	copy.effect_parameters = original.effect_parameters.duplicate()
 	copy.targeting_requirements = original.targeting_requirements.duplicate()
+	_copy_ability_exhaustion_configuration(original, copy)
 	for cost in original.activation_costs:
 		copy.activation_costs.append(cost.duplicate())
 	return copy
@@ -1296,7 +1300,13 @@ func _duplicate_replacement_ability(original: ReplacementAbility, new_owner: Car
 	var copy = ReplacementAbility.new(new_owner, original.effect_type, new_replacement_effect)
 	copy.effect_parameters = original.effect_parameters.duplicate()
 	copy.targeting_requirements = original.targeting_requirements.duplicate()
+	_copy_ability_exhaustion_configuration(original, copy)
 	return copy
+
+func _copy_ability_exhaustion_configuration(original: CardAbility, copy: CardAbility) -> void:
+	copy.exhausts_on_use = original.exhausts_on_use
+	copy.refreshes_on_turn_start = original.refreshes_on_turn_start
+	copy.is_one_time = original.is_one_time
 
 # Custom deep copy method for CardData objects to replace broken duplicate() method
 func duplicateCardScript(original: CardData) -> CardData:
@@ -1335,6 +1345,8 @@ func duplicateCardScript(original: CardData) -> CardData:
 	
 	# Deep copy abilities - each ability needs to reference the new card
 	for ability in original.triggered_abilities:
+		if ability.effect_type == EffectType.Type.RELIC_DURABILITY_TICK:
+			continue
 		copy.triggered_abilities.append(_duplicate_triggered_ability(ability, copy))
 	
 	for ability in original.activated_abilities:
@@ -1368,6 +1380,7 @@ func duplicateCardScript(original: CardData) -> CardData:
 	# It checks hasType(RELIC) before enqueuing, so non-Relic cards never pay the cost.
 	# If a card gains or loses the Relic type at runtime, this trigger handles it seamlessly.
 	var relic_trigger = TriggeredAbility.new(copy, TriggeredAbility.GameEventType.BEGINNING_OF_TURN, EffectType.Type.RELIC_DURABILITY_TICK)
+	relic_trigger.exhausts_on_use = false
 	relic_trigger.trigger_conditions[TriggeredAbility.TriggerCondition.TRIGGER_ZONES] = GameZone.parse_trigger_zones("Battlefield")
 	relic_trigger.trigger_conditions[TriggeredAbility.TriggerCondition.CONDITION] = "Self.IsType+Relic"
 	copy.triggered_abilities.append(relic_trigger)

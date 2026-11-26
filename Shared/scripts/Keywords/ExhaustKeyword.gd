@@ -2,7 +2,7 @@ extends Keyword
 class_name ExhaustKeyword
 
 ## Exhaust: every ability on this card exhausts when used and only refreshes by Resting,
-## not automatically at Beginning of Turn.
+## not automatically between turns.
 
 func get_keyword_name() -> String:
 	return "Exhaust"

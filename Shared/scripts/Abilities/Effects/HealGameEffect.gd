@@ -17,13 +17,16 @@ func execute(parameters: Dictionary, source_card_data: CardData, game_context: G
 		print("⚠️ Target no longer exists")
 		return []
 
-	print("💤 ", target_data.cardName, " rests and heals ", amount, " damage")
+	print("💤 ", target_data.cardName, " heals ", amount, " damage")
+	var damage_before: int = target_data.getDamage()
 	target_data.heal(amount)
 
 	var target_node := target_data.get_card_object()
 	if target_node and is_instance_valid(target_node):
 		AnimationsManagerAL.show_floating_text(game_context, target_node.global_position, "+" + str(amount), Color.GREEN)
 
+	if target_data.getDamage() < damage_before:
+		await game_context.emit_game_event(TriggeredAbility.GameEventType.CARD_HEALED, target_data)
 	return [target_data]
 
 func get_description(parameters: Dictionary) -> String:

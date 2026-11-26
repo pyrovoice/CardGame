@@ -44,7 +44,8 @@ enum GameEventType {
 	END_OF_COMBAT,        # After all combat in a zone is resolved
 	OPPONENT_TURN_END,    # After the opponent AI finishes its main phase
 	BEFORE_STRIKE,        # Before any strikes at a location
-	ON_REST,              # A creature rests (heals) after not joining its location's fight
+	ON_REST,              # A creature rests in its location's camp
+	CARD_HEALED,          # A creature has damage removed by a healing effect
 }
 
 enum TriggerCondition {
@@ -76,6 +77,7 @@ const EVENT_TO_SIGNAL = {
 	GameEventType.OPPONENT_TURN_END: "opponent_turn_ended",
 	GameEventType.ON_REST: "card_rested",
 	GameEventType.BEFORE_STRIKE: "before_strike",
+	GameEventType.CARD_HEALED: "card_healed",
 }
 
 var game_event_trigger: GameEventType
@@ -120,9 +122,8 @@ func register_to_game(game: Node):
 	if not game.is_connected(signal_name, _on_game_event):
 		game.connect(signal_name, _on_game_event)
 	
-	# Separately listen for Beginning of Turn to auto-refresh, regardless of this ability's own trigger
-	if refreshes_on_turn_start and not game.is_connected("beginning_of_turn", _on_refresh_signal):
-		game.connect("beginning_of_turn", _on_refresh_signal)
+	if refreshes_on_turn_start and not game.is_connected("between_turns", _on_refresh_signal):
+		game.connect("between_turns", _on_refresh_signal)
 
 func unregister_from_game(game: Node):
 	"""Disconnect from game signal (called when card leaves play or is destroyed)"""
@@ -130,13 +131,12 @@ func unregister_from_game(game: Node):
 	if not signal_name.is_empty() and game.has_signal(signal_name) and game.is_connected(signal_name, _on_game_event):
 		game.disconnect(signal_name, _on_game_event)
 	
-	if game.is_connected("beginning_of_turn", _on_refresh_signal):
-		game.disconnect("beginning_of_turn", _on_refresh_signal)
+	if game.is_connected("between_turns", _on_refresh_signal):
+		game.disconnect("between_turns", _on_refresh_signal)
 
 ## Signal callback
 
-func _on_refresh_signal(_card_data: CardData = null) -> void:
-	"""Beginning-of-Turn callback that only refreshes - bypasses trigger conditions and queueing"""
+func _on_refresh_signal() -> void:
 	refresh()
 
 func _on_game_event(event_card_data: CardData = null, from_zone = null, to_zone = null):
@@ -170,6 +170,7 @@ func _on_game_event(event_card_data: CardData = null, from_zone = null, to_zone 
 		event_context["TriggeredCardData"] = event_card_data
 	
 	game.trigger_queue.add_resolvable(owner, self, event_context)
+	mark_exhausted()
 	
 	# If this is a one-shot orphaned ability, unregister it after triggering
 	# (it will still resolve from the queue, but won't trigger again)
@@ -273,6 +274,8 @@ static func event_to_string(event: GameEventType) -> String:
 			return "Rest"
 		GameEventType.BEFORE_STRIKE:
 			return "BeforeStrike"
+		GameEventType.CARD_HEALED:
+			return "CardHealed"
 	return "Unknown"
 
 static func string_to_event(event_str: String) -> GameEventType:
@@ -302,4 +305,6 @@ static func string_to_event(event_str: String) -> GameEventType:
 			return GameEventType.ON_REST
 		"BeforeStrike":
 			return GameEventType.BEFORE_STRIKE
+		"CardHealed":
+			return GameEventType.CARD_HEALED
 	return GameEventType.CARD_ENTERED_PLAY  # Default

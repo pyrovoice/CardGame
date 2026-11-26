@@ -2420,6 +2420,28 @@ func _make_raw_card(card_name: String, colors: Array, rarity: CardData.Rarity, t
 		c._types.append(t)
 	return c
 
+func test_relic_durability_after_repeated_duplication() -> bool:
+	var template: CardData = CardData.new()
+	template.cardName = "Repeatedly Copied Relic"
+	template.addType(CardData.CardType.RELIC)
+	var duplicated: CardData = CardLoaderAL.duplicateCardScript(template)
+	var relic: CardData = game.createCardData(duplicated, GameZone.e.LOCATION_1_PLAYER_CAMP, true)
+	var durability_triggers: Array[TriggeredAbility] = []
+	for ability: TriggeredAbility in relic.triggered_abilities:
+		if ability.effect_type == EffectType.Type.RELIC_DURABILITY_TICK:
+			durability_triggers.append(ability)
+	if not assert_test_equal(durability_triggers.size(), 1, "Each card should have exactly one durability trigger after duplication"):
+		return false
+	if not assert_test_false(durability_triggers[0].exhausts_on_use, "The durability trigger should not exhaust"):
+		return false
+	await game.trigger_phase("BeginningOfTurn")
+	if not assert_test_equal(relic.durability, 2, "A duplicated relic should lose one durability on the first turn"):
+		return false
+	if not assert_test_true(durability_triggers[0].is_available(), "The durability trigger should remain available"):
+		return false
+	await game.trigger_phase("BeginningOfTurn")
+	return assert_test_equal(relic.durability, 1, "A duplicated relic should lose one durability on the next turn")
+
 func test_relic_durability() -> bool:
 	"""Test Relic durability ticks and sacrifice on depletion.
 	Covers four cards across three beginning-of-turn triggers:
@@ -3112,6 +3134,369 @@ class _CountingReplacementEffect extends ReplacementEffect:
 		fire_count += 1
 		return effect_context
 
+class _RestHealReplacementEffect extends ReplacementEffect:
+	func apply_modification(effect_context: Dictionary, _game_context: Game) -> Dictionary:
+		effect_context["Amount"] = 2
+		return effect_context
+
+class _RestDeathReplacementEffect extends ReplacementEffect:
+	func applies_to_specific(effect_context: Dictionary, _game_context: Game) -> bool:
+		return effect_context.get("dying_card") == source_card_data
+
+	func apply_modification(effect_context: Dictionary, _game_context: Game) -> Dictionary:
+		source_card_data.heal(1)
+		effect_context["event_was_replaced"] = true
+		return effect_context
+
+func _rest_scenario_creature(card_name: String, zone: GameZone.e, player_side: bool, power: int = 10) -> CardData:
+	var template: CardData = CardData.new()
+	template.cardName = card_name
+	template.addType(CardData.CardType.CREATURE)
+	template._power = power
+	return game.createCardData(template, zone, player_side)
+
+func _rest_scenario_move_on_event(source: CardData, target: CardData, event: TriggeredAbility.GameEventType) -> void:
+	var ability: TriggeredAbility = TriggeredAbility.new(source, event, EffectType.Type.MOVE_CARD)
+	ability.effect_parameters = {"Origin": "Battlefield", "Destination": "Battlefield", "Targets": [target]}
+	source.triggered_abilities.append(ability)
+	ability.register_to_game(game)
+
+func test_rest_damage_before_combat_resolution() -> bool:
+	var survivor: CardData = _rest_scenario_creature("Camp Survivor", GameZone.e.LOCATION_1_PLAYER_CAMP, true)
+	var after_start: CardData = _rest_scenario_creature("Damaged After Start", GameZone.e.LOCATION_1_PLAYER_CAMP, true)
+	var killed: CardData = _rest_scenario_creature("Killed Before Resolution", GameZone.e.LOCATION_1_PLAYER_CAMP, true, 3)
+	var lethal_after_start: CardData = _rest_scenario_creature("Killed After Start", GameZone.e.LOCATION_1_PLAYER_CAMP, true, 3)
+	survivor.receiveDamage(2)
+	await EffectFactory.execute_effect(EffectType.Type.DEAL_DAMAGE, {"Targets": [killed], "NumDamage": 3}, survivor, game)
+	await game.start_combat_for_zone(GameZone.e.COMBAT_PLAYER_1)
+	after_start.receiveDamage(2)
+	await EffectFactory.execute_effect(EffectType.Type.DEAL_DAMAGE, {"Targets": [lethal_after_start], "NumDamage": 3}, survivor, game)
+	if not assert_test_equal(game.game_data.get_card_zone(killed), GameZone.e.GRAVEYARD_PLAYER, "Lethal damage before combat should remove the creature"):
+		return false
+	if not assert_test_equal(game.game_data.get_card_zone(lethal_after_start), GameZone.e.GRAVEYARD_PLAYER, "Lethal damage after combat starts should remove the creature"):
+		return false
+	await game.resolve_combat_for_zone(GameZone.e.COMBAT_PLAYER_1)
+	if not assert_test_equal(survivor.getDamage(), 1, "A damaged creature still in camp should heal"):
+		return false
+	if not assert_test_equal(after_start.getDamage(), 1, "Non-lethal damage after combat starts should be healed"):
+		return false
+	if not assert_test_equal(killed.getDamage(), 3, "A dead creature should not heal"):
+		return false
+	return assert_test_equal(lethal_after_start.getDamage(), 3, "A creature killed after start should not heal")
+
+func test_rest_damage_during_combat_phases() -> bool:
+	_rest_scenario_creature("Phase Anchor", GameZone.e.COMBAT_PLAYER_1, true)
+	var nonlethal: CardData = _rest_scenario_creature("Damaged Before Strikes", GameZone.e.LOCATION_1_PLAYER_CAMP, true)
+	var lethal: CardData = _rest_scenario_creature("Killed Before Strikes", GameZone.e.LOCATION_1_PLAYER_CAMP, true, 3)
+	game.before_strike.connect(func(_card: CardData, _zone: GameZone.e):
+		nonlethal.receiveDamage(2)
+		lethal.receiveDamage(3), CONNECT_ONE_SHOT)
+	await game.resolve_combat_for_zone(GameZone.e.COMBAT_PLAYER_1)
+	if not assert_test_equal(nonlethal.getDamage(), 1, "Non-lethal damage before strikes should be healed at rest"):
+		return false
+	if not assert_test_equal(game.game_data.get_card_zone(lethal), GameZone.e.GRAVEYARD_PLAYER, "Lethal damage before strikes should remove the creature before rest"):
+		return false
+	return assert_test_equal(lethal.getDamage(), 3, "A creature killed during combat should not rest")
+
+func test_rest_after_death_is_replaced() -> bool:
+	var creature: CardData = _rest_scenario_creature("Death Replaced", GameZone.e.LOCATION_1_PLAYER_CAMP, true, 3)
+	var effect: _RestDeathReplacementEffect = _RestDeathReplacementEffect.new(
+		creature, {"EventType": EffectType.Type.DEATH}, {})
+	ReplacementEffectRegistry.register_replacement_effect(effect)
+	creature.receiveDamage(3)
+	await game.resolve_combat_for_zone(GameZone.e.COMBAT_PLAYER_1)
+	ReplacementEffectRegistry.unregister_replacement_effect(effect)
+	if not assert_test_equal(game.game_data.get_card_zone(creature), GameZone.e.LOCATION_1_PLAYER_CAMP, "The death replacement should keep the creature in camp"):
+		return false
+	return assert_test_equal(creature.getDamage(), 1, "The creature should heal from rest after its death is replaced")
+
+func test_rest_fighters_survive_or_die() -> bool:
+	var player: CardData = _rest_scenario_creature("Surviving Fighter", GameZone.e.COMBAT_PLAYER_1, true, 5)
+	var opponent: CardData = _rest_scenario_creature("Lethal Fighter", GameZone.e.COMBAT_OPPONENT_1, false, 3)
+	await game.resolve_combat_for_zone(GameZone.e.COMBAT_PLAYER_1)
+	if not assert_test_equal(game.game_data.get_card_zone(player), GameZone.e.LOCATION_1_PLAYER_CAMP, "The survivor should return to camp"):
+		return false
+	if not assert_test_equal(player.getDamage(), 3, "The surviving fighter should not rest when returned to camp"):
+		return false
+	if not assert_test_equal(game.game_data.get_card_zone(opponent), GameZone.e.GRAVEYARD_OPPONENT, "The opponent should die from lethal combat damage"):
+		return false
+	return assert_test_equal(opponent.getDamage(), 5, "A fighter killed in combat should not rest")
+
+func test_rest_fighter_moved_to_camp_before_strike() -> bool:
+	var fighter: CardData = _rest_scenario_creature("Retreating Fighter", GameZone.e.COMBAT_PLAYER_1, true)
+	fighter.receiveDamage(2)
+	_rest_scenario_move_on_event(fighter, fighter, TriggeredAbility.GameEventType.BEFORE_STRIKE)
+	await game.resolve_combat_for_zone(GameZone.e.COMBAT_PLAYER_1)
+	if not assert_test_equal(game.game_data.get_card_zone(fighter), GameZone.e.LOCATION_1_PLAYER_CAMP, "The fighter should move into camp before rest"):
+		return false
+	return assert_test_equal(fighter.getDamage(), 1, "A fighter moved into camp before rest should heal")
+
+func test_rest_fighter_moved_to_camp_on_strike() -> bool:
+	var fighter: CardData = _rest_scenario_creature("Retreating On Strike", GameZone.e.COMBAT_PLAYER_1, true)
+	fighter.receiveDamage(2)
+	_rest_scenario_move_on_event(fighter, fighter, TriggeredAbility.GameEventType.STRIKE)
+	await game.resolve_combat_for_zone(GameZone.e.COMBAT_PLAYER_1)
+	if not assert_test_equal(game.game_data.get_card_zone(fighter), GameZone.e.LOCATION_1_PLAYER_CAMP, "The fighter should move into camp during its strike"):
+		return false
+	return assert_test_equal(fighter.getDamage(), 1, "A fighter in camp at the rest check should heal")
+
+func test_rest_creature_moved_from_camp_to_combat() -> bool:
+	_rest_scenario_creature("Combat Anchor", GameZone.e.COMBAT_PLAYER_1, true)
+	var creature: CardData = _rest_scenario_creature("Late Fighter", GameZone.e.LOCATION_1_PLAYER_CAMP, true)
+	creature.receiveDamage(2)
+	game.before_strike.connect(func(_card: CardData, _zone: GameZone.e):
+		game.execute_move_card(creature, GameZone.e.COMBAT_PLAYER_1), CONNECT_ONE_SHOT)
+	await game.resolve_combat_for_zone(GameZone.e.COMBAT_PLAYER_1)
+	if not assert_test_equal(game.game_data.get_card_zone(creature), GameZone.e.LOCATION_1_PLAYER_CAMP, "The late fighter should return to camp after combat"):
+		return false
+	return assert_test_equal(creature.getDamage(), 2, "A creature in combat at the rest check should not heal")
+
+func test_rest_other_locations_are_isolated() -> bool:
+	var local_player: CardData = _rest_scenario_creature("Local Player", GameZone.e.LOCATION_1_PLAYER_CAMP, true)
+	var local_opponent: CardData = _rest_scenario_creature("Local Opponent", GameZone.e.LOCATION_1_OPPONENT_CAMP, false)
+	var other_cards: Array[CardData] = [
+		_rest_scenario_creature("Player Location 2", GameZone.e.LOCATION_2_PLAYER_CAMP, true),
+		_rest_scenario_creature("Opponent Location 2", GameZone.e.LOCATION_2_OPPONENT_CAMP, false),
+		_rest_scenario_creature("Player Location 3", GameZone.e.LOCATION_3_PLAYER_CAMP, true),
+		_rest_scenario_creature("Opponent Location 3", GameZone.e.LOCATION_3_OPPONENT_CAMP, false),
+	]
+	for card: CardData in [local_player, local_opponent]:
+		card.receiveDamage(2)
+	var rest_abilities: Array[ActivatedAbility] = []
+	var gold_before: Array[int] = []
+	for card: CardData in other_cards:
+		card.receiveDamage(2)
+		var ability: ActivatedAbility = ActivatedAbility.new(card, EffectType.Type.ADD_GOLD)
+		ability.exhausts_on_use = true
+		ability.refreshes_on_turn_start = false
+		ability.mark_exhausted()
+		card.activated_abilities.append(ability)
+		rest_abilities.append(ability)
+		var rest_trigger: TriggeredAbility = TriggeredAbility.new(card, TriggeredAbility.GameEventType.ON_REST, EffectType.Type.ADD_GOLD)
+		rest_trigger.trigger_conditions[TriggeredAbility.TriggerCondition.VALID_CARD] = "Card.Self"
+		card.triggered_abilities.append(rest_trigger)
+		rest_trigger.register_to_game(game)
+		gold_before.append(game.game_data.get_gold_pool(card).getValue())
+	await game.resolve_combat_for_zone(GameZone.e.COMBAT_PLAYER_1)
+	if not assert_test_equal(local_player.getDamage(), 1, "Local player creature should rest"):
+		return false
+	if not assert_test_equal(local_opponent.getDamage(), 1, "Local opponent creature should rest"):
+		return false
+	for index: int in range(other_cards.size()):
+		if not assert_test_equal(other_cards[index].getDamage(), 2, "Other locations should not heal"):
+			return false
+		if not assert_test_false(rest_abilities[index].is_available(), "Other locations should not refresh abilities"):
+			return false
+		if not assert_test_equal(game.game_data.get_gold_pool(other_cards[index]).getValue(), gold_before[index], "Other locations should not receive rest events"):
+			return false
+	return true
+
+func test_rest_creature_moved_to_other_location_during_combat() -> bool:
+	_rest_scenario_creature("Move Anchor", GameZone.e.COMBAT_PLAYER_1, true)
+	var creature: CardData = _rest_scenario_creature("Moved to Another Camp", GameZone.e.LOCATION_1_PLAYER_CAMP, true)
+	creature.receiveDamage(2)
+	game.before_strike.connect(func(_card: CardData, _zone: GameZone.e):
+		game.execute_move_card(creature, GameZone.e.LOCATION_2_PLAYER_CAMP), CONNECT_ONE_SHOT)
+	await game.resolve_combat_for_zone(GameZone.e.COMBAT_PLAYER_1)
+	if not assert_test_equal(game.game_data.get_card_zone(creature), GameZone.e.LOCATION_2_PLAYER_CAMP, "The creature should move to the other camp"):
+		return false
+	if not assert_test_equal(creature.getDamage(), 2, "The first location should not rest a creature moved away"):
+		return false
+	await game.resolve_combat_for_zone(GameZone.e.COMBAT_PLAYER_2)
+	return assert_test_equal(creature.getDamage(), 1, "The creature should rest when its new location resolves")
+
+func test_rest_late_camp_move_and_post_combat_damage() -> bool:
+	var source: CardData = _rest_scenario_creature("End Combat Source", GameZone.e.LOCATION_1_PLAYER_CAMP, true)
+	var moved: CardData = _rest_scenario_creature("Late Camp Arrival", GameZone.e.LOCATION_2_PLAYER_CAMP, true)
+	source.receiveDamage(2)
+	moved.receiveDamage(2)
+	_rest_scenario_move_on_event(source, moved, TriggeredAbility.GameEventType.END_OF_COMBAT)
+	game.end_of_combat.connect(func(_card: CardData, _zone: GameZone.e): source.receiveDamage(2), CONNECT_ONE_SHOT)
+	await game.resolve_combat_for_zone(GameZone.e.COMBAT_PLAYER_1)
+	if not assert_test_equal(source.getDamage(), 3, "Damage after resting should apply after the heal"):
+		return false
+	if not assert_test_equal(game.game_data.get_card_zone(moved), GameZone.e.LOCATION_1_PLAYER_CAMP, "The end-of-combat effect should move the creature into camp"):
+		return false
+	return assert_test_equal(moved.getDamage(), 2, "A creature entering camp after rest should not heal")
+
+func test_rest_creature_killed_after_combat() -> bool:
+	var creature: CardData = _rest_scenario_creature("Killed After Rest", GameZone.e.LOCATION_1_PLAYER_CAMP, true, 3)
+	creature.receiveDamage(2)
+	var ability: TriggeredAbility = TriggeredAbility.new(creature, TriggeredAbility.GameEventType.END_OF_COMBAT, EffectType.Type.DEAL_DAMAGE)
+	ability.effect_parameters = {"Targets": [creature], "NumDamage": 2}
+	creature.triggered_abilities.append(ability)
+	ability.register_to_game(game)
+	await game.resolve_combat_for_zone(GameZone.e.COMBAT_PLAYER_1)
+	if not assert_test_equal(creature.getDamage(), 3, "The rest heal should occur before the lethal end-of-combat damage"):
+		return false
+	return assert_test_equal(game.game_data.get_card_zone(creature), GameZone.e.GRAVEYARD_PLAYER, "The creature should die after resting")
+
+func test_rest_heals_camp_creatures_on_both_sides() -> bool:
+	var template: CardData = CardData.new()
+	template.cardName = "Resting Creature"
+	template.addType(CardData.CardType.CREATURE)
+	template._power = 10
+	var player: CardData = game.createCardData(template, GameZone.e.LOCATION_1_PLAYER_CAMP, true)
+	var opponent: CardData = game.createCardData(template, GameZone.e.LOCATION_1_OPPONENT_CAMP, false)
+	var fighter: CardData = game.createCardData(template, GameZone.e.COMBAT_PLAYER_1, true)
+	var other_location: CardData = game.createCardData(template, GameZone.e.LOCATION_2_PLAYER_CAMP, true)
+	var relic_template: CardData = CardData.new()
+	relic_template.cardName = "Resting Relic"
+	relic_template.addType(CardData.CardType.RELIC)
+	relic_template._power = 10
+	var relic: CardData = game.createCardData(relic_template, GameZone.e.LOCATION_1_PLAYER_CAMP, true)
+	for card: CardData in [player, opponent, fighter, other_location, relic]:
+		card.receiveDamage(2)
+	await game.resolveCombatInZone(GameZone.e.COMBAT_PLAYER_1)
+	if not assert_test_equal(player.getDamage(), 1, "The player's camp creature should heal one damage"):
+		return false
+	if not assert_test_equal(opponent.getDamage(), 1, "The opponent's camp creature should heal one damage"):
+		return false
+	if not assert_test_equal(fighter.getDamage(), 2, "A creature that fought should not rest"):
+		return false
+	if not assert_test_equal(other_location.getDamage(), 2, "A creature at another location should not rest"):
+		return false
+	return assert_test_equal(relic.getDamage(), 2, "A non-creature should not rest")
+
+func test_rest_healing_uses_replacement_effect() -> bool:
+	var creature: CardData = _make_exhaustion_test_creature("Rest Heal Replacement")
+	creature.power = 10
+	creature.receiveDamage(3)
+	var effect: _RestHealReplacementEffect = _RestHealReplacementEffect.new(
+		creature, {"EventType": EffectType.Type.HEAL}, {})
+	ReplacementEffectRegistry.register_replacement_effect(effect)
+	await _rest_via_combat(creature)
+	ReplacementEffectRegistry.unregister_replacement_effect(effect)
+	return assert_test_equal(creature.getDamage(), 1, "A heal replacement should adjust the resting heal amount")
+
+func _test_rest_trigger_damage(source_is_player: bool, event: TriggeredAbility.GameEventType) -> bool:
+	var player: CardData = _rest_scenario_creature("Player Resting", GameZone.e.LOCATION_1_PLAYER_CAMP, true, 2)
+	var opponent: CardData = _rest_scenario_creature("Opponent Resting", GameZone.e.LOCATION_1_OPPONENT_CAMP, false, 2)
+	player.receiveDamage(1)
+	opponent.receiveDamage(1)
+	var source: CardData = player if source_is_player else opponent
+	var target: CardData = opponent if source_is_player else player
+	var target_camp: GameZone.e = GameZone.e.LOCATION_1_OPPONENT_CAMP if source_is_player else GameZone.e.LOCATION_1_PLAYER_CAMP
+	var target_damage_at_trigger: Array[int] = []
+	var observe_trigger: Callable = func(card: CardData):
+		if card == source:
+			target_damage_at_trigger.append(target.getDamage())
+	if event == TriggeredAbility.GameEventType.CARD_HEALED:
+		game.card_healed.connect(observe_trigger)
+	else:
+		game.card_rested.connect(observe_trigger)
+	var ability: TriggeredAbility = TriggeredAbility.new(source, event, EffectType.Type.DEAL_DAMAGE)
+	ability.trigger_conditions[TriggeredAbility.TriggerCondition.VALID_CARD] = "Card.Self"
+	ability.effect_parameters = {"Targets": [target], "NumDamage": 1}
+	source.triggered_abilities.append(ability)
+	ability.register_to_game(game)
+	await game.resolve_combat_for_zone(GameZone.e.COMBAT_PLAYER_1)
+	if event == TriggeredAbility.GameEventType.CARD_HEALED:
+		game.card_healed.disconnect(observe_trigger)
+	else:
+		game.card_rested.disconnect(observe_trigger)
+	if not assert_test_equal(target_damage_at_trigger, [0], "The trigger should be emitted only after both creatures heal"):
+		return false
+	if not assert_test_equal(source.getDamage(), 0, "The healing-trigger owner should have rested"):
+		return false
+	if not assert_test_equal(game.game_data.get_card_zone(target), target_camp, "The damaged creature should survive in camp"):
+		return false
+	return assert_test_equal(target.getDamage(), 1, "The damage trigger should resolve after both creatures heal")
+
+func test_rest_player_heal_trigger_waits_for_opponent() -> bool:
+	return await _test_rest_trigger_damage(true, TriggeredAbility.GameEventType.CARD_HEALED)
+
+func test_rest_opponent_heal_trigger_waits_for_player() -> bool:
+	return await _test_rest_trigger_damage(false, TriggeredAbility.GameEventType.CARD_HEALED)
+
+func test_rest_triggers_wait_for_both_camps() -> bool:
+	return await _test_rest_trigger_damage(true, TriggeredAbility.GameEventType.ON_REST)
+
+func test_heal_event_only_when_damage_is_removed() -> bool:
+	var creature: CardData = _rest_scenario_creature("Heal Event", GameZone.e.LOCATION_1_PLAYER_CAMP, true)
+	var ability: TriggeredAbility = TriggeredAbility.new(creature, TriggeredAbility.GameEventType.CARD_HEALED, EffectType.Type.ADD_GOLD)
+	ability.trigger_conditions[TriggeredAbility.TriggerCondition.VALID_CARD] = "Card.Self"
+	ability.exhausts_on_use = false
+	creature.triggered_abilities.append(ability)
+	ability.register_to_game(game)
+	setPlayerGold(0)
+	await EffectFactory.execute_effect(EffectType.Type.HEAL, {"Targets": [creature]}, creature, game)
+	if not assert_test_equal(game.game_data.player_gold.getValue(), 0, "Healing an undamaged creature should not trigger CardHealed"):
+		return false
+	creature.receiveDamage(1)
+	await EffectFactory.execute_effect(EffectType.Type.HEAL, {"Targets": [creature]}, creature, game)
+	if not assert_test_equal(creature.getDamage(), 0, "The heal effect should remove damage"):
+		return false
+	return assert_test_equal(game.game_data.player_gold.getValue(), 1, "Healing damage outside rest should trigger CardHealed")
+
+func test_heal_trigger_type_parsing() -> bool:
+	var trigger_type: TriggerType.Type = TriggerType.string_to_type("CardHealed")
+	if not assert_test_equal(trigger_type, TriggerType.Type.CARD_HEALED, "CardHealed should parse as a healing trigger"):
+		return false
+	if not assert_test_equal(TriggerType.type_to_string(trigger_type), "CardHealed", "Healing trigger type should round-trip"):
+		return false
+	return assert_test_equal(CardLoaderAL._convert_trigger_type_to_game_event(trigger_type, {}), TriggeredAbility.GameEventType.CARD_HEALED, "CardHealed should map to the healing event")
+
+func test_rest_refreshes_eligible_ability_types() -> bool:
+	var creature: CardData = _make_exhaustion_test_creature("Rest Refresh")
+	var triggered: TriggeredAbility = TriggeredAbility.new(creature, TriggeredAbility.GameEventType.SPELL_CAST, EffectType.Type.ADD_GOLD)
+	var activated: ActivatedAbility = ActivatedAbility.new(creature, EffectType.Type.ADD_GOLD)
+	var effect: _CountingReplacementEffect = _make_counting_replacement(creature)
+	var replacement: ReplacementAbility = ReplacementAbility.new(creature, EffectType.Type.ADD_GOLD, effect)
+	for ability: CardAbility in [triggered, activated, replacement]:
+		ability.exhausts_on_use = true
+		ability.refreshes_on_turn_start = false
+		ability.mark_exhausted()
+	triggered.trigger_conditions[TriggeredAbility.TriggerCondition.VALID_CARD] = "Card.Self"
+	creature.triggered_abilities.append(triggered)
+	creature.activated_abilities.append(activated)
+	creature.replacement_abilities.append(replacement)
+	triggered.register_to_game(game)
+	setPlayerGold(0)
+	await _rest_via_combat(creature)
+	if not assert_test_true(triggered.is_available(), "Rest should refresh eligible triggered abilities"):
+		return false
+	if not assert_test_true(activated.is_available(), "Rest should refresh eligible activated abilities"):
+		return false
+	if not assert_test_true(replacement.is_available(), "Rest should refresh eligible replacement abilities"):
+		return false
+	await game.emit_game_event(TriggeredAbility.GameEventType.SPELL_CAST, creature)
+	if not assert_test_equal(game.game_data.player_gold.getValue(), 1, "The refreshed triggered ability should fire again"):
+		return false
+	if not assert_test_true(await AbilityManagerAL.activateAbility(creature, activated, game), "The refreshed activated ability should activate again"):
+		return false
+	replacement.apply_to_game(game)
+	ReplacementEffectRegistry.apply_replacement_effects(EffectType.Type.ADD_GOLD, {}, game)
+	replacement.remove_from_game(game)
+	return assert_test_equal(effect.fire_count, 1, "The refreshed replacement ability should apply again")
+
+func test_rest_emits_rest_event_for_camp_creature() -> bool:
+	var creature: CardData = _make_exhaustion_test_creature("Rest Event")
+	var ability: TriggeredAbility = TriggeredAbility.new(creature, TriggeredAbility.GameEventType.ON_REST, EffectType.Type.ADD_GOLD)
+	ability.trigger_conditions[TriggeredAbility.TriggerCondition.VALID_CARD] = "Card.Self"
+	creature.triggered_abilities.append(ability)
+	ability.register_to_game(game)
+	setPlayerGold(0)
+	await _rest_via_combat(creature)
+	return assert_test_equal(game.game_data.player_gold.getValue(), 1, "Rest should trigger the resting creature's ability")
+
+func test_exhaust_configuration_survives_card_duplication() -> bool:
+	var template: CardData = CardData.new()
+	template.cardName = "Exhaust Configuration"
+	template.addType(CardData.CardType.CREATURE)
+	template.add_keyword("Exhaust")
+	template.triggered_abilities.append(TriggeredAbility.new(template, TriggeredAbility.GameEventType.SPELL_CAST, EffectType.Type.ADD_GOLD))
+	template.activated_abilities.append(ActivatedAbility.new(template, EffectType.Type.ADD_GOLD))
+	template.replacement_abilities.append(ReplacementAbility.new(template, EffectType.Type.ADD_GOLD, _make_counting_replacement(template)))
+	KeywordRegistry.apply_existing_ability_configuration(template)
+	var creature: CardData = game.createCardData(template, GameZone.e.LOCATION_1_PLAYER_CAMP, true)
+	for ability: CardAbility in [creature.triggered_abilities[0], creature.activated_abilities[0], creature.replacement_abilities[0]]:
+		if not assert_test_true(ability.exhausts_on_use, "Exhaust should remain enabled on duplicated abilities"):
+			return false
+		if not assert_test_false(ability.refreshes_on_turn_start, "Exhaust should remain rest-refreshing after duplication"):
+			return false
+	return true
+
 func _make_exhaustion_test_creature(card_name: String) -> CardData:
 	var tpl = CardData.new()
 	tpl.cardName = card_name
@@ -3140,6 +3525,89 @@ func test_triggered_ability_no_exhaust() -> bool:
 		return false
 	print("✅ Non-exhausting triggered ability fired twice")
 	return true
+
+func test_multiple_rest_events_exhaust_at_queue_time() -> bool:
+	var owner: CardData = _rest_scenario_creature("Rest Observer", GameZone.e.LOCATION_2_PLAYER_CAMP, true)
+	_rest_scenario_creature("Resting Player", GameZone.e.LOCATION_1_PLAYER_CAMP, true)
+	_rest_scenario_creature("Resting Opponent", GameZone.e.LOCATION_1_OPPONENT_CAMP, false)
+	var once: TriggeredAbility = TriggeredAbility.new(owner, TriggeredAbility.GameEventType.ON_REST, EffectType.Type.ADD_GOLD)
+	once.effect_parameters = {"Amount": 1}
+	var unlimited: TriggeredAbility = TriggeredAbility.new(owner, TriggeredAbility.GameEventType.ON_REST, EffectType.Type.ADD_GOLD)
+	unlimited.effect_parameters = {"Amount": 10}
+	unlimited.exhausts_on_use = false
+	var one_time: TriggeredAbility = TriggeredAbility.new(owner, TriggeredAbility.GameEventType.ON_REST, EffectType.Type.ADD_GOLD)
+	one_time.effect_parameters = {"Amount": 100}
+	one_time.exhausts_on_use = false
+	one_time.is_one_time = true
+	for ability: TriggeredAbility in [once, unlimited, one_time]:
+		owner.triggered_abilities.append(ability)
+		ability.register_to_game(game)
+	var queued_counts: Array[int] = []
+	var gold_at_event: Array[int] = []
+	var observer: Callable = func(_card: CardData):
+		queued_counts.append(game.trigger_queue.size())
+		gold_at_event.append(game.game_data.player_gold.getValue())
+	game.card_rested.connect(observer)
+	setPlayerGold(0)
+	await game.resolve_combat_for_zone(GameZone.e.COMBAT_PLAYER_1)
+	game.card_rested.disconnect(observer)
+	if not assert_test_equal(queued_counts, [3, 4], "Each trigger should reserve its use before the next event is dispatched"):
+		return false
+	if not assert_test_equal(gold_at_event, [0, 0], "Both rest events should be dispatched before triggered effects resolve"):
+		return false
+	if not assert_test_equal(game.game_data.player_gold.getValue(), 121, "Two simultaneous rest events should queue once, twice, and once respectively"):
+		return false
+	if not assert_test_false(once.is_available(), "The default trigger should exhaust when queued"):
+		return false
+	if not assert_test_true(unlimited.is_available(), "The non-exhausting trigger should remain available"):
+		return false
+	await game.trigger_phase("BetweenTurns")
+	if not assert_test_true(once.is_available(), "The default trigger should refresh between turns"):
+		return false
+	return assert_test_false(one_time.is_available(), "A one-time trigger should stay used after the turn refresh")
+
+func test_between_turns_refreshes_before_beginning_triggers() -> bool:
+	var creature: CardData = _rest_scenario_creature("Turn Refresh", GameZone.e.LOCATION_1_PLAYER_CAMP, true)
+	var beginning: TriggeredAbility = TriggeredAbility.new(creature, TriggeredAbility.GameEventType.BEGINNING_OF_TURN, EffectType.Type.ADD_GOLD)
+	var activated: ActivatedAbility = ActivatedAbility.new(creature, EffectType.Type.ADD_GOLD)
+	var replacement_effect: _CountingReplacementEffect = _make_counting_replacement(creature)
+	var replacement: ReplacementAbility = ReplacementAbility.new(creature, EffectType.Type.ADD_GOLD, replacement_effect)
+	activated.exhausts_on_use = true
+	replacement.exhausts_on_use = true
+	creature.triggered_abilities.append(beginning)
+	creature.activated_abilities.append(activated)
+	creature.replacement_abilities.append(replacement)
+	beginning.register_to_game(game)
+	activated.register_to_game(game)
+	replacement.apply_to_game(game)
+	setPlayerGold(0)
+	await game.trigger_phase("BeginningOfTurn")
+	activated.mark_exhausted()
+	replacement.mark_exhausted()
+	await game.trigger_phase("BeginningOfTurn")
+	if not assert_test_equal(game.game_data.player_gold.getValue(), 1, "Beginning of turn alone must not refresh its trigger"):
+		return false
+	await game.trigger_phase("BetweenTurns")
+	if not assert_test_true(beginning.is_available() and activated.is_available() and replacement.is_available(), "All turn-refreshing ability types should refresh between turns"):
+		return false
+	await game.trigger_phase("BeginningOfTurn")
+	replacement.remove_from_game(game)
+	return assert_test_equal(game.game_data.player_gold.getValue(), 2, "Beginning-of-turn ability should fire again after the refresh step")
+
+func test_turn_transition_refreshes_before_beginning_of_turn() -> bool:
+	var creature: CardData = _rest_scenario_creature("Turn Transition", GameZone.e.LOCATION_1_PLAYER_CAMP, true)
+	var beginning: TriggeredAbility = TriggeredAbility.new(creature, TriggeredAbility.GameEventType.BEGINNING_OF_TURN, EffectType.Type.ADD_GOLD)
+	creature.triggered_abilities.append(beginning)
+	beginning.register_to_game(game)
+	beginning.mark_exhausted()
+	var observed: Array[bool] = []
+	var observer: Callable = func(_card: CardData):
+		observed.append(game.trigger_queue.get_all_resolvables().any(func(item): return item.ability == beginning))
+	game.beginning_of_turn.connect(observer)
+	await game.onTurnStart()
+	await game.onTurnStart()
+	game.beginning_of_turn.disconnect(observer)
+	return assert_test_equal(observed, [true, true], "Each real turn transition should refresh and queue the beginning-of-turn trigger")
 
 func test_triggered_ability_exhausts_and_rest_does_not_refresh() -> bool:
 	"""Default triggered ability (exhausts_on_use=true, refreshes_on_turn_start=true) should exhaust
